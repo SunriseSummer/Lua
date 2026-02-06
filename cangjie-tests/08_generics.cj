@@ -10,9 +10,9 @@ println("identity(hello) = ${hw}")
 
 // Generic struct with init/this
 struct Box<T> {
+  var value: T
   init(value: T) {
     this.value = value
-    return this
   }
   func get(): T {
     return this.value
@@ -22,17 +22,11 @@ struct Box<T> {
   }
 }
 
-func newBox(value) {
-  let b = setmetatable({}, Box)
-  b:init(value)
-  return b
-}
-
-let intBox = newBox(42)
-let strBox = newBox("hello")
-println(intBox:toString())
-println(strBox:toString())
-println("intBox.get() = ${intBox:get()}")
+let intBox = Box(42)
+let strBox = Box("hello")
+println(intBox.toString())
+println(strBox.toString())
+println("intBox.get() = ${intBox.get()}")
 
 // Generic function: swap
 func swap<T>(a: T, b: T) {
@@ -43,10 +37,11 @@ println("swap(1, 2) = ${x}, ${y}")
 
 // Generic Stack
 struct Stack<T> {
+  var items: Array<T>
+  var count: Int64
   init() {
     this.items = {}
     this.count = 0
-    return this
   }
   func push(item: T) {
     this.count = this.count + 1
@@ -69,21 +64,15 @@ struct Stack<T> {
   }
 }
 
-func newStack() {
-  let s = setmetatable({}, Stack)
-  s:init()
-  return s
-}
-
-let stack = newStack()
-stack:push(10)
-stack:push(20)
-stack:push(30)
-println("peek: ${stack:peek()}")
-println("pop: ${stack:pop()}")
-println("pop: ${stack:pop()}")
-println("empty: ${tostring(stack:isEmpty())}")
-println("pop: ${stack:pop()}")
-println("empty: ${tostring(stack:isEmpty())}")
+let stack = Stack()
+stack.push(10)
+stack.push(20)
+stack.push(30)
+println("peek: ${stack.peek()}")
+println("pop: ${stack.pop()}")
+println("pop: ${stack.pop()}")
+println("empty: ${tostring(stack.isEmpty())}")
+println("pop: ${stack.pop()}")
+println("empty: ${tostring(stack.isEmpty())}")
 
 println("PASS: 08_generics")

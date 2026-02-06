@@ -1312,51 +1312,39 @@ static void suffixedexp (LexState *ls, expdesc *v) {
   for (;;) {
     switch (ls->t.token) {
       case '.': {  /* fieldsel or method call */
-        /* Check for .size -> read __n field (array length) */
+        /* Check for .size -> read __n field (array length), but
+        ** only if NOT followed by '(' (which makes it a method call) */
         if (luaX_lookahead(ls) == TK_NAME) {
           TString *fname = ls->lookahead.seminfo.ts;
           if (fname != NULL && strcmp(getstr(fname), "size") == 0) {
-            luaX_next(ls);  /* skip '.' */
-            luaX_next(ls);  /* skip 'size' */
-            luaK_exp2anyregup(fs, v);
+            /* Peek further: skip '.' to get 'size', then peek past it */
+            luaX_next(ls);  /* skip '.', current=size (from lookahead) */
+            if (luaX_lookahead(ls) != '(') {
+              /* .size property access -> read __n field */
+              luaX_next(ls);  /* skip 'size' */
+              luaK_exp2anyregup(fs, v);
+              {
+                expdesc key;
+                codestring(&key, luaX_newstring(ls, "__n", 3));
+                luaK_indexed(fs, v, &key);
+              }
+              break;
+            }
+            /* .size() method call - fall through to general handler.
+            ** Current token is 'size', lookahead is '(' */
             {
               expdesc key;
-              codestring(&key, luaX_newstring(ls, "__n", 3));
+              luaK_exp2anyregup(fs, v);
+              codename(ls, &key);
               luaK_indexed(fs, v, &key);
             }
             break;
           }
         }
-        /* In Cangjie, obj.method(args) means method call with implicit self.
-        ** Detect .NAME( pattern and use luaK_self for method calls.
-        ** Otherwise, use regular fieldsel for field access. */
-        /* After the .size check, lookahead might be set or not.
-        ** If lookahead is set (from .size check that didn't match),
-        ** luaX_next will use it. If not, fieldsel handles it. */
-        {
-          /* We need to check ahead: is this .NAME( ? 
-          ** Step 1: Skip '.', get the name
-          ** Step 2: Check what follows the name */
-          expdesc key;
-          TString *fname2;
-          luaK_exp2anyregup(fs, v);
-          luaX_next(ls);  /* skip '.', using cached lookahead if available */
-          check(ls, TK_NAME);
-          fname2 = ls->t.seminfo.ts;
-          /* Peek at what follows the name */
-          if (luaX_lookahead(ls) == '(') {
-            /* Method call: obj.method(args) -> obj:method(args) with self */
-            codestring(&key, fname2);
-            luaK_self(fs, v, &key);
-            luaX_next(ls);  /* consume NAME */
-            funcargs(ls, v);
-          }
-          else {
-            /* Regular field access */
-            codename(ls, &key);  /* reads current NAME and advances */
-            luaK_indexed(fs, v, &key);
-          }
-        }
+        /* Regular field access: obj.field or obj.method 
+        ** For Cangjie, obj.method(args) should auto-pass self.
+        ** This is handled at runtime via __index binding in struct setup. */
+        fieldsel(ls, v);
         break;
       }
       case '[': {  /* '[' exp ']' */

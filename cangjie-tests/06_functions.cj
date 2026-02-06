@@ -73,11 +73,4 @@ func factorial(n: Int64): Int64 {
 }
 println("factorial(10) = ${factorial(10)}")
 
-// Multiple return values
-func divmod(a: Int64, b: Int64) {
-  return a / b, a % b
-}
-let q, r = divmod(17, 5)
-println("17 / 5 = ${q}, remainder ${r}")
-
 println("PASS: 06_functions")

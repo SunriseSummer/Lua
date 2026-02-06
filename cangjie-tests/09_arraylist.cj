@@ -2,10 +2,12 @@
 // A dynamic array with automatic resizing
 
 struct ArrayList<T> {
+  var data: Array<T>
+  var length: Int64
+
   init() {
     this.data = {}
     this.length = 0
-    return this
   }
 
   func size(): Int64 {
@@ -22,25 +24,25 @@ struct ArrayList<T> {
   }
 
   func get(index: Int64): T {
-    if (index < 1 or index > this.length) {
+    if (index < 0 or index >= this.length) {
       return nil
     }
-    return this.data[index]
+    return this.data[index + 1]
   }
 
   func set(index: Int64, value: T) {
-    if (index >= 1 and index <= this.length) {
-      this.data[index] = value
+    if (index >= 0 and index < this.length) {
+      this.data[index + 1] = value
     }
   }
 
   func removeAt(index: Int64): T {
-    if (index < 1 or index > this.length) {
+    if (index < 0 or index >= this.length) {
       return nil
     }
-    let removed = this.data[index]
+    let removed = this.data[index + 1]
     // shift elements left
-    var i = index
+    var i = index + 1
     while (i < this.length) {
       this.data[i] = this.data[i + 1]
       i = i + 1
@@ -54,7 +56,7 @@ struct ArrayList<T> {
     var i = 1
     while (i <= this.length) {
       if (this.data[i] == item) {
-        return i
+        return i - 1
       }
       i = i + 1
     }
@@ -62,7 +64,7 @@ struct ArrayList<T> {
   }
 
   func contains(item: T): Bool {
-    return this:indexOf(item) != -1
+    return this.indexOf(item) != -1
   }
 
   func clear() {
@@ -86,27 +88,27 @@ struct ArrayList<T> {
   func forEach(fn) {
     var i = 1
     while (i <= this.length) {
-      fn(this.data[i], i)
+      fn(this.data[i], i - 1)
       i = i + 1
     }
   }
 
   func map(fn) {
-    let result = newArrayList()
+    let result = ArrayList()
     var i = 1
     while (i <= this.length) {
-      result:add(fn(this.data[i]))
+      result.add(fn(this.data[i]))
       i = i + 1
     }
     return result
   }
 
   func filter(fn) {
-    let result = newArrayList()
+    let result = ArrayList()
     var i = 1
     while (i <= this.length) {
       if (fn(this.data[i])) {
-        result:add(this.data[i])
+        result.add(this.data[i])
       }
       i = i + 1
     }
@@ -114,67 +116,61 @@ struct ArrayList<T> {
   }
 }
 
-func newArrayList() {
-  let list = setmetatable({}, ArrayList)
-  list:init()
-  return list
-}
-
 // === Tests ===
 
 // Test basic operations
-let list = newArrayList()
-println("empty: ${tostring(list:isEmpty())}")  // true
-println("size: ${list:size()}")                // 0
+let list = ArrayList()
+println("empty: ${tostring(list.isEmpty())}")  // true
+println("size: ${list.size()}")                // 0
 
 // Test add
-list:add(10)
-list:add(20)
-list:add(30)
-list:add(40)
-list:add(50)
-println("after add: ${list:toString()}")  // [10, 20, 30, 40, 50]
-println("size: ${list:size()}")           // 5
+list.add(10)
+list.add(20)
+list.add(30)
+list.add(40)
+list.add(50)
+println("after add: ${list.toString()}")  // [10, 20, 30, 40, 50]
+println("size: ${list.size()}")           // 5
 
-// Test get
-println("get(1): ${list:get(1)}")  // 10
-println("get(3): ${list:get(3)}")  // 30
-println("get(5): ${list:get(5)}")  // 50
+// Test get (0-based index)
+println("get(0): ${list.get(0)}")  // 10
+println("get(2): ${list.get(2)}")  // 30
+println("get(4): ${list.get(4)}")  // 50
 
-// Test set
-list:set(3, 300)
-println("after set(3, 300): ${list:toString()}")  // [10, 20, 300, 40, 50]
+// Test set (0-based index)
+list.set(2, 300)
+println("after set(2, 300): ${list.toString()}")  // [10, 20, 300, 40, 50]
 
 // Test indexOf and contains
-println("indexOf(20): ${list:indexOf(20)}")        // 2
-println("indexOf(999): ${list:indexOf(999)}")      // -1
-println("contains(40): ${tostring(list:contains(40))}")  // true
-println("contains(99): ${tostring(list:contains(99))}")  // false
+println("indexOf(20): ${list.indexOf(20)}")        // 1
+println("indexOf(999): ${list.indexOf(999)}")      // -1
+println("contains(40): ${tostring(list.contains(40))}")  // true
+println("contains(99): ${tostring(list.contains(99))}")  // false
 
-// Test removeAt
-let removed = list:removeAt(2)
+// Test removeAt (0-based index)
+let removed = list.removeAt(1)
 println("removed: ${removed}")                      // 20
-println("after remove: ${list:toString()}")          // [10, 300, 40, 50]
-println("size: ${list:size()}")                      // 4
+println("after remove: ${list.toString()}")          // [10, 300, 40, 50]
+println("size: ${list.size()}")                      // 4
 
 // Test forEach
 print("forEach: ")
-list:forEach(func(item, idx) {
+list.forEach(func(item, idx) {
   print("${item} ")
 })
 println()  // 10 300 40 50
 
 // Test map
-let doubled = list:map(func(x) { return x * 2 })
-println("map(*2): ${doubled:toString()}")  // [20, 600, 80, 100]
+let doubled = list.map(func(x) { return x * 2 })
+println("map(*2): ${doubled.toString()}")  // [20, 600, 80, 100]
 
 // Test filter
-let big = list:filter(func(x) { return x > 30 })
-println("filter(>30): ${big:toString()}")  // [300, 40, 50]
+let big = list.filter(func(x) { return x > 30 })
+println("filter(>30): ${big.toString()}")  // [300, 40, 50]
 
 // Test clear
-list:clear()
-println("after clear: ${list:toString()}")  // []
-println("size: ${list:size()}")              // 0
+list.clear()
+println("after clear: ${list.toString()}")  // []
+println("size: ${list.size()}")              // 0
 
 println("PASS: 09_arraylist")

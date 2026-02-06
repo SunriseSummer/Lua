@@ -26,6 +26,6 @@ println("length = ${arr.size}")  // length = 3
 println("start${1}end")  // start1end
 
 // String without interpolation
-println("no interpolation here")  // no interpolation here
+println("no interpolation here")
 
 println("PASS: 05_string_interpolation")

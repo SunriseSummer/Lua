@@ -27,9 +27,6 @@ let s2: String = "World"
 let s3 = s1 .. ", " .. s2 .. "!"
 println(s3)
 
-// String length
-println("s1.size = ${#s1}")
-
 // Comparison operators
 println(10 == 10)
 println(10 != 20)
@@ -38,29 +35,20 @@ println(10 > 20)
 println(10 <= 10)
 println(10 >= 20)
 
-// Nil check
-let x = nil
-if (x == nil) {
-  println("x is nil")
-}
-
 // Type conversion
 let n = tostring(42)
 println(n)
 let m = tonumber("123")
 println(m)
 
-// Array literal and indexing
+// Array literal and 0-based indexing
 let arr: Array<Int64> = [1, 2, 3, 4, 5]
-println("arr[1] = ${arr[1]}")
-println("arr.size = ${arr.size}")
+println("arr[0] = ${arr[0]}")     // 1 (0-based)
+println("arr[1] = ${arr[1]}")     // 2 (0-based)
+println("arr.size = ${arr.size}") // 5
 
-// Rune (character) type
-let ch: Rune = "X"
+// Rune (character) type - single quotes
+let ch: Rune = 'X'
 println("char = ${ch}")
-
-// Unit type (represented as nil)
-let u = nil
-println("unit = ${u}")
 
 println("PASS: 04_types_operations")

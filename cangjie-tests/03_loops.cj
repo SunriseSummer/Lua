@@ -30,20 +30,13 @@ for (k in 0..=10:2) {
 }
 println("sum evens 0..=10:2 = ${evens}")  // 30
 
-// Generic for loop with ipairs (array iteration)
+// Iterating over array by index (0-based)
 let t = [10, 20, 30, 40, 50]
 var tsum = 0
-for (idx, val in ipairs(t)) {
-  tsum = tsum + val
+for (i in 0..t.size) {
+  tsum = tsum + t[i]
 }
 println("array sum = ${tsum}")  // 150
-
-// Iterating by index over array
-var tsum2 = 0
-for (i in 1..=t.size) {
-  tsum2 = tsum2 + t[i]
-}
-println("array sum by index = ${tsum2}")  // 150
 
 // Break in loop
 var found = 0

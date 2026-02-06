@@ -1,18 +1,24 @@
 // Test: HashMap implementation
 
 struct HashMap<K, V> {
+  var data: Array<V>
+  var count: Int64
+  var keys_list: Array<K>
+
   init() {
     this.data = {}
     this.count = 0
     this.keys_list = {}
-    return this
   }
+
   func size(): Int64 {
     return this.count
   }
+
   func isEmpty(): Bool {
     return this.count == 0
   }
+
   func put(key: K, value: V) {
     if (this.data[key] == nil) {
       this.count = this.count + 1
@@ -20,12 +26,15 @@ struct HashMap<K, V> {
     }
     this.data[key] = value
   }
+
   func get(key: K): V {
     return this.data[key]
   }
+
   func containsKey(key: K): Bool {
     return this.data[key] != nil
   }
+
   func remove(key: K): Bool {
     if (this.data[key] != nil) {
       this.data[key] = nil
@@ -42,6 +51,7 @@ struct HashMap<K, V> {
     }
     return false
   }
+
   func forEach(fn) {
     var i = 1
     while (i <= #this.keys_list) {
@@ -52,6 +62,7 @@ struct HashMap<K, V> {
       i = i + 1
     }
   }
+
   func toString(): String {
     var result = "{"
     var first = true
@@ -71,53 +82,47 @@ struct HashMap<K, V> {
   }
 }
 
-func newHashMap() {
-  let m = setmetatable({}, HashMap)
-  m:init()
-  return m
-}
-
 // === Tests ===
 
-let map = newHashMap()
-println("empty: ${tostring(map:isEmpty())}")
-println("size: ${map:size()}")
+let map = HashMap()
+println("empty: ${tostring(map.isEmpty())}")
+println("size: ${map.size()}")
 
-map:put("name", "Cangjie")
-map:put("version", 1)
-map:put("type", "language")
-println("after put: ${map:toString()}")
+map.put("name", "Cangjie")
+map.put("version", 1)
+map.put("type", "language")
+println("after put: ${map.toString()}")
 
-let gn = map:get("name")
-let gv = map:get("version")
+let gn = map.get("name")
+let gv = map.get("version")
 println("get name: ${gn}")
 println("get version: ${gv}")
-println("size: ${map:size()}")
+println("size: ${map.size()}")
 
-let hk = map:containsKey("name")
+let hk = map.containsKey("name")
 println("has name: ${tostring(hk)}")
 
-map:put("version", 2)
-let gv2 = map:get("version")
+map.put("version", 2)
+let gv2 = map.get("version")
 println("updated version: ${gv2}")
 
-map:remove("type")
-println("after remove: ${map:toString()}")
-println("size: ${map:size()}")
+map.remove("type")
+println("after remove: ${map.toString()}")
+println("size: ${map.size()}")
 
 print("forEach: ")
-map:forEach(func(k, v) {
+map.forEach(func(k, v) {
   print(tostring(k) .. "=" .. tostring(v) .. " ")
 })
 println()
 
 // Test with integer keys
-let intMap = newHashMap()
-intMap:put(1, "one")
-intMap:put(2, "two")
-intMap:put(3, "three")
-println("intMap: ${intMap:toString()}")
-let ig = intMap:get(2)
-println("intMap[2] = ${ig}")
+let intMap = HashMap()
+intMap.put(1, "one")
+intMap.put(2, "two")
+intMap.put(3, "three")
+println("intMap: ${intMap.toString()}")
+let ig = intMap.get(2)
+println("intMap.get(2) = ${ig}")
 
 println("PASS: 10_hashmap")
