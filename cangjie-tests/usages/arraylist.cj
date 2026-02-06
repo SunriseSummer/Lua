@@ -77,12 +77,12 @@ struct ArrayList<T> {
     var i = 1
     while (i <= this.length) {
       if (i > 1) {
-        result = result .. ", "
+        result = result + ", "
       }
-      result = result .. tostring(this.data[i])
+      result = result + tostring(this.data[i])
       i = i + 1
     }
-    return result .. "]"
+    return result + "]"
   }
 
   func forEach(fn) {

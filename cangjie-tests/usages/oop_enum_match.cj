@@ -26,7 +26,7 @@ class Result {
     this.steps = steps
   }
   func toString(): String {
-    return "Result(" .. tostring(this.value) .. ", steps=" .. tostring(this.steps) .. ")"
+    return "Result(${this.value}, steps=${this.steps})"
   }
 }
 
@@ -38,7 +38,7 @@ class DetailedResult <: Result {
     this.expr_str = expr_str
   }
   func toString(): String {
-    return this.expr_str .. " = " .. tostring(this.value) .. " (steps=" .. tostring(this.steps) .. ")"
+    return "${this.expr_str} = ${this.value} (steps=${this.steps})"
   }
 }
 
@@ -53,7 +53,7 @@ func eval(e) {
       return DetailedResult(
         ra.value + rb.value,
         ra.steps + rb.steps + 1,
-        "(" .. ra.expr_str .. "+" .. rb.expr_str .. ")"
+        "(" + ra.expr_str + "+" + rb.expr_str + ")"
       )
     case Sub(a, b) =>
       let ra = eval(a)
@@ -61,7 +61,7 @@ func eval(e) {
       return DetailedResult(
         ra.value - rb.value,
         ra.steps + rb.steps + 1,
-        "(" .. ra.expr_str .. "-" .. rb.expr_str .. ")"
+        "(" + ra.expr_str + "-" + rb.expr_str + ")"
       )
     case Mul(a, b) =>
       let ra = eval(a)
@@ -69,14 +69,14 @@ func eval(e) {
       return DetailedResult(
         ra.value * rb.value,
         ra.steps + rb.steps + 1,
-        "(" .. ra.expr_str .. "*" .. rb.expr_str .. ")"
+        "(" + ra.expr_str + "*" + rb.expr_str + ")"
       )
     case Neg(a) =>
       let ra = eval(a)
       return DetailedResult(
         0 - ra.value,
         ra.steps + 1,
-        "(-" .. ra.expr_str .. ")"
+        "(-" + ra.expr_str + ")"
       )
   }
   return Result(0, 0)
@@ -102,12 +102,12 @@ func analyze(expr_result) {
 }
 
 let info = analyze(r1)
-println("value=" .. tostring(info[0]) .. " steps=" .. tostring(info[1]) .. " positive=" .. tostring(info[2]))
+println("value=${info[0]} steps=${info[1]} positive=${info[2]}")
 
 // === Polymorphism via inheritance ===
 func printResult(r) {
   // This works due to dynamic dispatch - calls the right toString
-  println("  -> " .. r.toString())
+  println("  -> " + r.toString())
 }
 
 printResult(r1)
@@ -117,9 +117,9 @@ printResult(r2)
 func classifyResult(r) {
   match (r) {
     case d: DetailedResult =>
-      println("detailed: " .. d.expr_str)
+      println("detailed: " + d.expr_str)
     case r: Result =>
-      println("basic result: " .. tostring(r.value))
+      println("basic result: ${r.value}")
   }
 }
 

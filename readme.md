@@ -28,7 +28,7 @@
 - **算术运算**：`+`、`-`、`*`、`/`、`%`、`^`（幂运算）
 - **比较运算**：`==`、`!=`、`>`、`<`、`>=`、`<=`
 - **逻辑运算**：`and`、`or`、`not`（`!`）
-- **字符串连接**：`..`
+- **字符串连接**：`+`（也支持 Lua 风格的 `..`）
 - **位运算**：`<<`、`>>`、`~`
 
 ### 字符串
@@ -211,7 +211,7 @@ enum Color {
       case Red =>
         return "Red"
       case Blue(v) =>
-        return "Blue(" .. tostring(v) .. ")"
+        return "Blue(${v})"
       case _ =>
         return "Other"
     }
@@ -258,7 +258,7 @@ match (color) {
   case Red =>
     println("red")
   case Blue(val) =>
-    println("blue: " .. tostring(val))
+    println("blue: ${val}")
   case _ =>
     println("other")
 }
@@ -278,7 +278,7 @@ match (animal) {
   case d: Dog =>
     println(d.bark())
   case c: Cat =>
-    println(c.name .. " meows!")
+    println("${c.name} meows!")
   case _ =>
     println("unknown")
 }
@@ -286,7 +286,7 @@ match (animal) {
 // 元组模式匹配
 match (pair) {
   case (x, y) =>
-    println("pair: " .. tostring(x) .. ", " .. tostring(y))
+    println("pair: ${x}, ${y}")
 }
 
 // 递归枚举求值

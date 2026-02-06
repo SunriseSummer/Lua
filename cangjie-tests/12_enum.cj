@@ -39,9 +39,9 @@ enum Color {
       case Green =>
         return "Green"
       case Blue(v) =>
-        return "Blue(" .. tostring(v) .. ")"
+        return "Blue(${v})"
       case RGB(r, g, b) =>
-        return "RGB(" .. tostring(r) .. "," .. tostring(g) .. "," .. tostring(b) .. ")"
+        return "RGB(${r},${g},${b})"
     }
     return "Unknown"
   }
@@ -78,7 +78,7 @@ func eval(e) {
 
 // Build: (2 + 3) * 4
 let e = Expr.Mul(Expr.Add(Expr.Num(2), Expr.Num(3)), Expr.Num(4))
-println("(2+3)*4 = " .. tostring(eval(e)))
+println("(2+3)*4 = ${eval(e)}")
 
 // Enum for Option type
 enum Option {
@@ -98,8 +98,8 @@ enum Option {
 
 let val = Option.Some(42)
 let empty = Option.None
-println("Some(42).isPresent() = " .. tostring(val.isPresent()))
-println("None.isPresent() = " .. tostring(empty.isPresent()))
+println("Some(42).isPresent() = ${val.isPresent()}")
+println("None.isPresent() = ${empty.isPresent()}")
 
 // Generic enum (type params are skipped, work via dynamic typing)
 enum Result<T, E> {
@@ -119,7 +119,7 @@ enum Result<T, E> {
 
 let ok = Result.Ok(42)
 let err = Result.Err("something went wrong")
-println("Ok(42).isOk() = " .. tostring(ok.isOk()))
-println("Err(...).isOk() = " .. tostring(err.isOk()))
+println("Ok(42).isOk() = ${ok.isOk()}")
+println("Err(...).isOk() = ${err.isOk()}")
 
 println("PASS: 12_enum")

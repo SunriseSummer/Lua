@@ -27,7 +27,7 @@ func minmax(a: Int64, b: Int64) {
 }
 
 let result = minmax(17, 5)
-println("min=" .. tostring(result[0]) .. " max=" .. tostring(result[1]))
+println("min=${result[0]} max=${result[1]}")
 
 // Tuple with nested values
 let t_inner1 = (1, 2)

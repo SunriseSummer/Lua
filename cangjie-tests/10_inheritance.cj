@@ -9,7 +9,7 @@ class Animal {
     this.sound = sound
   }
   func speak(): String {
-    return this.name .. " says " .. this.sound
+    return "${this.name} says ${this.sound}"
   }
   func getType(): String {
     return "Animal"
@@ -26,10 +26,10 @@ class Dog <: Animal {
   }
   // Override speak method (polymorphism)
   func speak(): String {
-    return this.name .. " barks: " .. this.sound .. "!"
+    return "${this.name} barks: ${this.sound}!"
   }
   func fetch(): String {
-    return this.name .. " fetches the ball"
+    return "${this.name} fetches the ball"
   }
 }
 
@@ -39,7 +39,7 @@ class Cat <: Animal {
     this.sound = "Meow"
   }
   func speak(): String {
-    return this.name .. " purrs: " .. this.sound
+    return "${this.name} purrs: ${this.sound}"
   }
 }
 
@@ -79,7 +79,7 @@ class GuideDog <: Dog {
     this.owner = owner
   }
   func guide(): String {
-    return this.name .. " guides " .. this.owner
+    return "${this.name} guides ${this.owner}"
   }
 }
 
@@ -102,7 +102,7 @@ class Point <: Printable {
     this.y = y
   }
   func toString(): String {
-    return "(" .. tostring(this.x) .. ", " .. tostring(this.y) .. ")"
+    return "(${this.x}, ${this.y})"
   }
 }
 

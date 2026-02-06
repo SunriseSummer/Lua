@@ -110,13 +110,17 @@ let r1 = Option.Some(10)
 let r2 = Option.None
 
 match (r1) {
-  case Some(v) => { println("10: " .. tostring(v)) }
-  case None => { println("none") }
+  case Some(v) =>
+    println("10: " .. tostring(v))
+  case None =>
+    println("none")
 }
 
 match (r2) {
-  case Some(v) => { println("value: " .. tostring(v)) }
-  case None => { println("division by zero") }
+  case Some(v) =>
+    println("value: " .. tostring(v))
+  case None =>
+    println("division by zero")
 }
 
 println("PASS: ext-features/04_dynamic_dispatch")

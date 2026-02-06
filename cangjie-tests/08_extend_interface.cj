@@ -72,7 +72,7 @@ println("negative isPositive: ${(-5).isPositive()}")
 // Extend built-in type String with an interface
 extend String <: Describable {
   func shout(): String {
-    return this .. "!!!"
+    return this + "!!!"
   }
 }
 

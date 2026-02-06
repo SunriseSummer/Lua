@@ -14,7 +14,7 @@ func describeColor(c) {
     case Green =>
       println("It is green")
     case Blue(val) =>
-      println("It is blue with value " .. tostring(val))
+      println("It is blue with value ${val}")
   }
 }
 
@@ -32,7 +32,7 @@ func describeNumber(n) {
     case 42 =>
       println("the answer")
     case _ =>
-      println("some number: " .. tostring(n))
+      println("some number: ${n}")
   }
 }
 
@@ -60,9 +60,9 @@ func getArea(s) {
   return 0.0
 }
 
-println("circle area: " .. tostring(getArea(Shape.Circle(5.0))))
-println("rect area: " .. tostring(getArea(Shape.Rectangle(3.0, 4.0))))
-println("triangle area: " .. tostring(getArea(Shape.Triangle(3.0, 4.0, 5.0))))
+println("circle area: ${getArea(Shape.Circle(5.0))}")
+println("rect area: ${getArea(Shape.Rectangle(3.0, 4.0))}")
+println("triangle area: ${getArea(Shape.Triangle(3.0, 4.0, 5.0))}")
 
 // === Recursive enum with pattern matching ===
 enum Expr {
@@ -91,7 +91,7 @@ let expr1 = Expr.Mul(
   Expr.Add(Expr.Num(1), Expr.Num(2)),
   Expr.Sub(Expr.Num(4), Expr.Num(1))
 )
-println("(1+2)*(4-1) = " .. tostring(eval(expr1)))
+println("(1+2)*(4-1) = ${eval(expr1)}")
 
 // === Option type pattern matching ===
 enum Option {
@@ -109,8 +109,8 @@ func getOrDefault(opt, default_val) {
   return default_val
 }
 
-println("Some(42): " .. tostring(getOrDefault(Option.Some(42), 0)))
-println("None: " .. tostring(getOrDefault(Option.None, -1)))
+println("Some(42): ${getOrDefault(Option.Some(42), 0)}")
+println("None: ${getOrDefault(Option.None, -1)}")
 
 // === Type pattern matching ===
 class Animal {
@@ -125,7 +125,7 @@ class Dog <: Animal {
     this.name = name
   }
   func bark(): String {
-    return this.name .. " barks!"
+    return "${this.name} barks!"
   }
 }
 
@@ -140,9 +140,9 @@ func describeAnimal(a) {
     case d: Dog =>
       println(d.bark())
     case c: Cat =>
-      println(c.name .. " meows!")
+      println("${c.name} meows!")
     case a: Animal =>
-      println(a.name .. " is generic")
+      println("${a.name} is generic")
     case _ =>
       println("not an animal")
   }
@@ -156,7 +156,7 @@ describeAnimal(Animal("Parrot"))
 func processPair(p) {
   match (p) {
     case (x, y) =>
-      println("pair: " .. tostring(x) .. ", " .. tostring(y))
+      println("pair: ${x}, ${y}")
   }
 }
 
@@ -172,6 +172,6 @@ func getFirst(t) {
   return nil
 }
 
-println("first of (42, 99) = " .. tostring(getFirst((42, 99))))
+println("first of (42, 99) = ${getFirst((42, 99))}")
 
 println("PASS: 13_match")

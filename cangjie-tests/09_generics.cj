@@ -18,7 +18,7 @@ struct Box<T> {
     return this.value
   }
   func toString(): String {
-    return "Box(" .. tostring(this.value) .. ")"
+    return "Box(${this.value})"
   }
 }
 

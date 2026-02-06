@@ -71,14 +71,14 @@ struct HashMap<K, V> {
       let k = this.keys_list[i]
       if (this.data[k] != nil) {
         if (not first) {
-          result = result .. ", "
+          result = result + ", "
         }
-        result = result .. tostring(k) .. ": " .. tostring(this.data[k])
+        result = result + tostring(k) + ": " + tostring(this.data[k])
         first = false
       }
       i = i + 1
     }
-    return result .. "}"
+    return result + "}"
   }
 }
 
@@ -112,7 +112,7 @@ println("size: ${map.size()}")
 
 print("forEach: ")
 map.forEach(func(k, v) {
-  print(tostring(k) .. "=" .. tostring(v) .. " ")
+  print("${k}=${v} ")
 })
 println()
 
