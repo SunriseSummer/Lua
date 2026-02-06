@@ -530,9 +530,9 @@ static int is_struct_field (LexState *ls, TString *name) {
 
 
 /*
-** Find a variable with the given name 'n', handling global variables
-** too. If we're inside a struct/class method and the name matches
-** a struct field, resolve it as self.name (implicit 'this').
+** Build a variable reference, handling implicit 'this' for struct/class
+** member access. When inside a struct/class method, if the name matches
+** a declared field, it is automatically resolved as self.fieldname.
 */
 static void buildvar (LexState *ls, TString *varname, expdesc *var) {
   FuncState *fs = ls->fs;
@@ -1060,6 +1060,12 @@ static int maxtostore (FuncState *fs) {
 }
 
 
+/*
+** ============================================================
+** Table/Array constructor
+** Handles both Lua-style tables and Cangjie-style 0-based arrays.
+** ============================================================
+*/
 static void constructor (LexState *ls, expdesc *t) {
   /* constructor -> '{' [ field { sep field } [sep] ] '}'
      sep -> ',' | ';' */
@@ -1097,6 +1103,15 @@ static void setvararg (FuncState *fs) {
 }
 
 
+/*
+** ============================================================
+** Function parameter list parsing
+** Handles Cangjie-style typed parameters:
+**   func name(param: Type, param2: Type) : ReturnType
+** Also supports named parameters with '!' suffix and defaults:
+**   func name(base: Int64, exponent!: Int64 = 2)
+** ============================================================
+*/
 static void parlist (LexState *ls) {
   /* parlist -> [ {NAME ['!'] ':' TYPE ['=' expr] ','} (NAME ['!'] ':' TYPE | '...') ] */
   FuncState *fs = ls->fs;
@@ -1659,9 +1674,12 @@ static int scan_brace_block (LexState *ls, int mode) {
 
 
 /*
-** Lambda body: => expr or => { block }
-** Creates an anonymous function that returns the expression
-** Used for () => expr syntax
+** ============================================================
+** Lambda expression support
+** Cangjie supports two lambda syntaxes:
+**   Arrow: (params) => expr  or  (params) => { stmts }
+**   Brace: { params => expr }  or  { params => stmts }
+** ============================================================
 */
 static void lambdabody (LexState *ls, expdesc *e, int line) {
   /* lambdabody -> '=>' expr | '=>' '{' block '}' */
@@ -1780,6 +1798,16 @@ static void bracelambda (LexState *ls, expdesc *e, int line) {
 }
 
 
+/*
+** ============================================================
+** Expression parsing
+** Handles Cangjie expression syntax including:
+**   - Tuple literals: (a, b, c)
+**   - String interpolation: "text ${expr} text"
+**   - Lambda expressions: { x => x + 1 }
+**   - Constructor calls, array indexing, etc.
+** ============================================================
+*/
 static void simpleexp (LexState *ls, expdesc *v) {
   /* simpleexp -> FLT | INT | STRING | NIL | TRUE | FALSE |
                   constructor | FUNC body | suffixedexp */
@@ -2552,6 +2580,13 @@ static void checktoclose (FuncState *fs, int level) {
 }
 
 
+/*
+** ============================================================
+** Variable declaration (let/var)
+** Cangjie uses 'let' for immutable and 'var' for mutable variables.
+** Supports optional type annotations: let x: Int64 = 42
+** ============================================================
+*/
 static void letvarstat (LexState *ls, int isconst) {
   /* stat -> LET|VAR NAME [':' type] ['=' explist] */
   FuncState *fs = ls->fs;
@@ -2645,8 +2680,12 @@ static void funcstat (LexState *ls, int line) {
 
 
 /*
-** Parse struct/class body members (fields and methods)
-** Generates table construction and method definitions
+** ============================================================
+** Type annotation handling
+** Parses and skips Cangjie type annotations after ':'.
+** Handles: simple types, generic types, function types.
+** Examples: Int64, Array<String>, (Int64, Int64) -> Bool
+** ============================================================
 */
 static void skip_type_annotation (LexState *ls) {
   /* skip optional type annotation after ':'
@@ -2709,6 +2748,14 @@ static void skip_generic_params (LexState *ls) {
 }
 
 
+/*
+** ============================================================
+** Struct/Class definition
+** Compiles Cangjie struct/class declarations to Lua table+metatable
+** patterns. Supports: fields, methods, constructors, inheritance,
+** interface implementation, generic type parameters, implicit this.
+** ============================================================
+*/
 static void structstat (LexState *ls, int line) {
   /*
   ** struct NAME ['<' typeparams '>'] ['<:' PARENT ['&' IFACE]*] '{' members '}'
@@ -3159,6 +3206,15 @@ static void extendstat (LexState *ls, int line) {
 }
 
 
+/*
+** ============================================================
+** Enum type definition
+** Compiles Cangjie enum declarations. Each enum variant becomes
+** either a static table (no-arg) or a factory function (with args).
+** Supports: parameterized constructors, member functions,
+** recursive enums, generic enums.
+** ============================================================
+*/
 static void enumstat (LexState *ls, int line) {
   /*
   ** enum NAME '{' '|' CTOR ['(' types ')'] ... '}'
@@ -3727,6 +3783,14 @@ static int match_emit_tuple_subpattern (LexState *ls, TString *match_var_name,
 }
 
 
+/*
+** ============================================================
+** Pattern matching (match expression)
+** Compiles Cangjie match expressions to if-elseif chains.
+** Supports: enum patterns, constant patterns, wildcard,
+** type patterns, tuple patterns, nested patterns.
+** ============================================================
+*/
 static void matchstat (LexState *ls, int line) {
   /*
   ** match '(' expr ')' '{' case_clauses '}'
@@ -4021,6 +4085,13 @@ static void retstat (LexState *ls) {
 }
 
 
+/*
+** ============================================================
+** Main statement dispatcher
+** Routes each statement to its corresponding parser function
+** based on the current token (keyword).
+** ============================================================
+*/
 static void statement (LexState *ls) {
   int line = ls->linenumber;  /* may be needed for error messages */
   enterlevel(ls);
