@@ -604,7 +604,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
             return TK_RANGEI;   /* '..=' */
           else if (check_next1(ls, '.'))
             return TK_DOTS;   /* '...' */
-          else return TK_CONCAT;   /* '..' */
+          else return TK_CONCAT;   /* '..' (exclusive range) */
         }
         else if (!lisdigit(ls->current)) return '.';
         else return read_numeral(ls, seminfo);

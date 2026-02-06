@@ -1179,7 +1179,8 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    selfidx = new_localvar(ls, luaX_newstring(ls, "self", 4));
+    selfidx = new_localvar(ls, luaX_newstring(ls, "self",
+                                              sizeof("self") - 1));
     adjustlocalvars(ls, 1);
   }
   parlist(ls);
@@ -1524,6 +1525,7 @@ static void coderange (LexState *ls, expdesc *start, expdesc *stop,
 
 static void expr (LexState *ls, expdesc *v) {
   subexpr(ls, v, 0);
+  /* ".." (TK_CONCAT) and "..=" form range expressions in Cangjie mode. */
   if (ls->t.token == TK_CONCAT || ls->t.token == TK_RANGEI) {
     int inclusive = (ls->t.token == TK_RANGEI);
     expdesc v2;
