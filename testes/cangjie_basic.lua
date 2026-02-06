@@ -66,7 +66,7 @@ interface Greeter {
 }
 
 class Person <: Greeter {
-  let name: String
+  var name: String
 
   init(name: String) {
     this.name = name

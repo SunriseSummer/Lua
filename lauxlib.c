@@ -757,8 +757,8 @@ typedef enum {
 } CJBlock;
 
 #define CJ_STACK_MAX 256  /* maximum nesting tracked by the translator */
-#define CJ_TYPE_MAX 64
-#define CJ_NAME_MAX 64
+#define CJ_TYPE_MAX 64  /* maximum tracked Cangjie types per chunk */
+#define CJ_NAME_MAX 64  /* maximum identifier length stored by translator */
 
 typedef enum {
   CJ_TYPE_CLASS,
@@ -855,6 +855,7 @@ static void cj_add_trimmed (luaL_Buffer *b, const char *src,
 }
 
 static void cj_copy_name (char *dest, const char *src, size_t len) {
+  /* truncate longer identifiers to fit fixed buffer */
   if (len >= CJ_NAME_MAX)
     len = CJ_NAME_MAX - 1;
   memcpy(dest, src, len);
