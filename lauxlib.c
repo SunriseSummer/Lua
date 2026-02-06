@@ -740,7 +740,11 @@ typedef enum {
   CJ_LAST_ELSE,
   CJ_LAST_WHILE,
   CJ_LAST_FOR,
-  CJ_LAST_FUNCTION
+  CJ_LAST_FUNCTION,
+  CJ_LAST_CLASS,
+  CJ_LAST_STRUCT,
+  CJ_LAST_INTERFACE,
+  CJ_LAST_EXTEND
 } CJLast;
 
 typedef enum {
@@ -748,10 +752,33 @@ typedef enum {
   CJ_BLOCK_IF,
   CJ_BLOCK_ELSE,
   CJ_BLOCK_LOOP,
-  CJ_BLOCK_FUNCTION
+  CJ_BLOCK_FUNCTION,
+  CJ_BLOCK_TYPE
 } CJBlock;
 
 #define CJ_STACK_MAX 256  /* maximum nesting tracked by the translator */
+#define CJ_TYPE_MAX 64
+#define CJ_NAME_MAX 64
+
+typedef enum {
+  CJ_TYPE_CLASS,
+  CJ_TYPE_STRUCT,
+  CJ_TYPE_INTERFACE,
+  CJ_TYPE_EXTEND
+} CJTypeKind;
+
+typedef struct {
+  char name[CJ_NAME_MAX];
+  char base[CJ_NAME_MAX];
+  CJTypeKind kind;
+} CJTypeInfo;
+
+typedef struct {
+  char name[CJ_NAME_MAX];
+  char base[CJ_NAME_MAX];
+  CJTypeKind kind;
+  int depth;
+} CJTypeContext;
 
 
 static int cj_is_ident_start (int c) {
@@ -825,6 +852,176 @@ static void cj_add_trimmed (luaL_Buffer *b, const char *src,
     end--;
   if (end > start)
     luaL_addlstring(b, src + start, end - start);
+}
+
+static void cj_copy_name (char *dest, const char *src, size_t len) {
+  if (len >= CJ_NAME_MAX)
+    len = CJ_NAME_MAX - 1;
+  memcpy(dest, src, len);
+  dest[len] = '\0';
+}
+
+
+static const CJTypeInfo *cj_find_type (const CJTypeInfo *types, int count,
+                                       const char *name, size_t len) {
+  int i;
+  for (i = 0; i < count; i++) {
+    if (strlen(types[i].name) == len &&
+        strncmp(types[i].name, name, len) == 0)
+      return &types[i];
+  }
+  return NULL;
+}
+
+
+static const CJTypeInfo *cj_store_type (CJTypeInfo *types, int *count,
+                                        CJTypeKind kind,
+                                        const char *name, size_t name_len,
+                                        const char *base, size_t base_len) {
+  const CJTypeInfo *existing = cj_find_type(types, *count, name, name_len);
+  if (existing != NULL) {
+    if (base != NULL && base_len > 0) {
+      cj_copy_name(((CJTypeInfo *)existing)->base, base, base_len);
+    }
+    ((CJTypeInfo *)existing)->kind = kind;
+    return existing;
+  }
+  if (*count >= CJ_TYPE_MAX)
+    return NULL;
+  cj_copy_name(types[*count].name, name, name_len);
+  if (base != NULL && base_len > 0)
+    cj_copy_name(types[*count].base, base, base_len);
+  else
+    types[*count].base[0] = '\0';
+  types[*count].kind = kind;
+  (*count)++;
+  return &types[*count - 1];
+}
+
+
+static int cj_parse_type_header (const char *src, size_t i, size_t len,
+                                 CJTypeKind kind, CJTypeContext *out,
+                                 size_t *out_end) {
+  size_t pos = cj_skip_space_and_comments(src, i, len);
+  size_t name_start;
+  size_t name_end;
+  if (pos >= len || !cj_is_ident_start(cast_uchar(src[pos])))
+    return 0;
+  name_start = pos;
+  name_end = pos + 1;
+  while (name_end < len && cj_is_ident_continue(cast_uchar(src[name_end])))
+    name_end++;
+  cj_copy_name(out->name, src + name_start, name_end - name_start);
+  out->base[0] = '\0';
+  out->kind = kind;
+  pos = cj_skip_space_and_comments(src, name_end, len);
+  if (pos < len && src[pos] == '<' &&
+      !(pos + 1 < len && src[pos + 1] == ':')) {
+    int depth = 0;
+    while (pos < len) {
+      if (src[pos] == '<')
+        depth++;
+      else if (src[pos] == '>') {
+        depth--;
+        if (depth == 0) {
+          pos++;
+          break;
+        }
+      }
+      pos++;
+    }
+    pos = cj_skip_space_and_comments(src, pos, len);
+  }
+  if (pos + 1 < len && src[pos] == '<' && src[pos + 1] == ':') {
+    size_t base_start;
+    size_t base_end;
+    pos = cj_skip_space_and_comments(src, pos + 2, len);
+    if (pos < len && cj_is_ident_start(cast_uchar(src[pos]))) {
+      base_start = pos;
+      base_end = pos + 1;
+      while (base_end < len &&
+             cj_is_ident_continue(cast_uchar(src[base_end])))
+        base_end++;
+      cj_copy_name(out->base, src + base_start, base_end - base_start);
+      pos = base_end;
+    }
+  }
+  while (pos < len && src[pos] != '{')
+    pos++;
+  if (pos >= len)
+    return 0;
+  *out_end = pos;
+  return 1;
+}
+
+
+static void cj_emit_type_preamble (luaL_Buffer *b, const CJTypeContext *type) {
+  if (type->kind == CJ_TYPE_EXTEND)
+    return;
+  luaL_addstring(b, "local ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b, " = {}\n");
+  if (type->kind == CJ_TYPE_INTERFACE)
+    return;
+  if (type->base[0] != '\0') {
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ".__base = ");
+    luaL_addstring(b, type->base);
+    luaL_addchar(b, '\n');
+  }
+  luaL_addstring(b, type->name);
+  luaL_addstring(b, ".__index = function(obj, key)\n  local v = ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b, "[key]\n");
+  if (type->base[0] != '\0') {
+    luaL_addstring(b, "  if v == nil and ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ".__base ~= nil then\n    v = ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ".__base[key]\n  end\n");
+  }
+  luaL_addstring(b,
+                 "  if type(v) == \"function\" then\n"
+                 "    return function(...) return v(obj, ...) end\n"
+                 "  end\n"
+                 "  return v\n"
+                 "end\n");
+  if (type->base[0] != '\0') {
+    luaL_addstring(b, "setmetatable(");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ", { __index = ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ".__base })\n");
+  }
+  luaL_addstring(b, "function ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b, ".new(...)\n  local self = setmetatable({}, ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b, ")\n");
+  if (type->base[0] != '\0') {
+    luaL_addstring(b, "  if ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b, ".__base and ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b,
+                   ".__base.init then\n"
+                   "    ");
+    luaL_addstring(b, type->name);
+    luaL_addstring(b,
+                   ".__base.init(self, ...)\n"
+                   "  end\n");
+  }
+  luaL_addstring(b, "  if ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b,
+                 ".init then\n"
+                 "    ");
+  luaL_addstring(b, type->name);
+  luaL_addstring(b,
+                 ".init(self, ...)\n"
+                 "  end\n"
+                 "  return self\n"
+                 "end\n");
 }
 
 
@@ -1033,11 +1230,21 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
   int expect_return_type = 0;
   int func_paren_depth = 0;
   int prev_allows_index = 0;
+  int pending_method_self = 0;
+  int pending_field_prefix = 0;
+  int field_decl_active = 0;
+  int pending_interface_method = 0;
   int bracket_stack[256];
   int bracket_top = 0;
   CJBlock block_stack[256];
   int block_top = 0;
   CJLast last_keyword = CJ_LAST_NONE;
+  CJTypeInfo type_infos[CJ_TYPE_MAX];
+  int type_count = 0;
+  CJTypeContext type_stack[CJ_STACK_MAX];
+  int type_top = 0;
+  CJTypeContext pending_type;
+  int has_pending_type = 0;
   luaL_buffinit(L, &b);
   while (i < len) {
     unsigned char c = cast_uchar(src[i]);
@@ -1082,8 +1289,26 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (isspace(c)) {
-      if (c == '\n')
+      if (pending_field_prefix && c != '\n') {
+        i++;
+        continue;
+      }
+      if (c == '\n') {
+        if (field_decl_active) {
+          luaL_addstring(&b, " = nil");
+          field_decl_active = 0;
+        }
+        if (pending_interface_method) {
+          luaL_addstring(&b, " end");
+          pending_interface_method = 0;
+          in_func_decl = 0;
+          in_param_list = 0;
+          expect_return_type = 0;
+          func_paren_depth = 0;
+          last_keyword = CJ_LAST_NONE;
+        }
         in_var_decl = 0;
+      }
       luaL_addchar(&b, cast_char(c));
       i++;
       continue;
@@ -1092,20 +1317,163 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       size_t start = i;
       size_t end = i + 1;
       size_t word_len;
+      const CJTypeContext *current_type;
+      int in_type_body;
       while (end < len && cj_is_ident_continue(cast_uchar(src[end])))
         end++;
       word_len = end - start;
-      if (word_len == 3 && strncmp(src + start, "let", 3) == 0) {
-        luaL_addstring(&b, "local");
-        in_var_decl = 1;
+      current_type = (type_top > 0) ? &type_stack[type_top - 1] : NULL;
+      in_type_body = (current_type != NULL && block_top == current_type->depth);
+      if ((word_len == 6 && strncmp(src + start, "public", 6) == 0) ||
+          (word_len == 7 && strncmp(src + start, "private", 7) == 0) ||
+          (word_len == 9 && strncmp(src + start, "protected", 9) == 0) ||
+          (word_len == 8 && strncmp(src + start, "internal", 8) == 0) ||
+          (word_len == 8 && strncmp(src + start, "abstract", 8) == 0) ||
+          (word_len == 8 && strncmp(src + start, "override", 8) == 0) ||
+          (word_len == 5 && strncmp(src + start, "final", 5) == 0) ||
+          (word_len == 4 && strncmp(src + start, "open", 4) == 0) ||
+          (word_len == 6 && strncmp(src + start, "static", 6) == 0)) {
+        i = end;
+        continue;
+      } else if (word_len == 5 && strncmp(src + start, "class", 5) == 0) {
+        CJTypeContext header;
+        size_t header_end = 0;
+        if (cj_parse_type_header(src, end, len, CJ_TYPE_CLASS,
+                                 &header, &header_end)) {
+          if (cj_store_type(type_infos, &type_count, header.kind,
+                            header.name, strlen(header.name),
+                            header.base, strlen(header.base)) == NULL)
+            luaL_error(L, "too many Cangjie types");
+          pending_type = header;
+          has_pending_type = 1;
+          cj_emit_type_preamble(&b, &header);
+          last_keyword = CJ_LAST_CLASS;
+          i = header_end;
+          prev_allows_index = 0;
+          continue;
+        }
+      } else if (word_len == 6 && strncmp(src + start, "struct", 6) == 0) {
+        CJTypeContext header;
+        size_t header_end = 0;
+        if (cj_parse_type_header(src, end, len, CJ_TYPE_STRUCT,
+                                 &header, &header_end)) {
+          if (cj_store_type(type_infos, &type_count, header.kind,
+                            header.name, strlen(header.name),
+                            header.base, strlen(header.base)) == NULL)
+            luaL_error(L, "too many Cangjie types");
+          pending_type = header;
+          has_pending_type = 1;
+          cj_emit_type_preamble(&b, &header);
+          last_keyword = CJ_LAST_STRUCT;
+          i = header_end;
+          prev_allows_index = 0;
+          continue;
+        }
+      } else if (word_len == 9 &&
+                 strncmp(src + start, "interface", 9) == 0) {
+        CJTypeContext header;
+        size_t header_end = 0;
+        if (cj_parse_type_header(src, end, len, CJ_TYPE_INTERFACE,
+                                 &header, &header_end)) {
+          if (cj_store_type(type_infos, &type_count, header.kind,
+                            header.name, strlen(header.name),
+                            header.base, strlen(header.base)) == NULL)
+            luaL_error(L, "too many Cangjie types");
+          pending_type = header;
+          has_pending_type = 1;
+          cj_emit_type_preamble(&b, &header);
+          last_keyword = CJ_LAST_INTERFACE;
+          i = header_end;
+          prev_allows_index = 0;
+          continue;
+        }
+      } else if (word_len == 6 && strncmp(src + start, "extend", 6) == 0) {
+        CJTypeContext header;
+        size_t header_end = 0;
+        if (cj_parse_type_header(src, end, len, CJ_TYPE_EXTEND,
+                                 &header, &header_end)) {
+          pending_type = header;
+          has_pending_type = 1;
+          last_keyword = CJ_LAST_EXTEND;
+          i = header_end;
+          prev_allows_index = 0;
+          continue;
+        }
+      } else if (in_type_body && word_len == 4 &&
+                 strncmp(src + start, "init", 4) == 0) {
+        size_t next = cj_skip_space_and_comments(src, end, len);
+        if (next < len && src[next] == '(') {
+          luaL_addstring(&b, "function ");
+          luaL_addstring(&b, current_type->name);
+          luaL_addstring(&b, ".init");
+          in_func_decl = 1;
+          in_param_list = 0;
+          expect_return_type = 0;
+          func_paren_depth = 0;
+          last_keyword = CJ_LAST_FUNCTION;
+          pending_method_self = 1;
+          pending_interface_method =
+              (current_type->kind == CJ_TYPE_INTERFACE);
+          prev_allows_index = 0;
+          i = end;
+          continue;
+        }
+      } else if (word_len == 3 && strncmp(src + start, "let", 3) == 0) {
+        if (in_type_body && current_type != NULL &&
+            current_type->kind != CJ_TYPE_EXTEND &&
+            current_type->kind != CJ_TYPE_INTERFACE) {
+          luaL_addstring(&b, current_type->name);
+          luaL_addchar(&b, '.');
+          pending_field_prefix = 1;
+          field_decl_active = 1;
+          in_var_decl = 1;
+        } else {
+          luaL_addstring(&b, "local");
+          in_var_decl = 1;
+        }
         last_keyword = CJ_LAST_NONE;
         prev_allows_index = 0;
       } else if (word_len == 3 && strncmp(src + start, "var", 3) == 0) {
-        luaL_addstring(&b, "local");
-        in_var_decl = 1;
+        if (in_type_body && current_type != NULL &&
+            current_type->kind != CJ_TYPE_EXTEND &&
+            current_type->kind != CJ_TYPE_INTERFACE) {
+          luaL_addstring(&b, current_type->name);
+          luaL_addchar(&b, '.');
+          pending_field_prefix = 1;
+          field_decl_active = 1;
+          in_var_decl = 1;
+        } else {
+          luaL_addstring(&b, "local");
+          in_var_decl = 1;
+        }
         last_keyword = CJ_LAST_NONE;
         prev_allows_index = 0;
       } else if (word_len == 4 && strncmp(src + start, "func", 4) == 0) {
+        if (in_type_body && current_type != NULL) {
+          size_t name_start = cj_skip_space_and_comments(src, end, len);
+          if (name_start < len &&
+              cj_is_ident_start(cast_uchar(src[name_start]))) {
+            size_t name_end = name_start + 1;
+            while (name_end < len &&
+                   cj_is_ident_continue(cast_uchar(src[name_end])))
+              name_end++;
+            luaL_addstring(&b, "function ");
+            luaL_addstring(&b, current_type->name);
+            luaL_addchar(&b, '.');
+            luaL_addlstring(&b, src + name_start, name_end - name_start);
+            in_func_decl = 1;
+            in_param_list = 0;
+            expect_return_type = 0;
+            func_paren_depth = 0;
+            last_keyword = CJ_LAST_FUNCTION;
+            pending_method_self = 1;
+            pending_interface_method =
+                (current_type->kind == CJ_TYPE_INTERFACE);
+            prev_allows_index = 0;
+            i = name_end;
+            continue;
+          }
+        }
         luaL_addstring(&b, "function");
         in_func_decl = 1;
         in_param_list = 0;
@@ -1157,13 +1525,33 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       } else if (word_len == 4 && strncmp(src + start, "null", 4) == 0) {
         luaL_addstring(&b, "nil");
         prev_allows_index = 1;
+      } else if (word_len == 4 && strncmp(src + start, "this", 4) == 0 &&
+                 current_type != NULL) {
+        luaL_addstring(&b, "self");
+        prev_allows_index = 1;
       } else {
+        const CJTypeInfo *type_info =
+            cj_find_type(type_infos, type_count, src + start, word_len);
+        if (type_info != NULL &&
+            (type_info->kind == CJ_TYPE_CLASS ||
+             type_info->kind == CJ_TYPE_STRUCT)) {
+          size_t next = cj_skip_space_and_comments(src, end, len);
+          if (next < len && src[next] == '(') {
+            luaL_addlstring(&b, src + start, word_len);
+            luaL_addstring(&b, ".new");
+            i = end;
+            prev_allows_index = 1;
+            continue;
+          }
+        }
         luaL_addlstring(&b, src + start, word_len);
         if (word_len == 6 && strncmp(src + start, "return", 6) == 0)
           prev_allows_index = 0;
         else
           prev_allows_index = 1;
       }
+      if (pending_field_prefix)
+        pending_field_prefix = 0;
       i = end;
       continue;
     }
@@ -1208,7 +1596,16 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
           in_param_list = 1;
         func_paren_depth++;
       }
-      luaL_addchar(&b, '(');
+      if (pending_method_self && in_func_decl && func_paren_depth == 1) {
+        size_t next = cj_skip_space_and_comments(src, i + 1, len);
+        luaL_addchar(&b, '(');
+        luaL_addstring(&b, "self");
+        if (next < len && src[next] != ')')
+          luaL_addstring(&b, ", ");
+        pending_method_self = 0;
+      } else {
+        luaL_addchar(&b, '(');
+      }
       i++;
       prev_allows_index = 0;
       continue;
@@ -1228,6 +1625,8 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
     }
     if (c == '{') {
       CJBlock block = CJ_BLOCK_GENERIC;
+      if (pending_interface_method)
+        pending_interface_method = 0;
       if (last_keyword == CJ_LAST_IF) {
         luaL_addstring(&b, " then");
         block = CJ_BLOCK_IF;
@@ -1239,6 +1638,11 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
         block = CJ_BLOCK_LOOP;
       } else if (last_keyword == CJ_LAST_FUNCTION) {
         block = CJ_BLOCK_FUNCTION;
+      } else if (last_keyword == CJ_LAST_CLASS ||
+                 last_keyword == CJ_LAST_STRUCT ||
+                 last_keyword == CJ_LAST_INTERFACE ||
+                 last_keyword == CJ_LAST_EXTEND) {
+        block = CJ_BLOCK_TYPE;
       } else {
         luaL_addstring(&b, " do");
         block = CJ_BLOCK_GENERIC;
@@ -1248,6 +1652,13 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       }
       else {
         block_stack[block_top++] = block;
+      }
+      if (block == CJ_BLOCK_TYPE && has_pending_type) {
+        if (type_top >= CJ_STACK_MAX)
+          luaL_error(L, "Cangjie syntax nesting too deep");
+        pending_type.depth = block_top;
+        type_stack[type_top++] = pending_type;
+        has_pending_type = 0;
       }
       last_keyword = CJ_LAST_NONE;
       in_var_decl = 0;
@@ -1260,9 +1671,26 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (c == '}') {
+      if (field_decl_active) {
+        luaL_addstring(&b, " = nil");
+        field_decl_active = 0;
+      }
+      if (pending_interface_method) {
+        luaL_addstring(&b, " end");
+        pending_interface_method = 0;
+        in_func_decl = 0;
+        in_param_list = 0;
+        expect_return_type = 0;
+        func_paren_depth = 0;
+        last_keyword = CJ_LAST_NONE;
+      }
       if (block_top > 0) {
         CJBlock block = block_stack[block_top - 1];
-        if (block == CJ_BLOCK_IF &&
+        if (block == CJ_BLOCK_TYPE) {
+          block_top--;
+          if (type_top > 0)
+            type_top--;
+        } else if (block == CJ_BLOCK_IF &&
             cj_peek_keyword(src, i + 1, len, "else")) {
           pending_else = 1;
           pending_else_depth = block_top;
@@ -1324,12 +1752,28 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (c == ';') {
+      if (field_decl_active) {
+        luaL_addstring(&b, " = nil");
+        field_decl_active = 0;
+      }
+      if (pending_interface_method) {
+        luaL_addstring(&b, " end");
+        pending_interface_method = 0;
+        in_func_decl = 0;
+        in_param_list = 0;
+        expect_return_type = 0;
+        func_paren_depth = 0;
+        last_keyword = CJ_LAST_NONE;
+      }
       in_var_decl = 0;
       i++;
       continue;
     }
-    if (c == '=')
+    if (c == '=') {
       in_var_decl = 0;
+      if (field_decl_active)
+        field_decl_active = 0;
+    }
     if (c == '\n')
       in_var_decl = 0;
     luaL_addchar(&b, cast_char(c));
