@@ -11,9 +11,9 @@ enum Color {
   | RGB(Int64, Int64, Int64)
 }
 
-let r = Color.Red
-let b = Color.Blue(128)
-let rgb = Color.RGB(255, 128, 0)
+let r = Red
+let b = Blue(128)
+let rgb = RGB(255, 128, 0)
 
 // Direct access to __tag (Lua extension)
 println(r.__tag)     // Red
@@ -46,15 +46,15 @@ func unwrap_or(opt, default_val) {
 func map_option(opt, fn) {
   match (opt) {
     case Some(v) =>
-      return Option.Some(fn(v))
+      return Some(fn(v))
     case None =>
-      return Option.None
+      return None
   }
-  return Option.None
+  return None
 }
 
-let x = Option.Some(10)
-let y = Option.None
+let x = Some(10)
+let y = None
 
 println("unwrap Some: " .. tostring(unwrap_or(x, 0)))
 println("unwrap None: " .. tostring(unwrap_or(y, -1)))
@@ -63,7 +63,7 @@ let doubled = map_option(x, func(v) { return v * 2 })
 println("mapped: " .. tostring(unwrap_or(doubled, 0)))
 
 // Generic enum with different types (dynamic)
-let str_opt = Option.Some("hello")
+let str_opt = Some("hello")
 println("string option: " .. tostring(unwrap_or(str_opt, "default")))
 
 // === Dynamic class construction with inheritance ===
@@ -106,8 +106,8 @@ println("original: " .. tostring(pair[0]) .. "," .. tostring(pair[1]))
 println("swapped: " .. tostring(swapped[0]) .. "," .. tostring(swapped[1]))
 
 // === Match with braces (extended syntax for Lua compatibility) ===
-let r1 = Option.Some(10)
-let r2 = Option.None
+let r1 = Some(10)
+let r2 = None
 
 match (r1) {
   case Some(v) =>

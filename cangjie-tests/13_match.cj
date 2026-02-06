@@ -18,9 +18,9 @@ func describeColor(c) {
   }
 }
 
-describeColor(Color.Red)
-describeColor(Color.Green)
-describeColor(Color.Blue(200))
+describeColor(Red)
+describeColor(Green)
+describeColor(Blue(200))
 
 // === Constant pattern matching ===
 func describeNumber(n) {
@@ -60,9 +60,9 @@ func getArea(s) {
   return 0.0
 }
 
-println("circle area: ${getArea(Shape.Circle(5.0))}")
-println("rect area: ${getArea(Shape.Rectangle(3.0, 4.0))}")
-println("triangle area: ${getArea(Shape.Triangle(3.0, 4.0, 5.0))}")
+println("circle area: ${getArea(Circle(5.0))}")
+println("rect area: ${getArea(Rectangle(3.0, 4.0))}")
+println("triangle area: ${getArea(Triangle(3.0, 4.0, 5.0))}")
 
 // === Recursive enum with pattern matching ===
 enum Expr {
@@ -87,9 +87,9 @@ func eval(e) {
 }
 
 // (1 + 2) * (4 - 1)
-let expr1 = Expr.Mul(
-  Expr.Add(Expr.Num(1), Expr.Num(2)),
-  Expr.Sub(Expr.Num(4), Expr.Num(1))
+let expr1 = Mul(
+  Add(Num(1), Num(2)),
+  Sub(Num(4), Num(1))
 )
 println("(1+2)*(4-1) = ${eval(expr1)}")
 
@@ -109,8 +109,8 @@ func getOrDefault(opt, default_val) {
   return default_val
 }
 
-println("Some(42): ${getOrDefault(Option.Some(42), 0)}")
-println("None: ${getOrDefault(Option.None, -1)}")
+println("Some(42): ${getOrDefault(Some(42), 0)}")
+println("None: ${getOrDefault(None, -1)}")
 
 // === Type pattern matching ===
 class Animal {

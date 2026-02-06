@@ -267,7 +267,7 @@ enum Expr {
 - **行内构造器**：支持 `Empty | Leaf(Int64) | Node(Int64, Tree, Tree)` 行内语法（首个构造器无需 `|` 前缀）
 - **泛型枚举**：`enum Option<T> { | Some(T) | None }`
 - **成员函数**：枚举类型内可定义 `func`，通过 `this` 引用当前枚举实例
-- **直接访问**：`Color.Red` 或省略前缀 `Red`
+- **直接访问**：无命名冲突时可直接使用枚举项名字 `Red`，也可使用限定名 `Color.Red`
 
 ### 模式匹配
 

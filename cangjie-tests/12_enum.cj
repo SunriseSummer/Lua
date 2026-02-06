@@ -22,7 +22,7 @@ enum Direction {
   }
 }
 
-let d = Direction.North
+let d = North
 println(d.name())
 
 // Enum with parameterized constructors
@@ -47,10 +47,10 @@ enum Color {
   }
 }
 
-let r = Color.Red
-let g = Color.Green
-let b = Color.Blue(128)
-let rgb = Color.RGB(255, 128, 0)
+let r = Red
+let g = Green
+let b = Blue(128)
+let rgb = RGB(255, 128, 0)
 
 println(r.describe())
 println(g.describe())
@@ -77,7 +77,7 @@ func eval(e) {
 }
 
 // Build: (2 + 3) * 4
-let e = Expr.Mul(Expr.Add(Expr.Num(2), Expr.Num(3)), Expr.Num(4))
+let e = Mul(Add(Num(2), Num(3)), Num(4))
 println("(2+3)*4 = ${eval(e)}")
 
 // Enum for Option type
@@ -96,8 +96,8 @@ enum Option {
   }
 }
 
-let val = Option.Some(42)
-let empty = Option.None
+let val = Some(42)
+let empty = None
 println("Some(42).isPresent() = ${val.isPresent()}")
 println("None.isPresent() = ${empty.isPresent()}")
 
@@ -117,8 +117,8 @@ enum Result<T, E> {
   }
 }
 
-let ok = Result.Ok(42)
-let err = Result.Err("something went wrong")
+let ok = Ok(42)
+let err = Err("something went wrong")
 println("Ok(42).isOk() = ${ok.isOk()}")
 println("Err(...).isOk() = ${err.isOk()}")
 
