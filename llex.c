@@ -47,6 +47,7 @@ static const char *const luaX_tokens [] = {
     "end", "false", "for", "function", "global", "goto", "if",
     "in", "local", "nil", "not", "or", "repeat",
     "return", "then", "true", "until", "while",
+    "let", "var", "func", "null",
     "//", "..", "...", "==", ">=", "<=", "~=",
     "<<", ">>", "::", "<eof>",
     "<number>", "<integer>", "<name>", "<string>"
@@ -184,6 +185,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
   ls->linenumber = 1;
   ls->lastline = 1;
   ls->source = source;
+  ls->nofuncbraces = 0;
   /* all three strings here ("_ENV", "break", "global") were fixed,
      so they cannot be collected */
   ls->envn = luaS_newliteral(L, LUA_ENV);  /* get env string */
@@ -330,6 +332,27 @@ static void read_long_string (LexState *ls, SemInfo *seminfo, size_t sep) {
   if (seminfo)
     seminfo->ts = luaX_newstring(ls, luaZ_buffer(ls->buff) + sep,
                                      luaZ_bufflen(ls->buff) - 2 * sep);
+}
+
+
+static void skip_block_comment (LexState *ls) {
+  int prev = 0;
+  next(ls);  /* skip '*' */
+  for (;;) {
+    if (ls->current == EOZ)
+      lexerror(ls, "unfinished comment", TK_EOS);
+    if (currIsNewline(ls)) {
+      inclinenumber(ls);
+      prev = 0;
+    }
+    else {
+      int c = ls->current;
+      next(ls);
+      if (prev == '*' && c == '/')
+        return;
+      prev = c;
+    }
+  }
 }
 
 
@@ -524,13 +547,36 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       }
       case '/': {
         next(ls);
-        if (check_next1(ls, '/')) return TK_IDIV;  /* '//' */
+        if (ls->current == '/') {  /* line comment */
+          while (!currIsNewline(ls) && ls->current != EOZ)
+            next(ls);
+          break;
+        }
+        else if (ls->current == '*') {  /* block comment */
+          skip_block_comment(ls);
+          break;
+        }
         else return '/';
       }
       case '~': {
         next(ls);
         if (check_next1(ls, '=')) return TK_NE;  /* '~=' */
         else return '~';
+      }
+      case '!': {
+        next(ls);
+        if (check_next1(ls, '=')) return TK_NE;  /* '!=' */
+        else return TK_NOT;
+      }
+      case '&': {
+        next(ls);
+        if (check_next1(ls, '&')) return TK_AND;  /* '&&' */
+        else return '&';
+      }
+      case '|': {
+        next(ls);
+        if (check_next1(ls, '|')) return TK_OR;  /* '||' */
+        else return '|';
       }
       case ':': {
         next(ls);
@@ -601,4 +647,3 @@ int luaX_lookahead (LexState *ls) {
   ls->lookahead.token = llex(ls, &ls->lookahead.seminfo);
   return ls->lookahead.token;
 }
-
