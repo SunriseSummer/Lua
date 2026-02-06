@@ -33,6 +33,7 @@
 /* maximum number of variable declarations per function (must be
    smaller than 250, due to the bytecode format) */
 #define MAXVARS		200
+#define SELF_NAME	"self"
 
 
 #define hasmultret(k)		((k) == VCALL || (k) == VVARARG)
@@ -1173,21 +1174,20 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   FuncState new_fs;
   BlockCnt bl;
   int usebrace = 0;
-  int selfidx = -1;
+  int selfreg = -1;
   new_fs.f = addprototype(ls);
   new_fs.f->linedefined = line;
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    const char selfname[] = "self";
-    selfidx = new_localvar(ls, luaX_newstring(ls, selfname,
-                                              sizeof(selfname) - 1));
+    new_localvar(ls, luaX_newstring(ls, SELF_NAME,
+                                    sizeof(SELF_NAME) - 1));
     adjustlocalvars(ls, 1);
+    selfreg = luaY_nvarstack(ls->fs) - 1;
   }
   parlist(ls);
   checknext(ls, ')');
   if (ismethod) {
-    int selfreg = getlocalvardesc(ls->fs, selfidx)->vd.ridx;
     new_localvarliteral(ls, "this");
     adjustlocalvars(ls, 1);
     luaK_reserveregs(ls->fs, 1);

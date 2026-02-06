@@ -63,7 +63,7 @@ static int luaB_range_iter (lua_State *L) {
   return 0;
 }
 
-static int luaB_range (lua_State *L) {
+static int luaB_cangjie_range (lua_State *L) {
   lua_Integer start = luaL_checkinteger(L, 1);
   lua_Integer stop = luaL_checkinteger(L, 2);
   int inclusive = lua_toboolean(L, 3);
@@ -129,7 +129,7 @@ static int luaB_cangjie_class (lua_State *L) {
 }
 
 static int luaB_cangjie_struct (lua_State *L) {
-  /* structs currently share the same runtime construction semantics */
+  /* structs share the same runtime construction semantics as classes */
   return luaB_cangjie_class(L);
 }
 
@@ -633,7 +633,7 @@ static const luaL_Reg base_funcs[] = {
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},
-  {"__cangjie_range", luaB_range},
+  {"__cangjie_range", luaB_cangjie_range},
   {"__cangjie_class", luaB_cangjie_class},
   {"__cangjie_struct", luaB_cangjie_struct},
   {"xpcall", luaB_xpcall},

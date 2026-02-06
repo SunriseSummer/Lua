@@ -24,6 +24,10 @@
 - 空值：`null` 解析为 Lua `nil`。
 - 输出：`print` 不自动换行，`println` 在末尾追加换行（与 Lua 标准库默认行为不同）。
 
+## Breaking Changes
+- `print` 不再自动换行；改用 `println` 保持输出行为。
+- `..` 改为区间表达式运算符，字符串连接不再使用该语法。
+
 ## 测试策略
 - 新增 `testes/cangjie.lua`，覆盖：
   - `let/var`、类型标注、`func` 定义/匿名函数
