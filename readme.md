@@ -65,7 +65,7 @@ struct Point {
 }
 ```
 
-#### class（引用类型）
+#### class（引用类型）与继承
 ```cangjie
 class Animal {
   var name: String
@@ -76,7 +76,28 @@ class Animal {
     return "${name} says hello!"
   }
 }
+
+// 继承使用 <: 语法
+class Dog <: Animal {
+  var breed: String
+  init(name: String, breed: String) {
+    this.name = name
+    this.breed = breed
+  }
+  // 方法重写 - 运行时动态派发（多态）
+  func speak(): String {
+    return "${name} barks!"
+  }
+}
 ```
+
+支持的继承特性：
+- **单继承**：`class Child <: Parent { ... }`
+- **接口实现**：`class Point <: Printable { ... }`
+- **多级继承**：`class GuideDog <: Dog <: Animal`
+- **方法重写**：子类可重写父类方法，运行时动态派发
+- **方法继承**：子类自动继承父类未重写的方法
+- **多态**：父类引用可调用子类重写的方法
 
 #### interface（接口）
 ```cangjie
@@ -137,6 +158,104 @@ let dog = Animal("Dog")
 - **泛型方法**
 - **类型参数推断**
 
+### 元组类型
+
+```cangjie
+// 创建元组（自动0索引）
+let t = (1, "hello", true)
+println(t[0])  // 1
+println(t[1])  // hello
+println(t[2])  // true
+
+// 用于函数返回值
+func minmax(a: Int64, b: Int64) {
+  if (a < b) {
+    return (a, b)
+  }
+  return (b, a)
+}
+
+let result = minmax(5, 3)
+println(result[0])  // 3
+println(result[1])  // 5
+```
+
+支持的元组特性：
+- **混合类型**：元组元素可以是不同类型
+- **0 索引访问**：`t[0]`、`t[1]` 等
+- **嵌套元组**：元组元素可以是其他元组
+- **函数返回值**：可用元组包装多个返回值
+- **元素计数**：通过 `t.__n` 获取元素数量
+
+### 枚举类型
+
+```cangjie
+// 基本枚举
+enum Direction {
+  | North
+  | South
+  | East
+  | West
+}
+
+// 带参数的枚举构造器
+enum Color {
+  | Red
+  | Green
+  | Blue(Int64)
+  | RGB(Int64, Int64, Int64)
+}
+
+// 递归枚举（如表达式树）
+enum Expr {
+  | Num(Int64)
+  | Add(Expr, Expr)
+  | Sub(Expr, Expr)
+}
+```
+
+支持的枚举特性：
+- **无参构造器**：`| Red` - 创建单例值
+- **带参构造器**：`| Blue(Int64)` - 创建工厂函数
+- **多参数构造器**：`| RGB(Int64, Int64, Int64)`
+- **递归枚举**：构造器参数可引用枚举自身类型
+- **直接访问**：`Color.Red` 或省略前缀 `Red`
+- **参数提取**：`value[1]`、`value[2]` 提取构造器参数
+
+### 模式匹配
+
+```cangjie
+// 枚举模式匹配
+match (color) {
+  case Red => { println("red") }
+  case Blue(val) => { println("blue: ${val}") }
+  case _ => { println("other") }
+}
+
+// 常量模式匹配
+match (x) {
+  case 0 => { println("zero") }
+  case 1 => { println("one") }
+  case _ => { println("other") }
+}
+
+// 递归枚举求值
+func eval(e) {
+  match (e) {
+    case Num(n) => { return n }
+    case Add(a, b) => { return eval(a) + eval(b) }
+    case Sub(a, b) => { return eval(a) - eval(b) }
+  }
+}
+```
+
+支持的模式匹配特性：
+- **枚举构造器模式**：匹配枚举变体并解构参数
+- **常量模式**：匹配整数、浮点数、字符串字面量
+- **通配符模式**：`_` 匹配任意值
+- **参数绑定**：在枚举模式中绑定构造器参数到局部变量
+- **多分支**：按顺序匹配，命中第一个匹配的分支
+
 ### 集合类型
 
 - **ArrayList**：基于泛型实现的动态数组
@@ -156,6 +275,14 @@ let dog = Animal("Dog")
 - **多重赋值**：`let a, b = 100, 200`
 - **多返回值**：函数可返回多个值
 - **动态类型变量**：变量可在运行时持有任意类型值
+- **鸭子类型**：方法调用基于运行时对象实际拥有的方法，无需静态类型声明
+
+### 动态多态与派发
+
+- **运行时方法解析**：方法调用在运行时沿继承链查找，支持动态派发
+- **动态方法绑定**：方法访问自动绑定 self 参数
+- **动态枚举操作**：枚举值可通过通用函数（如 map、filter）进行操作
+- **类型灵活的模式匹配**：match 表达式基于运行时 tag 匹配，无需编译期类型检查
 
 ### Table（表）
 
@@ -187,16 +314,17 @@ let dog = Animal("Dog")
 ## 使用限制
 
 1. **类型注解为编译期提示**：类型注解在解析阶段被读取后跳过，不进行静态类型检查，所有类型检查在运行时由 Lua VM 完成
-2. **继承**：`struct/class` 支持 `:` 继承语法解析，但继承行为尚未完全实现
-3. **接口**：`interface` 声明创建标记表，方法签名被解析但不做编译期接口一致性检查
+2. **继承**：支持 `class B <: A` 单继承语法，子类继承父类方法并可重写，运行时动态派发；不支持 `open`/`override` 修饰符（所有方法默认可重写）
+3. **接口**：`interface` 声明创建标记表，方法签名被解析但不做编译期接口一致性检查；class 可使用 `<:` 声明实现接口
 4. **泛型**：泛型类型参数在解析阶段被跳过，依赖 Lua 的动态类型在运行时实现多态
 5. **内置类型扩展**：扩展方法通过元表 `__index` 实现，对同一类型的多次扩展会叠加方法（后续扩展的方法会优先被查找）
 6. **隐式 this**：仅在 `struct/class` 体内声明的 `var/let` 字段名可被隐式解析为 `self.field`，局部变量同名时局部变量优先
 7. **访问控制**：不支持 `public`/`private`/`protected` 访问修饰符
-8. **模式匹配**：不支持仓颉的模式匹配语法
-9. **异常处理**：不支持 `try/catch/finally`，使用 Lua 的 `pcall` 替代
-10. **枚举类型**：尚未支持 `enum` 类型
-11. **文件模块**：不支持仓颉的 `package`/`import` 模块系统，使用 Lua 的 `require` 替代
+8. **元组嵌套字面量**：不支持直接嵌套元组字面量 `((1,2), (3,4))`，需通过变量间接嵌套
+9. **枚举类型**：支持带参数的枚举构造器和递归枚举，但不支持枚举成员方法
+10. **模式匹配**：支持枚举模式、常量模式和通配符模式，但不支持守卫条件（where）和嵌套模式解构
+11. **异常处理**：不支持 `try/catch/finally`，使用 Lua 的 `pcall` 替代
+12. **文件模块**：不支持仓颉的 `package`/`import` 模块系统，使用 Lua 的 `require` 替代
 
 ## 构建与测试
 
@@ -215,9 +343,10 @@ bash run_tests.sh
 
 - `llex.c/h` - 词法分析器，定义仓颉关键字和运算符
 - `lparser.c/h` - 语法分析器，实现仓颉语法到 Lua 字节码的编译
-- `lbaselib.c` - 基础运行时库，包含类/结构体构造支持和类型扩展
+- `lbaselib.c` - 基础运行时库，包含类/结构体构造支持、类型扩展、继承链和枚举支持
 - `cangjie-tests/` - 仓颉语言特性测试用例
 - `cangjie-tests/ext-features/` - 融合 Lua 动态特性的扩展测试
+- `cangjie-tests/usages/` - 综合应用案例
 - `lvm.c` - Lua 虚拟机，执行编译后的字节码
 
 ## 参考
