@@ -2676,6 +2676,11 @@ static void letvarstat (LexState *ls, int isconst) {
   if (testnext(ls, '='))
     nexps = explist(ls, &e);
   else {
+    /* In Cangjie, 'let' declarations must have an initializer */
+    if (isconst) {
+      luaX_syntaxerror(ls,
+          "'let' declaration requires an initializer ('= expression')");
+    }
     e.k = VVOID;
     nexps = 0;
   }
@@ -3090,7 +3095,7 @@ static void interfacestat (LexState *ls, int line) {
       }
     }
     else {
-      luaX_next(ls);  /* skip unknown tokens */
+      luaX_syntaxerror(ls, "expected 'func' declaration in interface body");
     }
     testnext(ls, ';');
   }
@@ -3616,7 +3621,8 @@ static void enumstat (LexState *ls, int line) {
       luaK_fixline(fs, line);
     }
     else {
-      luaX_next(ls);  /* skip unknown tokens */
+      luaX_syntaxerror(ls,
+          "expected '|', constructor name, or 'func' in enum body");
     }
     testnext(ls, ';');
   }

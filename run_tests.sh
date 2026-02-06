@@ -71,6 +71,27 @@ if [ -d "${TEST_DIR}/usages" ]; then
   done
 fi
 
+# Run diagnosis tests (error detection and reporting)
+if [ -d "${TEST_DIR}/diagnosis" ]; then
+  echo
+  echo "=== Diagnosis Tests ==="
+  for f in "${TEST_DIR}/diagnosis"/*.cj; do
+    [ -f "$f" ] || continue
+    name="diagnosis/$(basename "$f")"
+    TOTAL=$((TOTAL + 1))
+    printf "Running %-40s ... " "$name"
+    output=$(timeout 30 "$LUA" "$f" 2>&1)
+    if echo "$output" | grep -q "^PASS:"; then
+      echo "PASS"
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL"
+      FAIL=$((FAIL + 1))
+      FAILURES="${FAILURES}\n--- ${name} ---\n${output}\n"
+    fi
+  done
+fi
+
 echo
 echo "=== Results ==="
 echo "Passed: ${PASS}"
