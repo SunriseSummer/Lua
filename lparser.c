@@ -2596,8 +2596,8 @@ static void extendstat (LexState *ls, int line) {
       while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
     }
     else {
-      /* This is generic params '<T, U, ...>' */
-      /* lookahead was consumed by luaX_lookahead, need to handle it */
+      /* This is generic params '<T, U, ...>' - the lookahead token will be
+      ** consumed by skip_generic_params via luaX_next */
       skip_generic_params(ls);  /* skip generic params after name */
       /* After generics, check for '<:' again */
       if (ls->t.token == '<') {
