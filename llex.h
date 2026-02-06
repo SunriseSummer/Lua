@@ -77,6 +77,7 @@ typedef struct LexState {
   TString *envn;  /* environment variable name */
   TString *brkn;  /* "break" name (used as a label) */
   TString *glbn;  /* "global" name (when not a reserved word) */
+  int interp_depth;  /* depth of string interpolation nesting */
 } LexState;
 
 
@@ -88,6 +89,7 @@ LUAI_FUNC void luaX_next (LexState *ls);
 LUAI_FUNC int luaX_lookahead (LexState *ls);
 LUAI_FUNC l_noret luaX_syntaxerror (LexState *ls, const char *s);
 LUAI_FUNC const char *luaX_token2str (LexState *ls, int token);
+LUAI_FUNC void luaX_read_interp_string (LexState *ls, SemInfo *seminfo);
 
 
 #endif

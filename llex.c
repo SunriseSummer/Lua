@@ -188,6 +188,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
      so they cannot be collected */
   ls->envn = luaS_newliteral(L, LUA_ENV);  /* get env string */
   ls->brkn = luaS_newliteral(L, "break");  /* get "break" string */
+  ls->interp_depth = 0;  /* not inside string interpolation */
 #if LUA_COMPAT_GLOBAL
   /* compatibility mode: "global" is not a reserved word */
   ls->glbn = luaS_newliteral(L, "global");  /* get "global" string */
@@ -412,6 +413,23 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
       case '\r':
         lexerror(ls, "unfinished string", TK_STRING);
         break;  /* to avoid warnings */
+      case '$': {  /* possible string interpolation */
+        next(ls);
+        if (ls->current == '{') {
+          /* string interpolation: save what we have so far as a string part */
+          /* remove the opening delimiter from the saved token */
+          save(ls, del);  /* add closing delimiter to match the open one */
+          seminfo->ts = luaX_newstring(ls, luaZ_buffer(ls->buff) + 1,
+                                           luaZ_bufflen(ls->buff) - 2);
+          next(ls);  /* skip '{' */
+          ls->interp_depth++;
+          return;  /* return with the partial string */
+        }
+        else {
+          save(ls, '$');  /* just a literal '$' */
+        }
+        break;
+      }
       case '\\': {  /* escape sequences */
         int c;  /* final character to be saved */
         save_and_next(ls);  /* keep '\\' for error messages */
@@ -459,6 +477,76 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
     }
   }
   save_and_next(ls);  /* skip delimiter */
+  seminfo->ts = luaX_newstring(ls, luaZ_buffer(ls->buff) + 1,
+                                   luaZ_bufflen(ls->buff) - 2);
+}
+
+
+/* Read the continuation of an interpolated string after '}' */
+void luaX_read_interp_string (LexState *ls, SemInfo *seminfo) {
+  luaZ_resetbuffer(ls->buff);
+  save(ls, '"');  /* fake opening delimiter for consistency */
+  while (ls->current != '"') {
+    switch (ls->current) {
+      case EOZ:
+        lexerror(ls, "unfinished string", TK_EOS);
+        break;
+      case '\n':
+      case '\r':
+        lexerror(ls, "unfinished string", TK_STRING);
+        break;
+      case '$': {
+        next(ls);
+        if (ls->current == '{') {
+          save(ls, '"');  /* closing delimiter */
+          seminfo->ts = luaX_newstring(ls, luaZ_buffer(ls->buff) + 1,
+                                           luaZ_bufflen(ls->buff) - 2);
+          next(ls);  /* skip '{' */
+          /* interp_depth stays the same (or increases for nested) */
+          ls->interp_depth++;
+          return;
+        }
+        else {
+          save(ls, '$');
+        }
+        break;
+      }
+      case '\\': {
+        int c;
+        save_and_next(ls);
+        switch (ls->current) {
+          case 'a': c = '\a'; goto is_read_save;
+          case 'b': c = '\b'; goto is_read_save;
+          case 'f': c = '\f'; goto is_read_save;
+          case 'n': c = '\n'; goto is_read_save;
+          case 'r': c = '\r'; goto is_read_save;
+          case 't': c = '\t'; goto is_read_save;
+          case 'v': c = '\v'; goto is_read_save;
+          case 'x': c = readhexaesc(ls); goto is_read_save;
+          case 'u': utf8esc(ls); goto is_no_save;
+          case '\n': case '\r':
+            inclinenumber(ls); c = '\n'; goto is_only_save;
+          case '\\': case '\"': case '\'':
+            c = ls->current; goto is_read_save;
+          case EOZ: goto is_no_save;
+          default: {
+            esccheck(ls, lisdigit(ls->current), "invalid escape sequence");
+            c = readdecesc(ls);
+            goto is_only_save;
+          }
+        }
+       is_read_save:
+         next(ls);
+       is_only_save:
+         luaZ_buffremove(ls->buff, 1);
+         save(ls, c);
+       is_no_save: break;
+      }
+      default:
+        save_and_next(ls);
+    }
+  }
+  save_and_next(ls);  /* skip closing '"' */
   seminfo->ts = luaX_newstring(ls, luaZ_buffer(ls->buff) + 1,
                                    luaZ_bufflen(ls->buff) - 2);
 }

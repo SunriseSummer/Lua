@@ -33,6 +33,21 @@ static int luaB_print (lua_State *L) {
     lua_writestring(s, l);  /* print it */
     lua_pop(L, 1);  /* pop result */
   }
+  return 0;
+}
+
+
+static int luaB_println (lua_State *L) {
+  int n = lua_gettop(L);  /* number of arguments */
+  int i;
+  for (i = 1; i <= n; i++) {  /* for each argument */
+    size_t l;
+    const char *s = luaL_tolstring(L, i, &l);  /* convert it to string */
+    if (i > 1)  /* not the first element? */
+      lua_writestring("\t", 1);  /* add a tab before it */
+    lua_writestring(s, l);  /* print it */
+    lua_pop(L, 1);  /* pop result */
+  }
   lua_writeline();
   return 0;
 }
@@ -526,6 +541,7 @@ static const luaL_Reg base_funcs[] = {
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},
   {"print", luaB_print},
+  {"println", luaB_println},
   {"warn", luaB_warn},
   {"rawequal", luaB_rawequal},
   {"rawlen", luaB_rawlen},

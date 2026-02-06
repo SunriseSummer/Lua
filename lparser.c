@@ -1284,6 +1284,67 @@ static void simpleexp (LexState *ls, expdesc *v) {
     }
     case TK_STRING: {
       codestring(v, ls->t.seminfo.ts);
+      /* Check for string interpolation: if interp_depth > 0, the lexer
+         stopped at ${, so we need to parse the expression and concat */
+      if (ls->interp_depth > 0) {
+        luaX_next(ls);  /* advance to first token of interpolated expr */
+        /* Build concatenation: str_part .. tostring(expr) .. rest */
+        luaK_exp2nextreg(ls->fs, v);
+        while (ls->interp_depth > 0) {
+          expdesc v2;
+          /* call tostring on the interpolated expression */
+          {
+            expdesc fn;
+            buildvar(ls, luaS_new(ls->L, "tostring"), &fn);
+            luaK_exp2nextreg(ls->fs, &fn);
+            expr(ls, &v2);
+            luaK_exp2nextreg(ls->fs, &v2);
+            /* generate call: tostring(expr) */
+            {
+              int base2 = fn.u.info;
+              init_exp(&fn, VCALL,
+                luaK_codeABC(ls->fs, OP_CALL, base2, 2, 2));
+              ls->fs->freereg = cast_byte(base2 + 1);
+            }
+          }
+          /* Expect '}' to end interpolation */
+          if (ls->t.token != '}')
+            luaX_syntaxerror(ls, "'}' expected to close string interpolation");
+          ls->interp_depth--;
+          /* Read the continuation of the string after '}' 
+             ls->current is already past '}' since llex consumed it */
+          {
+            SemInfo si;
+            luaZ_resetbuffer(ls->buff);
+            luaX_read_interp_string(ls, &si);
+            /* emit the continuation string */
+            {
+              expdesc v3;
+              codestring(&v3, si.ts);
+              luaK_exp2nextreg(ls->fs, &v3);
+            }
+          }
+          /* If there are more interpolations, read next token for expr */
+          if (ls->interp_depth > 0) {
+            /* read first token of the next interpolation expression */
+            ls->t.token = 0;  /* invalidate */
+            luaX_next(ls);
+          }
+        }
+        /* Use OP_CONCAT to concatenate all parts on the stack */
+        {
+          int from = v->u.info;
+          int n = ls->fs->freereg - from;
+          if (n > 1) {
+            luaK_codeABC(ls->fs, OP_CONCAT, from, n, 0);
+            ls->fs->freereg = cast_byte(from + 1);
+          }
+          init_exp(v, VNONRELOC, from);
+        }
+        /* Now advance to the next proper token after the string */
+        luaX_next(ls);
+        return;
+      }
       break;
     }
     case TK_NIL: {
