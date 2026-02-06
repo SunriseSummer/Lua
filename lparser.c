@@ -33,8 +33,8 @@
 /* maximum number of variable declarations per function (must be
    smaller than 250, due to the bytecode format) */
 #define MAXVARS		200
-#define SELF_NAME	"self"
-#define SELF_NAME_LEN	(sizeof(SELF_NAME) - 1)
+#define INTERNAL_SELF_NAME	"self"
+#define INTERNAL_SELF_NAME_LEN	(sizeof(INTERNAL_SELF_NAME) - 1)
 
 
 #define hasmultret(k)		((k) == VCALL || (k) == VVARARG)
@@ -1181,7 +1181,8 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    new_localvar(ls, luaX_newstring(ls, SELF_NAME, SELF_NAME_LEN));
+    new_localvar(ls, luaX_newstring(ls, INTERNAL_SELF_NAME,
+                                    INTERNAL_SELF_NAME_LEN));
     adjustlocalvars(ls, 1);
     selfreg = luaY_nvarstack(ls->fs) - 1;
   }
@@ -2240,7 +2241,7 @@ static void classmethod (LexState *ls, expdesc *classvar, TString *name) {
 }
 
 static void classbody (LexState *ls, expdesc *classvar, int line) {
-  TString *initname = luaX_newstring(ls, "init", 4);
+  TString *initname = luaX_newstring(ls, "init", sizeof("init") - 1);
   checknext(ls, '{');
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
     switch (ls->t.token) {

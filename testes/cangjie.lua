@@ -41,6 +41,10 @@ var spanSum = 0
 for (i in span) {
   spanSum = spanSum + i
 }
+var descendingSum = 0
+for (i in 3..1) {
+  descendingSum = descendingSum + i
+}
 
 while (sum < 10 && counter != 2) {
   counter = counter + 1
@@ -52,6 +56,7 @@ while (sum < 10 && counter != 2) {
 }
 
 assert(spanSum == 9)
+assert(descendingSum == 5)
 assert(add(sum, counter) == 11)
 assert(doubler(sum) == 18)
 
