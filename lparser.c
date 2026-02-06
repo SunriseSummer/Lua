@@ -1103,9 +1103,10 @@ static void parlist (LexState *ls) {
   Proto *f = fs->f;
   int nparams = 0;
   int varargk = 0;
-  /* Track parameters with default values (max 32) */
-  int def_param[32];     /* parameter index (0-based) */
-  expdesc def_val[32];   /* default value expression */
+  /* Track parameters with default values */
+#define MAX_DEFAULT_PARAMS 32
+  int def_param[MAX_DEFAULT_PARAMS];     /* parameter index (0-based) */
+  expdesc def_val[MAX_DEFAULT_PARAMS];   /* default value expression */
   int ndef = 0;          /* number of params with defaults */
   if (ls->t.token != ')') {  /* is 'parlist' not empty? */
     do {
@@ -1152,8 +1153,11 @@ static void parlist (LexState *ls) {
             }
           }
           /* optional default value '= expr' - save for later emission */
-          if (ls->t.token == '=' && ndef < 32) {
+          if (ls->t.token == '=') {
             luaX_next(ls);  /* skip '=' */
+            if (ndef >= MAX_DEFAULT_PARAMS) {
+              luaX_syntaxerror(ls, "too many parameters with default values");
+            }
             def_param[ndef] = nparams;
             /* Parse the default value as a simple constant expression */
             switch (ls->t.token) {
@@ -1227,6 +1231,10 @@ static void parlist (LexState *ls) {
   ** This is a known limitation for Bool parameters with default values. */
   {
     int i;
+    /* firstparam: the register index of the first parameter.
+    ** fs->nactvar is the total number of active locals (params + vararg param).
+    ** We subtract nparams and any vararg to get the base register index,
+    ** accounting for any 'self' parameter that was added before parlist. */
     int firstparam = fs->nactvar - nparams - (varargk ? 1 : 0);
     for (i = 0; i < ndef; i++) {
       int reg = firstparam + def_param[i];

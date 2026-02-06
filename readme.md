@@ -412,7 +412,7 @@ func eval(e) {
 13. **命名参数**：支持 `param!: Type = default` 声明形式，未传参时自动使用默认值；调用时按位置传参，暂不支持 `name: value` 命名调用语法
 14. **Lambda 表达式**：花括号 Lambda `{ x => expr }` 中，如果 body 包含赋值语句则使用 `statlist` 解析（需显式 `return`），否则自动返回表达式值
 15. **幂运算**：`**` 运算结果为浮点数（遵循 Lua 底层实现），如 `2 ** 10` 返回 `1024.0`
-16. **默认值与 false**：默认值检测基于 Lua 的真值判断（nil/false 均视为"未传参"），因此 `false` 作为 Bool 参数的实参可能被覆盖为默认值
+16. **默认值与 false**：默认值检测基于 Lua 的真值判断（nil/false 均视为"未传参"），因此 `func f(flag!: Bool = true)` 调用 `f(false)` 会错误地使用默认值 `true`
 17. **Unit 类型**：`()` 映射为 nil，可用作表达式或空操作语句
 
 ## 构建与测试
