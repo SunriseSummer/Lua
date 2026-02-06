@@ -195,6 +195,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
      so they cannot be collected */
   ls->envn = luaS_newliteral(L, LUA_ENV);  /* get env string */
   ls->brkn = luaS_newliteral(L, "break");  /* get "break" string */
+  ls->contn = luaS_newliteral(L, "continue");  /* get "continue" string */
   ls->interp_depth = 0;  /* not inside string interpolation */
   ls->nfields = 0;  /* no struct fields */
   ls->in_struct_method = 0;  /* not inside a struct method */

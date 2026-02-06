@@ -55,6 +55,7 @@ typedef struct BlockCnt {
   short nactvar;  /* number of active declarations at block entry */
   lu_byte upval;  /* true if some variable in the block is an upvalue */
   lu_byte isloop;  /* 1 if 'block' is a loop; 2 if it has pending breaks */
+  lu_byte hascont;  /* true if block has pending continue gotos */
   lu_byte insidetbc;  /* true if inside the scope of a to-be-closed var. */
 } BlockCnt;
 
@@ -753,6 +754,7 @@ static void solvegotos (FuncState *fs, BlockCnt *bl) {
 
 static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isloop) {
   bl->isloop = isloop;
+  bl->hascont = 0;
   bl->nactvar = fs->nactvar;
   bl->firstlabel = fs->ls->dyd->label.n;
   bl->firstgoto = fs->ls->dyd->gt.n;
@@ -769,8 +771,9 @@ static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isloop) {
 ** generates an error for an undefined 'goto'.
 */
 static l_noret undefgoto (LexState *ls, Labeldesc *gt) {
-  /* breaks are checked when created, cannot be undefined */
+  /* breaks and continues are checked when created, cannot be undefined */
   lua_assert(!eqstr(gt->name, ls->brkn));
+  lua_assert(!eqstr(gt->name, ls->contn));
   luaK_semerror(ls, "no visible label '%s' for <goto> at line %d",
                     getstr(gt->name), gt->line);
 }
@@ -2225,6 +2228,25 @@ static void breakstat (LexState *ls, int line) {
 
 
 /*
+** Continue statement. Jumps to the continue label at the end of
+** the current loop body, skipping remaining statements and
+** proceeding to the next iteration.
+*/
+static void continuestat (LexState *ls, int line) {
+  BlockCnt *bl;  /* to look for an enclosing loop */
+  for (bl = ls->fs->bl; bl != NULL; bl = bl->previous) {
+    if (bl->isloop)  /* found one? */
+      goto ok;
+  }
+  luaX_syntaxerror(ls, "continue outside loop");
+ ok:
+  bl->hascont = 1;  /* signal that block has pending continues */
+  luaX_next(ls);  /* skip continue */
+  newgotoentry(ls, ls->contn, line);
+}
+
+
+/*
 ** Check whether there is already a label with the given 'name' at
 ** current function.
 */
@@ -2261,6 +2283,8 @@ static void whilestat (LexState *ls, int line) {
   enterblock(fs, &bl, 1);
   checknext(ls, '{' /*}*/);
   block(ls);
+  /* Create continue label here: continue jumps to re-check condition */
+  createlabel(ls, ls->contn, 0, 0);
   luaK_jumpto(fs, whileinit);
   check_match(ls, /*{*/ '}', TK_WHILE, line);
   leaveblock(fs);
@@ -2317,6 +2341,8 @@ static void forbody (LexState *ls, int base, int line, int nvars, int isgen) {
   adjustlocalvars(ls, nvars);
   luaK_reserveregs(fs, nvars);
   block(ls);
+  /* Create continue label here (before leaveblock resolves gotos) */
+  createlabel(ls, ls->contn, 0, 0);
   leaveblock(fs);  /* end of scope for declared variables */
   check_match(ls, /*{*/ '}', TK_FOR, line);
   fixforjump(fs, prep, luaK_getlabel(fs), 0);
@@ -2599,16 +2625,49 @@ static void letvarstat (LexState *ls, int isconst) {
   lu_byte defkind = isconst ? RDKCONST : VDKREG;
   do {
     TString *vname = str_checkname(ls);  /* get variable name */
-    /* optional type annotation ': Type' - skip it */
+    /* optional type annotation ': Type' - parse and validate */
     if (testnext(ls, ':')) {
       int depth = 0;
-      while (ls->t.token == TK_NAME ||
-             (ls->t.token == '<') ||
-             (ls->t.token == '>' && depth > 0) ||
-             (ls->t.token == ',' && depth > 0)) {
-        if (ls->t.token == '<') depth++;
-        else if (ls->t.token == '>') depth--;
+      int has_type = 0;  /* track if at least one type token was consumed */
+      /* Also accept '(' for function types like (Int64, Int64) -> Bool */
+      if (ls->t.token == '(') {
+        has_type = 1;
+        depth++;
         luaX_next(ls);
+        while (depth > 0 && ls->t.token != TK_EOS) {
+          if (ls->t.token == '(') depth++;
+          else if (ls->t.token == ')') depth--;
+          if (depth > 0) luaX_next(ls);
+        }
+        if (ls->t.token == ')') luaX_next(ls);
+        /* Check for function return type: -> Type */
+        if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+          luaX_next(ls);  /* skip '-' */
+          luaX_next(ls);  /* skip '>' */
+          /* consume the return type */
+          while (ls->t.token == TK_NAME ||
+                 (ls->t.token == '<') ||
+                 (ls->t.token == '>' && depth > 0) ||
+                 (ls->t.token == ',' && depth > 0)) {
+            if (ls->t.token == '<') depth++;
+            else if (ls->t.token == '>') depth--;
+            luaX_next(ls);
+          }
+        }
+      }
+      else {
+        while (ls->t.token == TK_NAME ||
+               (ls->t.token == '<') ||
+               (ls->t.token == '>' && depth > 0) ||
+               (ls->t.token == ',' && depth > 0)) {
+          has_type = 1;
+          if (ls->t.token == '<') depth++;
+          else if (ls->t.token == '>') depth--;
+          luaX_next(ls);
+        }
+      }
+      if (!has_type) {
+        luaX_syntaxerror(ls, "type name expected after ':'");
       }
     }
     vidx = new_varkind(ls, vname, defkind);
@@ -2693,6 +2752,7 @@ static void skip_type_annotation (LexState *ls) {
   ** and function types ((Int64, Int64) -> Int64) */
   if (testnext(ls, ':')) {
     int depth = 0;
+    int has_type = 0;  /* validate at least one type token */
     for (;;) {
       if (ls->t.token == TK_NAME) {
         if (depth == 0) {
@@ -2701,9 +2761,11 @@ static void skip_type_annotation (LexState *ls) {
           ** Stop consuming here. */
           if (luaX_lookahead(ls) == '(') break;
         }
+        has_type = 1;
         luaX_next(ls);
       }
       else if (ls->t.token == '<' || ls->t.token == '(') {
+        if (ls->t.token == '(') has_type = 1;  /* function type */
         depth++;
         luaX_next(ls);
       }
@@ -2729,6 +2791,9 @@ static void skip_type_annotation (LexState *ls) {
       else {
         break;
       }
+    }
+    if (!has_type) {
+      luaX_syntaxerror(ls, "type name expected after ':'");
     }
   }
 }
@@ -4138,6 +4203,10 @@ static void statement (LexState *ls) {
     }
     case TK_BREAK: {  /* stat -> breakstat */
       breakstat(ls, line);
+      break;
+    }
+    case TK_CONTINUE: {  /* stat -> continuestat */
+      continuestat(ls, line);
       break;
     }
     case TK_STRUCT: case TK_CLASS: {  /* stat -> struct/class definition */
