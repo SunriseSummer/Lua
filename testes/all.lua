@@ -168,6 +168,7 @@ dofile('db.lua')
 assert(dofile('calls.lua') == deep and deep)
 _G.deep = nil
 olddofile('strings.lua')
+olddofile('cangjie.lua')
 olddofile('literals.lua')
 dofile('tpack.lua')
 assert(dofile('attrib.lua') == 27)
@@ -286,4 +287,3 @@ if not usertests then
 end
 
 print("final OK !!!")
-

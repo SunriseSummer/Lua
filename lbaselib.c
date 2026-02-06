@@ -38,6 +38,12 @@ static int luaB_print (lua_State *L) {
 }
 
 
+/* alias for print; Lua print already appends a newline (Cangjie compatibility) */
+static int luaB_println (lua_State *L) {
+  return luaB_print(L);
+}
+
+
 /*
 ** Creates a warning with all given arguments.
 ** Check first for errors; otherwise an error may interrupt
@@ -526,6 +532,7 @@ static const luaL_Reg base_funcs[] = {
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},
   {"print", luaB_print},
+  {"println", luaB_println},
   {"warn", luaB_warn},
   {"rawequal", luaB_rawequal},
   {"rawlen", luaB_rawlen},
@@ -556,4 +563,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   return 1;
 }
-

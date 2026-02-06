@@ -33,7 +33,7 @@ enum RESERVED {
   /* terminal symbols denoted by reserved words */
   TK_AND = FIRST_RESERVED, TK_BREAK,
   TK_DO, TK_ELSE, TK_ELSEIF, TK_END, TK_FALSE, TK_FOR, TK_FUNCTION,
-  TK_GLOBAL, TK_GOTO, TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR,
+  TK_GLOBAL, TK_GOTO, TK_IF, TK_IN, TK_LOCAL, TK_LET, TK_NIL, TK_NOT, TK_OR,
   TK_REPEAT, TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
   /* other terminal symbols */
   TK_IDIV, TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE,
@@ -58,6 +58,8 @@ typedef struct Token {
   SemInfo seminfo;
 } Token;
 
+#define INTERP_MAX_PENDING 8
+
 
 /* state of the scanner plus state of the parser when shared by all
    functions */
@@ -67,6 +69,11 @@ typedef struct LexState {
   int lastline;  /* line of last token 'consumed' */
   Token t;  /* current token */
   Token lookahead;  /* look ahead token */
+  Token pending[INTERP_MAX_PENDING];
+  int npending;  /* number of pending tokens */
+  int interp_active;  /* parsing interpolation expression? */
+  int interp_depth;  /* parentheses depth in interpolation */
+  int interp_delim;  /* current interpolation string delimiter */
   struct FuncState *fs;  /* current function (parser) */
   struct lua_State *L;
   ZIO *z;  /* input stream */
