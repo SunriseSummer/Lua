@@ -1,16 +1,29 @@
-global <const> *
+println("cangjie sample: sorted values")
 
-print("cangjie sample: sorted values")
+let sorted_numbers: Array<Int64> = [1, 2, 3, 4, 5]
+let first = sorted_numbers[1]
+let last = sorted_numbers[sorted_numbers.size]
 
-let sorted_numbers: Table = {1, 2, 3, 4, 5}
-assert(sorted_numbers[1] == 1)
-assert(sorted_numbers[5] == 5)
-println("sorted first $(sorted_numbers[1]) last $(sorted_numbers[5])")
+assert(first == 1)
+assert(last == 5)
+println("sorted first $(first) last $(last)")
 
-let fib_zero = 0
-let fib_one = 1
-let fib_two = fib_zero + fib_one
-let fib_three = fib_one + fib_two
-let fib_four = fib_two + fib_three
-let fib_five = fib_three + fib_four
-assert(fib_five == 5)
+func sum_range(values: Array<Int64>) {
+  var total: Int64 = 0
+  for (value in values) {
+    total = total + value
+  }
+  return total
+}
+
+assert(sum_range(sorted_numbers) == 15)
+
+let fib_values: Array<Int64> = [0, 1, 1, 2, 3, 5]
+
+func fib_lookup(values: Array<Int64>, index: Int64) {
+  assert(index >= 1)
+  assert(index <= values.size)
+  return values[index]
+}
+
+assert(fib_lookup(fib_values, 6) == 5)

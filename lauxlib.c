@@ -825,6 +825,27 @@ static int cj_isident (int c) {
 }
 
 
+static int cj_prev_nonspace (const char *src, size_t i) {
+  while (i > 0) {
+    i--;
+    if (!isspace(cast_uchar(src[i]))) return src[i];
+  }
+  return 0;
+}
+
+
+static int cj_prev_is_return (const char *src, size_t i) {
+  size_t end = i;
+  size_t start;
+  while (end > 0 && isspace(cast_uchar(src[end - 1]))) end--;
+  if (end < 6) return 0;
+  start = end - 6;
+  if (strncmp(src + start, "return", 6) != 0) return 0;
+  if (start > 0 && cj_isident(cast_uchar(src[start - 1]))) return 0;
+  return 1;
+}
+
+
 static int cj_name_is_cangjie (const char *name) {
   size_t len;
   if (name == NULL) return 0;
@@ -1017,11 +1038,17 @@ static size_t cj_skip_type (const char *src, size_t i, size_t len) {
 
 static size_t cj_translate_identifier (luaL_Buffer *b, const char *src, size_t i,
                                        size_t len, int repl, int *in_let,
-                                       int *changed) {
+                                       int *changed, int *skip_brace,
+                                       int *in_func) {
   size_t start = i;
+  size_t idlen;
+  size_t j;
   i++;
   while (i < len && cj_isident(cast_uchar(src[i]))) i++;
-  if (i - start == 3 && strncmp(src + start, "let", 3) == 0) {
+  idlen = i - start;
+  if (idlen == 3 &&
+      (strncmp(src + start, "let", 3) == 0 ||
+       strncmp(src + start, "var", 3) == 0)) {
     if (!repl) {  /* files use local bindings; REPL keeps globals */
       luaL_addstring(b, "local");
     }
@@ -1029,13 +1056,74 @@ static size_t cj_translate_identifier (luaL_Buffer *b, const char *src, size_t i
     *in_let = 1;
     return i;
   }
-  if (i - start == 7 && strncmp(src + start, "println", 7) == 0) {
+  if (idlen == 7 && strncmp(src + start, "println", 7) == 0) {
     /* Lua print already appends a newline. */
     luaL_addstring(b, "print");
     *changed = 1;
     return i;
   }
-  luaL_addlstring(b, src + start, i - start);
+  if (idlen == 4 && strncmp(src + start, "func", 4) == 0) {
+    luaL_addstring(b, "function");
+    *changed = 1;
+    *skip_brace = 1;
+    *in_func = 1;
+    return i;
+  }
+  if (idlen == 3 && strncmp(src + start, "for", 3) == 0) {
+    j = i;
+    while (j < len && isspace(cast_uchar(src[j]))) j++;
+    if (j < len && src[j] == '(') {
+      size_t var_start;
+      size_t var_end;
+      size_t expr_start;
+      size_t expr_end;
+      int depth = 0;
+      j++;
+      while (j < len && isspace(cast_uchar(src[j]))) j++;
+      if (j < len && cj_isidentstart(cast_uchar(src[j]))) {
+        var_start = j;
+        j++;
+        while (j < len && cj_isident(cast_uchar(src[j]))) j++;
+        var_end = j;
+        while (j < len && isspace(cast_uchar(src[j]))) j++;
+        if (j + 1 < len && src[j] == 'i' && src[j + 1] == 'n' &&
+            (j + 2 >= len || !cj_isident(cast_uchar(src[j + 2])))) {
+          j += 2;
+          while (j < len && isspace(cast_uchar(src[j]))) j++;
+          expr_start = j;
+          for (expr_end = j; expr_end < len; expr_end++) {
+            char c = src[expr_end];
+            if (c == '(') depth++;
+            else if (c == ')') {
+              if (depth == 0) break;
+              depth--;
+            }
+          }
+          if (expr_end < len && src[expr_end] == ')') {
+            luaL_addstring(b, "for _, ");
+            luaL_addlstring(b, src + var_start, var_end - var_start);
+            luaL_addstring(b, " in ipairs(");
+            luaL_addlstring(b, src + expr_start, expr_end - expr_start);
+            luaL_addstring(b, ") do");
+            *changed = 1;
+            *skip_brace = 1;
+            return expr_end + 1;
+          }
+        }
+      }
+    }
+  }
+  if ((start == 0 || src[start - 1] != '.') &&
+      i + 5 <= len && src[i] == '.' &&
+      strncmp(src + i + 1, "size", 4) == 0 &&
+      (i + 5 == len || !cj_isident(cast_uchar(src[i + 5])))) {
+    luaL_addstring(b, "(#");
+    luaL_addlstring(b, src + start, idlen);
+    luaL_addchar(b, ')');
+    *changed = 1;
+    return i + 5;
+  }
+  luaL_addlstring(b, src + start, idlen);
   return i;
 }
 
@@ -1054,10 +1142,23 @@ static int cj_translate (lua_State *L, const char *src, size_t len,
   size_t i = 0;
   int changed = 0;
   int in_let = 0;
+  int skip_brace = 0;  /* skip next '{' after func/for */
+  int block_depth = 0;  /* translated brace depth */
+  int array_depth = 0;
+  int in_func = 0;  /* parsing function signature */
+  int in_params = 0;  /* inside parameter list */
+  int param_depth = 0;  /* nested parens in params */
   int force = cj_name_is_cangjie(name);
   luaL_buffinit(L, &b);
   while (i < len) {
     char c = src[i];
+    if (in_func && !in_params && c == '(') {
+      in_params = 1;
+      param_depth = 1;
+      luaL_addchar(&b, c);
+      i++;
+      continue;
+    }
     if (c == '-' && i + 1 < len && src[i + 1] == '-') {
       int bracket_level = cj_long_bracket_level(src, i + 2, len);
       if (bracket_level >= 0) {
@@ -1086,6 +1187,53 @@ static int cj_translate (lua_State *L, const char *src, size_t len,
         i = end;
         continue;
       }
+      {
+        int prev = cj_prev_nonspace(src, i);
+        if (prev == '=' || prev == '(' || prev == ',' || prev == ':' ||
+            prev == '[' || prev == 0 || cj_prev_is_return(src, i)) {
+          luaL_addchar(&b, '{');
+          array_depth++;
+          changed = 1;
+          i++;
+          continue;
+        }
+      }
+    }
+    if (c == ']' && array_depth > 0) {
+      luaL_addchar(&b, '}');
+      array_depth--;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (c == '{' && skip_brace) {
+      skip_brace = 0;
+      block_depth++;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (c == '}' && block_depth > 0) {
+      luaL_addstring(&b, "end");
+      block_depth--;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (in_params) {
+      if (c == ':') {
+        i = cj_skip_type(src, i, len);
+        changed = 1;
+        continue;
+      }
+      if (c == '(') param_depth++;
+      else if (c == ')') {
+        param_depth--;
+        if (param_depth == 0) {
+          in_params = 0;
+          in_func = 0;
+        }
+      }
     }
     if (in_let && c == ':') {
       i = cj_skip_type(src, i, len);
@@ -1101,7 +1249,8 @@ static int cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (cj_isidentstart(cast_uchar(c))) {
-      i = cj_translate_identifier(&b, src, i, len, repl, &in_let, &changed);
+      i = cj_translate_identifier(&b, src, i, len, repl, &in_let, &changed,
+                                  &skip_brace, &in_func);
       continue;
     }
     luaL_addchar(&b, c);
