@@ -1108,7 +1108,9 @@ static void parlist (LexState *ls) {
       switch (ls->t.token) {
         case TK_NAME: {
           new_localvar(ls, str_checkname(ls));
-          /* optional '!' for named parameter (skip it) */
+          /* optional '!' suffix for Cangjie named parameter declaration (skip it).
+          ** In Cangjie, 'param!: Type' declares a named parameter that can
+          ** be passed by name at call site, e.g. 'func(param: value)'. */
           testnext(ls, TK_NOT);
           /* optional type annotation ': Type' - skip it */
           if (testnext(ls, ':')) {
@@ -1501,6 +1503,78 @@ static void suffixedexp (LexState *ls, expdesc *v) {
 
 
 /*
+** Scan raw input characters from the current lexer position to check for
+** a specific pattern within a brace-delimited block. The scan tracks
+** nesting depth of {}, (), [].
+** mode: 0 = check for '=>' at depth 0 (lambda detection)
+**        1 = check for bare '=' (not '==' or '=>') at depth 0 (assignment detection)
+** Returns 1 if the pattern was found, 0 otherwise.
+** Saves and restores the lexer input stream position.
+*/
+static int scan_brace_block (LexState *ls, int mode) {
+  const char *saved_p = ls->z->p;
+  size_t saved_n = ls->z->n;
+  int saved_current = ls->current;
+  int depth = 0;
+  int ch = ls->current;
+  int found = 0;
+  while (ch != EOZ) {
+    if (ch == '{' || ch == '(' || ch == '[') depth++;
+    else if (ch == ')' || ch == ']') depth--;
+    else if (ch == '}') {
+      if (depth <= 0) break;
+      depth--;
+    }
+    else if (ch == '=' && depth == 0) {
+      if (ls->z->n > 0) {
+        char next_ch = *(ls->z->p);
+        if (mode == 0 && next_ch == '>') {
+          found = 1;
+          break;
+        }
+        if (mode == 1) {
+          if (next_ch == '=' || next_ch == '>') {
+            /* Skip the second char of == or => */
+            ls->z->p++; ls->z->n--;
+          }
+          else {
+            found = 1;
+            break;
+          }
+        }
+      }
+      else if (mode == 1) {
+        found = 1;
+        break;
+      }
+    }
+    else if (ch == '"' || ch == '\'') {
+      /* Skip string literals */
+      int delim = ch;
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while (ch != delim && ch != EOZ) {
+        if (ch == '\\') {
+          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+        }
+        if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+        else break;
+      }
+    }
+    /* Advance to next character */
+    if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+    else break;
+  }
+  /* Restore input stream position */
+  ls->z->p = saved_p;
+  ls->z->n = saved_n;
+  ls->current = saved_current;
+  return found;
+}
+
+
+/*
 ** Lambda body: => expr or => { block }
 ** Creates an anonymous function that returns the expression
 ** Used for () => expr syntax
@@ -1598,56 +1672,8 @@ static void bracelambda (LexState *ls, expdesc *e, int line) {
       use_statlist = 0;
     }
     else {
-      /* Scan raw chars to see if body has assignment or newlines with statements */
-      const char *saved_p2 = ls->z->p;
-      size_t saved_n2 = ls->z->n;
-      int saved_current2 = ls->current;
-      int depth2 = 0;
-      int ch2 = ls->current;
-      while (ch2 != EOZ) {
-        if (ch2 == '{' || ch2 == '(' || ch2 == '[') depth2++;
-        else if (ch2 == ')' || ch2 == ']') depth2--;
-        else if (ch2 == '}') {
-          if (depth2 <= 0) break;
-          depth2--;
-        }
-        else if (ch2 == '=' && depth2 == 0) {
-          /* Check it's not == or => */
-          if (ls->z->n > 0) {
-            char next_ch = *(ls->z->p);
-            if (next_ch == '=' || next_ch == '>') {
-              /* Skip the second char of == or => */
-              ls->z->p++; ls->z->n--;
-            }
-            else {
-              use_statlist = 1;
-              break;
-            }
-          }
-          else {
-            use_statlist = 1;
-            break;
-          }
-        }
-        else if (ch2 == '"' || ch2 == '\'') {
-          int delim2 = ch2;
-          if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
-          else break;
-          while (ch2 != delim2 && ch2 != EOZ) {
-            if (ch2 == '\\') {
-              if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
-              else break;
-            }
-            if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
-            else break;
-          }
-        }
-        if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
-        else break;
-      }
-      ls->z->p = saved_p2;
-      ls->z->n = saved_n2;
-      ls->current = saved_current2;
+      /* Scan raw chars to see if body has a bare assignment '=' */
+      use_statlist = scan_brace_block(ls, 1);
     }
 
     if (tok == /*{*/ '}') {
@@ -1762,64 +1788,12 @@ static void simpleexp (LexState *ls, expdesc *v) {
       break;
     }
     case '{' /*}*/: {  /* constructor or brace lambda { params => body } */
-      /* Detect brace lambda by scanning ahead for '=>' at depth 0
-      ** within the current brace block. We scan the raw input characters
-      ** without consuming tokens. */
-      {
-        int is_lambda = 0;
-        /* Save current position in the input stream */
-        const char *saved_p = ls->z->p;
-        size_t saved_n = ls->z->n;
-        int saved_current = ls->current;
-        int depth = 0;
-        int ch = ls->current;
-        /* Scan ahead character by character looking for => at depth 0 */
-        while (ch != EOZ) {
-          if (ch == '{' || ch == '(' || ch == '[') depth++;
-          else if (ch == ')' || ch == ']') depth--;
-          else if (ch == '}') {
-            if (depth <= 0) break;  /* end of our block - not a lambda */
-            depth--;
-          }
-          else if (ch == '=' && depth == 0) {
-            /* peek at next char */
-            if (ls->z->n > 0 && *(ls->z->p) == '>') {
-              is_lambda = 1;
-              break;
-            }
-          }
-          else if (ch == '"' || ch == '\'') {
-            /* skip string literals */
-            int delim = ch;
-            /* advance past delimiter */
-            if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
-            else break;
-            while (ch != delim && ch != EOZ) {
-              if (ch == '\\') {
-                /* skip escaped char */
-                if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
-                else break;
-              }
-              if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
-              else break;
-            }
-            /* ch is now the closing delimiter, will be advanced below */
-          }
-          /* advance to next char */
-          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
-          else break;
-        }
-        /* Restore input stream position */
-        ls->z->p = saved_p;
-        ls->z->n = saved_n;
-        ls->current = saved_current;
-
-        if (is_lambda) {
-          int line2 = ls->linenumber;
-          luaX_next(ls);  /* skip '{' */
-          bracelambda(ls, v, line2);
-          return;
-        }
+      /* Detect brace lambda by scanning ahead for '=>' at depth 0 */
+      if (scan_brace_block(ls, 0)) {
+        int line2 = ls->linenumber;
+        luaX_next(ls);  /* skip '{' */
+        bracelambda(ls, v, line2);
+        return;
       }
       constructor(ls, v);
       return;
