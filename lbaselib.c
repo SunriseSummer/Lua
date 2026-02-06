@@ -129,6 +129,7 @@ static int luaB_cangjie_class (lua_State *L) {
 }
 
 static int luaB_cangjie_struct (lua_State *L) {
+  /* structs currently share the same runtime construction semantics */
   return luaB_cangjie_class(L);
 }
 

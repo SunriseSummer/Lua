@@ -1179,8 +1179,9 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    selfidx = new_localvar(ls, luaX_newstring(ls, "self",
-                                              sizeof("self") - 1));
+    const char selfname[] = "self";
+    selfidx = new_localvar(ls, luaX_newstring(ls, selfname,
+                                              sizeof(selfname) - 1));
     adjustlocalvars(ls, 1);
   }
   parlist(ls);

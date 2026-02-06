@@ -261,10 +261,13 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   for (;;) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
-    else if (ls->current == '.' &&
-             (peekchar(ls) == '.' || peekchar(ls) == '='))  /* range/concat? */
-      break;
-    else if (lisxdigit(ls->current) || ls->current == '.')  /* '%x|%.' */
+    else if (ls->current == '.') {
+      int nextc = peekchar(ls);
+      if (nextc == '.' || nextc == '=')  /* range/concat? */
+        break;
+      save_and_next(ls);
+    }
+    else if (lisxdigit(ls->current))  /* '%x|%.' */
       save_and_next(ls);
     else break;
   }
