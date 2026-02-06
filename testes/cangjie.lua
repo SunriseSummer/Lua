@@ -31,20 +31,15 @@ let doubler = func (value: Int): Int {
 assert(doubler(4) == 8)
 assert(!false)
 
-func range(start: Int, stop: Int) {
-  return func (_, current) {
-    var next = current + 1
-    if (next <= stop) {
-      return next
-    } else {
-      return null
-    }
-  }, null, start - 1
+var sum = 0
+for (i in 1..=3) {
+  sum = sum + i
 }
 
-var sum = 0
-for (i in range(1, 3)) {
-  sum = sum + i
+let span = 2..5
+var spanSum = 0
+for (i in span) {
+  spanSum = spanSum + i
 }
 
 while (sum < 10 && counter != 2) {
@@ -56,7 +51,43 @@ while (sum < 10 && counter != 2) {
   }
 }
 
+assert(spanSum == 9)
 assert(add(sum, counter) == 11)
 assert(doubler(sum) == 18)
+
+struct Point {
+  var x: Int = 0
+  var y: Int = 0
+
+  func move(dx: Int, dy: Int) {
+    this.x = this.x + dx
+    this.y = this.y + dy
+  }
+
+  func sum(): Int {
+    return this.x + this.y
+  }
+}
+
+class Counter {
+  var value: Int = 0
+
+  init(start: Int) {
+    this.value = start
+  }
+
+  func inc() {
+    this.value = this.value + 1
+  }
+}
+
+let pt = Point()
+pt.move(1, 2)
+assert(pt.sum() == 3)
+
+let counterObj = Counter(5)
+counterObj.inc()
+assert(counterObj.value == 6)
 // line comment coverage
-print("cangjie basic syntax ok")
+print("cangjie ")
+println("advanced syntax ok")
