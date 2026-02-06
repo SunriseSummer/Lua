@@ -70,7 +70,7 @@ struct HashMap<K, V> {
     while (i <= #this.keys_list) {
       let k = this.keys_list[i]
       if (this.data[k] != nil) {
-        if (not first) {
+        if (!first) {
           result = result + ", "
         }
         result = result + tostring(k) + ": " + tostring(this.data[k])

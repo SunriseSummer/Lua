@@ -85,7 +85,7 @@ class Child <: Base {
 
 // Dynamic polymorphism: function accepting any object
 func processAny(obj) {
-  if (type(obj) == "table" and obj.process) {
+  if (type(obj) == "table" && obj.process) {
     return obj.process()
   }
   return tostring(obj)

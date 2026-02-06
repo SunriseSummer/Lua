@@ -1098,7 +1098,7 @@ static void setvararg (FuncState *fs) {
 
 
 static void parlist (LexState *ls) {
-  /* parlist -> [ {NAME ':' TYPE ','} (NAME ':' TYPE | '...') ] */
+  /* parlist -> [ {NAME ['!'] ':' TYPE ['=' expr] ','} (NAME ['!'] ':' TYPE | '...') ] */
   FuncState *fs = ls->fs;
   Proto *f = fs->f;
   int nparams = 0;
@@ -1108,18 +1108,49 @@ static void parlist (LexState *ls) {
       switch (ls->t.token) {
         case TK_NAME: {
           new_localvar(ls, str_checkname(ls));
+          /* optional '!' for named parameter (skip it) */
+          testnext(ls, TK_NOT);
           /* optional type annotation ': Type' - skip it */
           if (testnext(ls, ':')) {
-            /* skip type name (possibly generic like Array<Int64>) */
+            /* skip type name (possibly generic like Array<Int64> or
+            ** function type like (Int64, Int64) -> Int64) */
             int depth = 0;
-            while (ls->t.token == TK_NAME ||
-                   (ls->t.token == '<' ) ||
-                   (ls->t.token == '>' && depth > 0) ||
-                   (ls->t.token == ',' && depth > 0)) {
-              if (ls->t.token == '<') depth++;
-              else if (ls->t.token == '>') depth--;
-              luaX_next(ls);
+            for (;;) {
+              if (ls->t.token == TK_NAME) {
+                luaX_next(ls);
+              }
+              else if (ls->t.token == '<' || ls->t.token == '(') {
+                depth++;
+                luaX_next(ls);
+              }
+              else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+                depth--;
+                luaX_next(ls);
+                /* After closing ')' at depth 0, check for '-> Type' */
+                if (depth == 0 && ls->t.token == '-') {
+                  if (luaX_lookahead(ls) == '>') {
+                    luaX_next(ls);  /* skip '-' */
+                    luaX_next(ls);  /* skip '>' */
+                  }
+                }
+              }
+              else if (ls->t.token == ',' && depth > 0) {
+                luaX_next(ls);
+              }
+              else if (ls->t.token == TK_NOT && depth > 0) {
+                luaX_next(ls);  /* '!' in named params in function types */
+              }
+              else {
+                break;
+              }
             }
+          }
+          /* optional default value '= expr' - parse and discard */
+          if (testnext(ls, '=')) {
+            expdesc defval;
+            expr(ls, &defval);
+            /* Default values are parsed but not enforced at compile time.
+            ** In a dynamic runtime, callers must pass all positional args. */
           }
           nparams++;
           break;
@@ -1165,13 +1196,30 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   /* optional return type annotation ': Type' - skip it */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0)) {
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') depth--;
-      luaX_next(ls);
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
   checknext(ls, '{' /*}*/);
@@ -1203,13 +1251,30 @@ static void body_init (LexState *ls, expdesc *e, int line) {
   /* skip optional return type annotation */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0)) {
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') depth--;
-      luaX_next(ls);
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
   checknext(ls, '{' /*}*/);
@@ -1299,6 +1364,7 @@ static void funcargs (LexState *ls, expdesc *f) {
 
 
 static void lambdabody (LexState *ls, expdesc *e, int line);
+static void bracelambda (LexState *ls, expdesc *e, int line);
 
 static void primaryexp (LexState *ls, expdesc *v) {
   /* primaryexp -> NAME | '(' expr [',' expr]* ')' | '(' ')' '=>' ... */
@@ -1437,6 +1503,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
 /*
 ** Lambda body: => expr or => { block }
 ** Creates an anonymous function that returns the expression
+** Used for () => expr syntax
 */
 static void lambdabody (LexState *ls, expdesc *e, int line) {
   /* lambdabody -> '=>' expr | '=>' '{' block '}' */
@@ -1462,6 +1529,93 @@ static void lambdabody (LexState *ls, expdesc *e, int line) {
     luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
     new_fs.f->lastlinedefined = ls->linenumber;
   }
+  codeclosure(ls, e);
+  close_func(ls);
+}
+
+
+/*
+** Brace lambda: { [params] => body }
+** Cangjie-style lambda expression enclosed in braces.
+** Examples: { => 42 }, { x: Int64 => x + 1 }, { x, y => x + y }
+** The body after '=>' is parsed as follows:
+** - If there is only a single expression before '}', auto-return it
+** - Otherwise, parse as a statement list (explicit 'return' needed)
+*/
+static void bracelambda (LexState *ls, expdesc *e, int line) {
+  FuncState new_fs;
+  BlockCnt bl;
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  /* Parse parameters before '=>' */
+  {
+    int nparams = 0;
+    /* current token is the first token after '{' */
+    if (ls->t.token != TK_ARROW) {
+      /* parse parameter list: NAME [':' Type] { ',' NAME [':' Type] } '=>' */
+      do {
+        if (ls->t.token != TK_NAME)
+          luaX_syntaxerror(ls, "<name> expected in lambda parameter list");
+        new_localvar(ls, str_checkname(ls));
+        /* optional type annotation ': Type' - skip it */
+        if (testnext(ls, ':')) {
+          int depth = 0;
+          while (ls->t.token == TK_NAME ||
+                 (ls->t.token == '<') ||
+                 (ls->t.token == '>' && depth > 0) ||
+                 (ls->t.token == ',' && depth > 0)) {
+            if (ls->t.token == '<') depth++;
+            else if (ls->t.token == '>') depth--;
+            luaX_next(ls);
+          }
+        }
+        nparams++;
+      } while (testnext(ls, ','));
+    }
+    checknext(ls, TK_ARROW);  /* skip '=>' */
+    adjustlocalvars(ls, nparams);
+    new_fs.f->numparams = cast_byte(new_fs.nactvar);
+    luaK_reserveregs(&new_fs, new_fs.nactvar);
+  }
+  /* Parse body until '}'. Check if it's a simple expression for auto-return,
+  ** or if it starts with a statement keyword (let/var/if/while/for/return/etc.) */
+  {
+    int tok = ls->t.token;
+    if (tok == TK_LET || tok == TK_VAR || tok == TK_IF || tok == TK_WHILE ||
+        tok == TK_FOR || tok == TK_RETURN || tok == TK_MATCH ||
+        tok == TK_FUNC || tok == TK_CLASS || tok == TK_STRUCT ||
+        tok == TK_ENUM || tok == TK_INTERFACE || tok == TK_EXTEND) {
+      /* Body starts with a statement keyword - parse as statement list */
+      statlist(ls);
+    }
+    else if (tok == /*{*/ '}') {
+      /* Empty body - no-op lambda */
+    }
+    else {
+      /* Try to parse as an expression for auto-return */
+      expdesc ret;
+      expr(ls, &ret);
+      if (ls->t.token == /*{*/ '}') {
+        /* Single expression - auto return */
+        luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
+      }
+      else {
+        /* Expression followed by more code - treat expression as statement
+        ** (e.g., function call), then parse remaining statements */
+        if (ret.k == VCALL) {
+          SETARG_C(getinstruction(ls->fs, &ret), 1);  /* discard results */
+        }
+        else {
+          luaK_exp2nextreg(&new_fs, &ret);
+          new_fs.freereg = cast_byte(new_fs.nactvar);
+        }
+        statlist(ls);
+      }
+    }
+  }
+  new_fs.f->lastlinedefined = ls->linenumber;
+  checknext(ls, /*{*/ '}');
   codeclosure(ls, e);
   close_func(ls);
 }
@@ -1558,7 +1712,66 @@ static void simpleexp (LexState *ls, expdesc *v) {
       init_exp(v, VFALSE, 0);
       break;
     }
-    case '{' /*}*/: {  /* constructor */
+    case '{' /*}*/: {  /* constructor or brace lambda { params => body } */
+      /* Detect brace lambda by scanning ahead for '=>' at depth 0
+      ** within the current brace block. We scan the raw input characters
+      ** without consuming tokens. */
+      {
+        int is_lambda = 0;
+        /* Save current position in the input stream */
+        const char *saved_p = ls->z->p;
+        size_t saved_n = ls->z->n;
+        int saved_current = ls->current;
+        int depth = 0;
+        int ch = ls->current;
+        /* Scan ahead character by character looking for => at depth 0 */
+        while (ch != EOZ) {
+          if (ch == '{' || ch == '(' || ch == '[') depth++;
+          else if (ch == ')' || ch == ']') depth--;
+          else if (ch == '}') {
+            if (depth <= 0) break;  /* end of our block - not a lambda */
+            depth--;
+          }
+          else if (ch == '=' && depth == 0) {
+            /* peek at next char */
+            if (ls->z->n > 0 && *(ls->z->p) == '>') {
+              is_lambda = 1;
+              break;
+            }
+          }
+          else if (ch == '"' || ch == '\'') {
+            /* skip string literals */
+            int delim = ch;
+            /* advance past delimiter */
+            if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+            else break;
+            while (ch != delim && ch != EOZ) {
+              if (ch == '\\') {
+                /* skip escaped char */
+                if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+                else break;
+              }
+              if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+              else break;
+            }
+            /* ch is now the closing delimiter, will be advanced below */
+          }
+          /* advance to next char */
+          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+        }
+        /* Restore input stream position */
+        ls->z->p = saved_p;
+        ls->z->n = saved_n;
+        ls->current = saved_current;
+
+        if (is_lambda) {
+          int line2 = ls->linenumber;
+          luaX_next(ls);  /* skip '{' */
+          bracelambda(ls, v, line2);
+          return;
+        }
+      }
       constructor(ls, v);
       return;
     }
@@ -1641,12 +1854,12 @@ static BinOpr getbinopr (int op) {
     case '-': return OPR_SUB;
     case '*': return OPR_MUL;
     case '%': return OPR_MOD;
-    case '^': return OPR_POW;
+    case TK_POW: return OPR_POW;
     case '/': return OPR_DIV;
     case TK_IDIV: return OPR_IDIV;
     case '&': return OPR_BAND;
     case '|': return OPR_BOR;
-    case '~': return OPR_BXOR;
+    case '^': return OPR_BXOR;
     case TK_SHL: return OPR_SHL;
     case TK_SHR: return OPR_SHR;
     case TK_CONCAT: return OPR_CONCAT;
@@ -2329,24 +2542,47 @@ static void funcstat (LexState *ls, int line) {
 ** Generates table construction and method definitions
 */
 static void skip_type_annotation (LexState *ls) {
-  /* skip optional type annotation after ':' */
+  /* skip optional type annotation after ':'
+  ** Handles simple types (Int64), generic types (Array<Int64>),
+  ** and function types ((Int64, Int64) -> Int64) */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0) ||
-           (ls->t.token == '(' ) ||
-           (ls->t.token == ')' && depth > 0)) {
-      if (ls->t.token == TK_NAME && depth == 0) {
-        /* If this NAME is followed by '(' at top level, it's likely
-        ** a new member definition (e.g. init(...)), not part of type.
-        ** Stop consuming here. */
-        if (luaX_lookahead(ls) == '(') break;
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        if (depth == 0) {
+          /* If this NAME is followed by '(' at top level, it's likely
+          ** a new member definition (e.g. init(...)), not part of type.
+          ** Stop consuming here. */
+          if (luaX_lookahead(ls) == '(') break;
+        }
+        luaX_next(ls);
       }
-      if (ls->t.token == '<' || ls->t.token == '(') depth++;
-      else if (ls->t.token == '>' || ls->t.token == ')') depth--;
-      luaX_next(ls);
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        /* After closing ')' at depth 0, check for function return type '-> Type' */
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+            /* continue to parse the return type */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == TK_NOT && depth > 0) {
+        /* '!' in parameter names for named params in function types */
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
 }

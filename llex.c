@@ -43,13 +43,15 @@
 
 /* ORDER RESERVED */
 static const char *const luaX_tokens [] = {
-    "and", "break",
+    "break",
     "case", "class", "continue", "else", "enum", "extend",
     "false", "for", "func",
-    "if", "in", "interface", "let", "match", "nil", "not", "or",
+    "if", "in", "interface", "let", "match", "nil",
     "return", "struct", "super", "this", "true", "var", "while",
     "//", "..", "...", "==", ">=", "<=", "!=",
-    "<<", ">>", "::", "=>", "..=", "<eof>",
+    "<<", ">>", "::", "=>", "..=",
+    "&&", "||", "!", "**",
+    "<eof>",
     "<number>", "<integer>", "<name>", "<string>"
 };
 
@@ -637,14 +639,33 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         else if (check_next1(ls, '>')) return TK_SHR;  /* '>>' */
         else return '>';
       }
-      case '!': {  /* '!=' (Cangjie not-equal) or '!' (logical not) */
+      case '!': {  /* '!=' (Cangjie not-equal) or '!' (logical not / bitwise not for integers) */
         next(ls);
         if (check_next1(ls, '=')) return TK_NE;  /* '!=' */
         else return TK_NOT;  /* '!' as unary not */
       }
-      case '~': {  /* '~' bitwise not */
+      case '~': {  /* '~' (unused single char, kept for compat) */
         next(ls);
         return '~';
+      }
+      case '&': {  /* '&' bitwise AND or '&&' logical AND */
+        next(ls);
+        if (check_next1(ls, '&')) return TK_AND;  /* '&&' */
+        else return '&';
+      }
+      case '|': {  /* '|' bitwise OR or '||' logical OR */
+        next(ls);
+        if (check_next1(ls, '|')) return TK_OR;  /* '||' */
+        else return '|';
+      }
+      case '*': {  /* '*' multiply or '**' power */
+        next(ls);
+        if (check_next1(ls, '*')) return TK_POW;  /* '**' */
+        else return '*';
+      }
+      case '^': {  /* '^' bitwise XOR */
+        next(ls);
+        return '^';
       }
       case ':': {
         next(ls);

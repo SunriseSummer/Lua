@@ -24,20 +24,20 @@ struct ArrayList<T> {
   }
 
   func get(index: Int64): T {
-    if (index < 0 or index >= this.length) {
+    if (index < 0 || index >= this.length) {
       return nil
     }
     return this.data[index + 1]
   }
 
   func set(index: Int64, value: T) {
-    if (index >= 0 and index < this.length) {
+    if (index >= 0 && index < this.length) {
       this.data[index + 1] = value
     }
   }
 
   func removeAt(index: Int64): T {
-    if (index < 0 or index >= this.length) {
+    if (index < 0 || index >= this.length) {
       return nil
     }
     let removed = this.data[index + 1]
