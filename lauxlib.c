@@ -10,6 +10,7 @@
 #include "lprefix.h"
 
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -733,6 +734,623 @@ LUALIB_API void luaL_unref (lua_State *L, int t, int ref) {
 ** =======================================================
 */
 
+typedef enum {
+  CJ_LAST_NONE,
+  CJ_LAST_IF,
+  CJ_LAST_ELSE,
+  CJ_LAST_WHILE,
+  CJ_LAST_FOR,
+  CJ_LAST_FUNCTION
+} CJLast;
+
+typedef enum {
+  CJ_BLOCK_GENERIC,
+  CJ_BLOCK_IF,
+  CJ_BLOCK_ELSE,
+  CJ_BLOCK_LOOP,
+  CJ_BLOCK_FUNCTION
+} CJBlock;
+
+#define CJ_STACK_MAX 256  /* maximum nesting tracked by the translator */
+
+
+static int cj_is_ident_start (int c) {
+  return (isalpha(c) || c == '_');
+}
+
+
+static int cj_is_ident_continue (int c) {
+  return (isalnum(c) || c == '_');
+}
+
+
+static size_t cj_skip_space_and_comments (const char *src, size_t i,
+                                          size_t len) {
+  while (i < len) {
+    unsigned char c = cast_uchar(src[i]);
+    if (isspace(c)) {
+      i++;
+      continue;
+    }
+    if (c == '/' && i + 1 < len) {
+      if (src[i + 1] == '/') {
+        i += 2;
+        while (i < len && src[i] != '\n')
+          i++;
+        continue;
+      }
+      if (src[i + 1] == '*') {
+        i += 2;
+        while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/'))
+          i++;
+        if (i + 1 < len)
+          i += 2;
+        continue;
+      }
+    }
+    break;
+  }
+  return i;
+}
+
+
+static int cj_match_keyword_at (const char *src, size_t i, size_t len,
+                                const char *kw, size_t *out_end) {
+  size_t j = i;
+  if (j >= len || !cj_is_ident_start(cast_uchar(src[j])))
+    return 0;
+  j++;
+  while (j < len && cj_is_ident_continue(cast_uchar(src[j])))
+    j++;
+  if (strlen(kw) != j - i || strncmp(src + i, kw, j - i) != 0)
+    return 0;
+  if (out_end != NULL)
+    *out_end = j;
+  return 1;
+}
+
+
+static int cj_peek_keyword (const char *src, size_t i, size_t len,
+                            const char *kw) {
+  size_t pos = cj_skip_space_and_comments(src, i, len);
+  return cj_match_keyword_at(src, pos, len, kw, NULL);
+}
+
+
+static void cj_add_trimmed (luaL_Buffer *b, const char *src,
+                            size_t start, size_t end) {
+  while (start < end && isspace(cast_uchar(src[start])))
+    start++;
+  while (end > start && isspace(cast_uchar(src[end - 1])))
+    end--;
+  if (end > start)
+    luaL_addlstring(b, src + start, end - start);
+}
+
+
+static int cj_parse_for_clause (luaL_Buffer *b, const char *src,
+                                size_t *i, size_t len) {
+  size_t pos = cj_skip_space_and_comments(src, *i, len);
+  size_t start;
+  size_t k;
+  size_t end;
+  size_t in_pos = (size_t)-1;
+  size_t j;
+  size_t var_start;
+  size_t var_end;
+  size_t expr_start;
+  size_t range_pos = (size_t)-1;
+  size_t range_len = 0;
+  int depth;
+  if (pos >= len || src[pos] != '(')
+    return 0;
+  start = pos + 1;
+  k = start;
+  depth = 1;
+  while (k < len && depth > 0) {
+    char c = src[k];
+    if (c == '"' || c == '\'') {
+      char delim = c;
+      k++;
+      while (k < len) {
+        if (src[k] == '\\' && k + 1 < len) {
+          k += 2;
+          continue;
+        }
+        if (src[k] == delim) {
+          k++;
+          break;
+        }
+        k++;
+      }
+      continue;
+    }
+    if (c == '/' && k + 1 < len) {
+      if (src[k + 1] == '/') {
+        k += 2;
+        while (k < len && src[k] != '\n')
+          k++;
+        continue;
+      }
+      if (src[k + 1] == '*') {
+        k += 2;
+        while (k + 1 < len && !(src[k] == '*' && src[k + 1] == '/'))
+          k++;
+        if (k + 1 < len)
+          k += 2;
+        continue;
+      }
+    }
+    if (c == '(')
+      depth++;
+    else if (c == ')')
+      depth--;
+    k++;
+  }
+  if (depth != 0)
+    return 0;
+  end = k - 1;
+  j = start;
+  depth = 0;
+  while (j < end) {
+    char c = src[j];
+    if (c == '"' || c == '\'') {
+      char delim = c;
+      j++;
+      while (j < end) {
+        if (src[j] == '\\' && j + 1 < end) {
+          j += 2;
+          continue;
+        }
+        if (src[j] == delim) {
+          j++;
+          break;
+        }
+        j++;
+      }
+      continue;
+    }
+    if (c == '/' && j + 1 < end) {
+      if (src[j + 1] == '/') {
+        j += 2;
+        while (j < end && src[j] != '\n')
+          j++;
+        continue;
+      }
+      if (src[j + 1] == '*') {
+        j += 2;
+        while (j + 1 < end && !(src[j] == '*' && src[j + 1] == '/'))
+          j++;
+        if (j + 1 < end)
+          j += 2;
+        continue;
+      }
+    }
+    if (c == '(' || c == '[' || c == '{')
+      depth++;
+    else if (c == ')' || c == ']' || c == '}')
+      depth--;
+    if (depth == 0 && cj_is_ident_start(cast_uchar(c))) {
+      size_t wend = j + 1;
+      while (wend < end && cj_is_ident_continue(cast_uchar(src[wend])))
+        wend++;
+      if (wend - j == 2 && strncmp(src + j, "in", 2) == 0) {
+        in_pos = j;
+        break;
+      }
+      j = wend;
+      continue;
+    }
+    j++;
+  }
+  if (in_pos == (size_t)-1)
+    return 0;
+  var_start = start;
+  var_end = in_pos;
+  while (var_start < var_end && isspace(cast_uchar(src[var_start])))
+    var_start++;
+  while (var_end > var_start && isspace(cast_uchar(src[var_end - 1])))
+    var_end--;
+  if (var_end - var_start == 3 && strncmp(src + var_start, "var", 3) == 0) {
+    var_start += 3;
+    while (var_start < var_end && isspace(cast_uchar(src[var_start])))
+      var_start++;
+  } else if (var_end - var_start == 3 &&
+             strncmp(src + var_start, "let", 3) == 0) {
+    var_start += 3;
+    while (var_start < var_end && isspace(cast_uchar(src[var_start])))
+      var_start++;
+  }
+  expr_start = in_pos + 2;
+  while (expr_start < end && isspace(cast_uchar(src[expr_start])))
+    expr_start++;
+  j = expr_start;
+  depth = 0;
+  while (j + 1 < end) {
+    char c = src[j];
+    if (c == '"' || c == '\'') {
+      char delim = c;
+      j++;
+      while (j < end) {
+        if (src[j] == '\\' && j + 1 < end) {
+          j += 2;
+          continue;
+        }
+        if (src[j] == delim) {
+          j++;
+          break;
+        }
+        j++;
+      }
+      continue;
+    }
+    if (c == '(' || c == '[' || c == '{')
+      depth++;
+    else if (c == ')' || c == ']' || c == '}')
+      depth--;
+    if (depth == 0 && src[j] == '.' && src[j + 1] == '.') {
+      if (j + 2 < end && src[j + 2] == '=') {
+        range_pos = j;
+        range_len = 3;
+      } else {
+        range_pos = j;
+        range_len = 2;
+      }
+      break;
+    }
+    j++;
+  }
+  luaL_addstring(b, " ");
+  if (range_pos != (size_t)-1) {
+    cj_add_trimmed(b, src, var_start, var_end);
+    luaL_addstring(b, " = ");
+    cj_add_trimmed(b, src, expr_start, range_pos);
+    luaL_addstring(b, ", ");
+    cj_add_trimmed(b, src, range_pos + range_len, end);
+  } else {
+    luaL_addstring(b, "_, ");
+    cj_add_trimmed(b, src, var_start, var_end);
+    luaL_addstring(b, " in ipairs(");
+    cj_add_trimmed(b, src, expr_start, end);
+    luaL_addchar(b, ')');
+  }
+  *i = k;
+  return 1;
+}
+
+
+static const char *cj_translate (lua_State *L, const char *src, size_t len,
+                                 size_t *out_len) {
+  luaL_Buffer b;
+  size_t i = 0;
+  int in_string = 0;
+  char string_delim = '\0';
+  int pending_else = 0;
+  int pending_else_depth = 0;
+  int in_var_decl = 0;
+  int in_func_decl = 0;
+  int in_param_list = 0;
+  int expect_return_type = 0;
+  int func_paren_depth = 0;
+  int prev_allows_index = 0;
+  int bracket_stack[256];
+  int bracket_top = 0;
+  CJBlock block_stack[256];
+  int block_top = 0;
+  CJLast last_keyword = CJ_LAST_NONE;
+  luaL_buffinit(L, &b);
+  while (i < len) {
+    unsigned char c = cast_uchar(src[i]);
+    if (in_string) {
+      luaL_addchar(&b, cast_char(c));
+      if (c == '\\' && i + 1 < len) {
+        luaL_addchar(&b, src[i + 1]);
+        i += 2;
+        continue;
+      }
+      if (c == cast_uchar(string_delim))
+        in_string = 0;
+      i++;
+      continue;
+    }
+    if (c == '/' && i + 1 < len && src[i + 1] == '/') {
+      luaL_addstring(&b, "--");
+      i += 2;
+      while (i < len && src[i] != '\n') {
+        luaL_addchar(&b, src[i]);
+        i++;
+      }
+      continue;
+    }
+    if (c == '/' && i + 1 < len && src[i + 1] == '*') {
+      luaL_addstring(&b, "--[[");
+      i += 2;
+      while (i + 1 < len && !(src[i] == '*' && src[i + 1] == '/')) {
+        luaL_addchar(&b, src[i]);
+        i++;
+      }
+      if (i + 1 < len)
+        i += 2;
+      luaL_addstring(&b, "]]");
+      continue;
+    }
+    if (c == '"' || c == '\'') {
+      in_string = 1;
+      string_delim = cast_char(c);
+      luaL_addchar(&b, cast_char(c));
+      i++;
+      continue;
+    }
+    if (isspace(c)) {
+      if (c == '\n')
+        in_var_decl = 0;
+      luaL_addchar(&b, cast_char(c));
+      i++;
+      continue;
+    }
+    if (cj_is_ident_start(c)) {
+      size_t start = i;
+      size_t end = i + 1;
+      size_t word_len;
+      while (end < len && cj_is_ident_continue(cast_uchar(src[end])))
+        end++;
+      word_len = end - start;
+      if (word_len == 3 && strncmp(src + start, "let", 3) == 0) {
+        luaL_addstring(&b, "local");
+        in_var_decl = 1;
+        last_keyword = CJ_LAST_NONE;
+        prev_allows_index = 0;
+      } else if (word_len == 3 && strncmp(src + start, "var", 3) == 0) {
+        luaL_addstring(&b, "local");
+        in_var_decl = 1;
+        last_keyword = CJ_LAST_NONE;
+        prev_allows_index = 0;
+      } else if (word_len == 4 && strncmp(src + start, "func", 4) == 0) {
+        luaL_addstring(&b, "function");
+        in_func_decl = 1;
+        in_param_list = 0;
+        expect_return_type = 0;
+        func_paren_depth = 0;
+        last_keyword = CJ_LAST_FUNCTION;
+        prev_allows_index = 0;
+      } else if (word_len == 2 && strncmp(src + start, "if", 2) == 0) {
+        luaL_addstring(&b, "if");
+        last_keyword = CJ_LAST_IF;
+        prev_allows_index = 0;
+      } else if (word_len == 4 && strncmp(src + start, "else", 4) == 0) {
+        if (pending_else && pending_else_depth == block_top) {
+          size_t next = cj_skip_space_and_comments(src, end, len);
+          size_t if_end = 0;
+          if (cj_match_keyword_at(src, next, len, "if", &if_end)) {
+            luaL_addstring(&b, "elseif");
+            i = if_end;
+            last_keyword = CJ_LAST_IF;
+            pending_else = 0;
+            prev_allows_index = 0;
+            continue;
+          }
+          luaL_addstring(&b, "else");
+          pending_else = 0;
+          if (block_top > 0 && block_stack[block_top - 1] == CJ_BLOCK_IF)
+            block_stack[block_top - 1] = CJ_BLOCK_ELSE;
+          last_keyword = CJ_LAST_ELSE;
+          prev_allows_index = 0;
+        } else {
+          luaL_addstring(&b, "else");
+          last_keyword = CJ_LAST_ELSE;
+          prev_allows_index = 0;
+        }
+      } else if (word_len == 5 && strncmp(src + start, "while", 5) == 0) {
+        luaL_addstring(&b, "while");
+        last_keyword = CJ_LAST_WHILE;
+        prev_allows_index = 0;
+      } else if (word_len == 3 && strncmp(src + start, "for", 3) == 0) {
+        luaL_addstring(&b, "for");
+        if (cj_parse_for_clause(&b, src, &end, len)) {
+          i = end;
+          last_keyword = CJ_LAST_FOR;
+          prev_allows_index = 0;
+          continue;
+        }
+        last_keyword = CJ_LAST_FOR;
+        prev_allows_index = 0;
+      } else if (word_len == 4 && strncmp(src + start, "null", 4) == 0) {
+        luaL_addstring(&b, "nil");
+        prev_allows_index = 1;
+      } else {
+        luaL_addlstring(&b, src + start, word_len);
+        if (word_len == 6 && strncmp(src + start, "return", 6) == 0)
+          prev_allows_index = 0;
+        else
+          prev_allows_index = 1;
+      }
+      i = end;
+      continue;
+    }
+    if (isdigit(c)) {
+      size_t start = i;
+      size_t end = i + 1;
+      while (end < len && isdigit(cast_uchar(src[end])))
+        end++;
+      if (end < len && src[end] == '.' &&
+          !(end + 1 < len && src[end + 1] == '.')) {
+        end++;
+        while (end < len && isdigit(cast_uchar(src[end])))
+          end++;
+      }
+      luaL_addlstring(&b, src + start, end - start);
+      i = end;
+      prev_allows_index = 1;
+      continue;
+    }
+    if (c == ':' && (in_var_decl || in_param_list || expect_return_type)) {
+      size_t j = i + 1;
+      int angle_depth = 0;
+      while (j < len) {
+        unsigned char d = cast_uchar(src[j]);
+        if (d == '<')
+          angle_depth++;
+        else if (d == '>' && angle_depth > 0)
+          angle_depth--;
+        if (angle_depth == 0 &&
+            (d == ',' || d == '=' || d == ')' || d == '{' ||
+             d == ';' || d == '\n'))
+          break;
+        j++;
+      }
+      i = j;
+      expect_return_type = 0;
+      continue;
+    }
+    if (c == '(') {
+      if (in_func_decl) {
+        if (func_paren_depth == 0)
+          in_param_list = 1;
+        func_paren_depth++;
+      }
+      luaL_addchar(&b, '(');
+      i++;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == ')') {
+      if (in_func_decl && func_paren_depth > 0) {
+        func_paren_depth--;
+        if (func_paren_depth == 0) {
+          in_param_list = 0;
+          expect_return_type = 1;
+        }
+      }
+      luaL_addchar(&b, ')');
+      i++;
+      prev_allows_index = 1;
+      continue;
+    }
+    if (c == '{') {
+      CJBlock block = CJ_BLOCK_GENERIC;
+      if (last_keyword == CJ_LAST_IF) {
+        luaL_addstring(&b, " then");
+        block = CJ_BLOCK_IF;
+      } else if (last_keyword == CJ_LAST_ELSE) {
+        block = CJ_BLOCK_ELSE;
+      } else if (last_keyword == CJ_LAST_WHILE ||
+                 last_keyword == CJ_LAST_FOR) {
+        luaL_addstring(&b, " do");
+        block = CJ_BLOCK_LOOP;
+      } else if (last_keyword == CJ_LAST_FUNCTION) {
+        block = CJ_BLOCK_FUNCTION;
+      } else {
+        luaL_addstring(&b, " do");
+        block = CJ_BLOCK_GENERIC;
+      }
+      if (block_top >= CJ_STACK_MAX) {
+        luaL_error(L, "Cangjie syntax nesting too deep");
+      }
+      else {
+        block_stack[block_top++] = block;
+      }
+      last_keyword = CJ_LAST_NONE;
+      in_var_decl = 0;
+      if (block == CJ_BLOCK_FUNCTION) {
+        in_func_decl = 0;
+        expect_return_type = 0;
+      }
+      i++;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == '}') {
+      if (block_top > 0) {
+        CJBlock block = block_stack[block_top - 1];
+        if (block == CJ_BLOCK_IF &&
+            cj_peek_keyword(src, i + 1, len, "else")) {
+          pending_else = 1;
+          pending_else_depth = block_top;
+        } else {
+          block_top--;
+          luaL_addstring(&b, " end");
+        }
+      } else {
+        luaL_addstring(&b, " end");
+      }
+      i++;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == '[') {
+      int is_literal = !prev_allows_index;
+      if (bracket_top >= CJ_STACK_MAX) {
+        luaL_error(L, "Cangjie syntax nesting too deep");
+      }
+      else {
+        bracket_stack[bracket_top++] = is_literal;
+      }
+      luaL_addchar(&b, is_literal ? '{' : '[');
+      i++;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == ']') {
+      int is_literal = 0;
+      if (bracket_top > 0)
+        is_literal = bracket_stack[--bracket_top];
+      luaL_addchar(&b, is_literal ? '}' : ']');
+      i++;
+      prev_allows_index = 1;
+      continue;
+    }
+    if (c == '&' && i + 1 < len && src[i + 1] == '&') {
+      luaL_addstring(&b, " and ");
+      i += 2;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == '|' && i + 1 < len && src[i + 1] == '|') {
+      luaL_addstring(&b, " or ");
+      i += 2;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == '!' && i + 1 < len && src[i + 1] == '=') {
+      luaL_addstring(&b, "~=");
+      i += 2;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == '!') {
+      luaL_addstring(&b, "not ");
+      i++;
+      prev_allows_index = 0;
+      continue;
+    }
+    if (c == ';') {
+      in_var_decl = 0;
+      i++;
+      continue;
+    }
+    if (c == '=')
+      in_var_decl = 0;
+    if (c == '\n')
+      in_var_decl = 0;
+    luaL_addchar(&b, cast_char(c));
+    prev_allows_index = (c == ')' || c == ']');
+    i++;
+  }
+  luaL_pushresult(&b);
+  return lua_tolstring(L, -1, out_len);
+}
+
+
+static int cj_needs_translation (const char *mode, const char *buff,
+                                 size_t size) {
+  if (mode && strchr(mode, 'b') && !strchr(mode, 't'))
+    return 0;
+  if (size > 0 && buff[0] == LUA_SIGNATURE[0])
+    return 0;
+  return 1;
+}
+
+
 typedef struct LoadF {
   unsigned n;  /* number of pre-read characters */
   FILE *f;  /* file being read */
@@ -810,6 +1428,7 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
   LoadF lf;
   int status, readstatus;
   int c;
+  int skipped;
   int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
   if (filename == NULL) {
     lua_pushliteral(L, "=stdin");
@@ -822,8 +1441,7 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
     if (lf.f == NULL) return errfile(L, "open", fnameindex);
   }
   lf.n = 0;
-  if (skipcomment(lf.f, &c))  /* read initial portion */
-    lf.buff[lf.n++] = '\n';  /* add newline to correct line numbers */
+  skipped = skipcomment(lf.f, &c);  /* read initial portion */
   if (c == LUA_SIGNATURE[0]) {  /* binary file? */
     lf.n = 0;  /* remove possible newline */
     if (filename) {  /* "real" file? */
@@ -832,11 +1450,36 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
       if (lf.f == NULL) return errfile(L, "reopen", fnameindex);
       skipcomment(lf.f, &c);  /* re-read initial portion */
     }
+    if (c != EOF)
+      lf.buff[lf.n++] = cast_char(c);  /* 'c' is the first character */
+    status = lua_load(L, getF, &lf, lua_tostring(L, -1), mode);
+    readstatus = ferror(lf.f);
   }
-  if (c != EOF)
-    lf.buff[lf.n++] = cast_char(c);  /* 'c' is the first character */
-  status = lua_load(L, getF, &lf, lua_tostring(L, -1), mode);
-  readstatus = ferror(lf.f);
+  else {
+    luaL_Buffer b;
+    size_t size;
+    size_t n;
+    const char *src;
+    luaL_buffinit(L, &b);
+    if (skipped)
+      luaL_addchar(&b, '\n');  /* add newline to correct line numbers */
+    if (c != EOF)
+      luaL_addchar(&b, cast_char(c));
+    for (;;) {
+      n = fread(lf.buff, 1, sizeof(lf.buff), lf.f);
+      if (n == 0)
+        break;
+      luaL_addlstring(&b, lf.buff, n);
+    }
+    readstatus = ferror(lf.f);
+    if (!readstatus) {
+      luaL_pushresult(&b);
+      src = lua_tolstring(L, -1, &size);
+      status = luaL_loadbufferx(L, src, size, lua_tostring(L, fnameindex),
+                                mode);
+      lua_remove(L, -2);
+    }
+  }
   errno = 0;  /* no useful error number until here */
   if (filename) fclose(lf.f);  /* close file (even in case of errors) */
   if (readstatus) {
@@ -867,6 +1510,16 @@ static const char *getS (lua_State *L, void *ud, size_t *size) {
 LUALIB_API int luaL_loadbufferx (lua_State *L, const char *buff, size_t size,
                                  const char *name, const char *mode) {
   LoadS ls;
+  if (cj_needs_translation(mode, buff, size)) {
+    size_t out_len = 0;
+    const char *translated = cj_translate(L, buff, size, &out_len);
+    int status;
+    ls.s = translated;
+    ls.size = out_len;
+    status = lua_load(L, getS, &ls, name, mode);
+    lua_remove(L, -2);
+    return status;
+  }
   ls.s = buff;
   ls.size = size;
   return lua_load(L, getS, &ls, name, mode);
@@ -1199,4 +1852,3 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
     luaL_error(L, "version mismatch: app. needs %f, Lua core provides %f",
                   (LUAI_UACNUMBER)ver, (LUAI_UACNUMBER)v);
 }
-
