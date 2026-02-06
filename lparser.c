@@ -28,6 +28,8 @@
 #include "lstring.h"
 #include "ltable.h"
 
+#include <stdio.h>
+
 
 
 /* maximum number of variable declarations per function (must be
@@ -1299,7 +1301,7 @@ static void funcargs (LexState *ls, expdesc *f) {
 static void lambdabody (LexState *ls, expdesc *e, int line);
 
 static void primaryexp (LexState *ls, expdesc *v) {
-  /* primaryexp -> NAME | '(' expr ')' */
+  /* primaryexp -> NAME | '(' expr [',' expr]* ')' | '(' ')' '=>' ... */
   switch (ls->t.token) {
     case '(': {
       int line = ls->linenumber;
@@ -1314,6 +1316,33 @@ static void primaryexp (LexState *ls, expdesc *v) {
         luaX_syntaxerror(ls, "unexpected '()'");
       }
       expr(ls, v);
+      if (ls->t.token == ',') {
+        /* Tuple: (a, b, c, ...) -> __cangjie_tuple(a, b, c, ...) */
+        FuncState *fs = ls->fs;
+        expdesc fn;
+        int base2;
+        /* We need to build: __cangjie_tuple(expr1, expr2, ...) */
+        /* expr1 is already parsed in v. We need to set up a function call. */
+        /* First, arrange the stack for the call */
+        buildvar(ls, luaX_newstring(ls, "__cangjie_tuple", 15), &fn);
+        luaK_exp2nextreg(fs, &fn);
+        base2 = fn.u.info;
+        luaK_exp2nextreg(fs, v);  /* push first element */
+        {
+          int nargs = 1;
+          while (testnext(ls, ',')) {
+            expdesc elem;
+            expr(ls, &elem);
+            luaK_exp2nextreg(fs, &elem);
+            nargs++;
+          }
+          check_match(ls, ')', '(', line);
+          init_exp(v, VCALL,
+                   luaK_codeABC(fs, OP_CALL, base2, nargs + 1, 2));
+          fs->freereg = cast_byte(base2 + 1);
+        }
+        return;
+      }
       check_match(ls, ')', '(', line);
       luaK_dischargevars(ls->fs, v);
       return;
@@ -2339,14 +2368,17 @@ static void skip_generic_params (LexState *ls) {
 
 static void structstat (LexState *ls, int line) {
   /*
-  ** struct NAME ['<' typeparams '>'] [':' super] '{' members '}'
+  ** struct NAME ['<' typeparams '>'] ['<:' PARENT ['&' IFACE]*] '{' members '}'
   ** Compiles to:
   **   NAME = {}; NAME.__index = NAME
   **   function NAME:method(...) ... end
+  **   __cangjie_setup_class(NAME)
+  **   [__cangjie_set_parent(NAME, PARENT)]
   */
   FuncState *fs = ls->fs;
   expdesc v, e;
   TString *sname;
+  TString *parent_name = NULL;
   int reg;
   int saved_nfields = ls->nfields;
   int saved_in_struct = ls->in_struct_method;
@@ -2358,24 +2390,61 @@ static void structstat (LexState *ls, int line) {
   luaX_next(ls);  /* skip 'struct' or 'class' */
   sname = str_checkname(ls);
 
-  /* skip generic type parameters */
-  skip_generic_params(ls);
-
-  /* optional super class ':' NAME */
-  if (testnext(ls, ':')) {
-    /* skip parent type name (for now, just skip it) */
+  /* Determine if '<' is generic params or '<:' inheritance */
+  if (ls->t.token == '<') {
+    int la = luaX_lookahead(ls);
+    if (la == ':') {
+      /* '<:' for inheritance/interface */
+      luaX_next(ls);  /* skip '<' (consumes lookahead ':') */
+      luaX_next(ls);  /* skip ':' */
+      /* First name is the parent class or interface */
+      if (ls->t.token == TK_NAME) {
+        parent_name = ls->t.seminfo.ts;
+        luaX_next(ls);
+      }
+      /* Skip additional interfaces after '&' */
+      while (ls->t.token == '&') {
+        luaX_next(ls);  /* skip '&' */
+        if (ls->t.token == TK_NAME) luaX_next(ls);
+      }
+    }
+    else {
+      /* Generic params '<T, U, ...>' */
+      skip_generic_params(ls);
+      /* After generics, check for '<:' again */
+      if (ls->t.token == '<' && luaX_lookahead(ls) == ':') {
+        luaX_next(ls);  /* skip '<' */
+        luaX_next(ls);  /* skip ':' */
+        if (ls->t.token == TK_NAME) {
+          parent_name = ls->t.seminfo.ts;
+          luaX_next(ls);
+        }
+        while (ls->t.token == '&') {
+          luaX_next(ls);
+          if (ls->t.token == TK_NAME) luaX_next(ls);
+        }
+      }
+    }
+  }
+  /* optional super class ':' NAME (old-style) */
+  else if (testnext(ls, ':')) {
+    if (ls->t.token == TK_NAME) {
+      parent_name = ls->t.seminfo.ts;
+      luaX_next(ls);
+    }
     while (ls->t.token == TK_NAME) luaX_next(ls);
   }
-  /* also handle '<:' for interface implementation: '<' ':' */
-  if (ls->t.token == '<' && luaX_lookahead(ls) == ':') {
-    luaX_next(ls);  /* skip '<' */
-    luaX_next(ls);  /* skip ':' */
-    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
-  }
-  /* also handle '<=' for backward compatibility */
+  /* handle '<=' for backward compatibility */
   else if (ls->t.token == TK_LE) {
-    luaX_next(ls);  /* skip '<=' which is our '<:' approximation */
-    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+    luaX_next(ls);  /* skip '<=' */
+    if (ls->t.token == TK_NAME) {
+      parent_name = ls->t.seminfo.ts;
+      luaX_next(ls);
+    }
+    while (ls->t.token == '&') {
+      luaX_next(ls);
+      if (ls->t.token == TK_NAME) luaX_next(ls);
+    }
   }
 
   /* Create the class table: NAME = {} */
@@ -2485,6 +2554,22 @@ static void structstat (LexState *ls, int line) {
     luaK_exp2nextreg(fs, &arg);
     init_exp(&fn, VCALL,
              luaK_codeABC(fs, OP_CALL, base2, 2, 1));
+    fs->freereg = cast_byte(base2);
+  }
+
+  /* If there's a parent class, generate: __cangjie_set_parent(NAME, PARENT) */
+  if (parent_name != NULL) {
+    expdesc fn, arg1, arg2;
+    int base2;
+    buildvar(ls, luaX_newstring(ls, "__cangjie_set_parent", 20), &fn);
+    luaK_exp2nextreg(fs, &fn);
+    base2 = fn.u.info;
+    buildvar(ls, sname, &arg1);
+    luaK_exp2nextreg(fs, &arg1);
+    buildvar(ls, parent_name, &arg2);
+    luaK_exp2nextreg(fs, &arg2);
+    init_exp(&fn, VCALL,
+             luaK_codeABC(fs, OP_CALL, base2, 3, 1));
     fs->freereg = cast_byte(base2);
   }
 
@@ -2731,6 +2816,620 @@ static void extendstat (LexState *ls, int line) {
 }
 
 
+static void enumstat (LexState *ls, int line) {
+  /*
+  ** enum NAME '{' '|' CTOR ['(' types ')'] ... '}'
+  ** Compiles to:
+  **   NAME = {}
+  **   NAME.CTOR = function(...) return { __tag="CTOR", __enum=NAME, [1]=a1, ... } end
+  **   (for no-arg constructors: NAME.CTOR = { __tag="CTOR", __enum=NAME, __nargs=0 })
+  */
+  FuncState *fs = ls->fs;
+  expdesc v, e;
+  TString *ename;
+
+  luaX_next(ls);  /* skip 'enum' */
+  ename = str_checkname(ls);
+
+  /* skip generic type parameters */
+  skip_generic_params(ls);
+
+  /* optional '<:' interface */
+  if (ls->t.token == '<' && luaX_lookahead(ls) == ':') {
+    luaX_next(ls);  /* skip '<' */
+    luaX_next(ls);  /* skip ':' */
+    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+  }
+
+  /* Create the enum table: NAME = {} */
+  buildvar(ls, ename, &v);
+  {
+    int pc = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+    luaK_code(fs, 0);
+    init_exp(&e, VNONRELOC, fs->freereg);
+    luaK_reserveregs(fs, 1);
+    luaK_settablesize(fs, pc, e.u.info, 0, 0);
+  }
+  luaK_storevar(fs, &v, &e);
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse enum constructors */
+  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    if (testnext(ls, '|')) {
+      /* '|' CTOR_NAME ['(' type_list ')'] */
+      TString *ctorname;
+      int has_params = 0;
+      int nparams = 0;
+
+      ctorname = str_checkname(ls);
+
+      /* Check for parameters */
+      if (ls->t.token == '(') {
+        luaX_next(ls);  /* skip '(' */
+        has_params = 1;
+        /* Count and skip parameter types */
+        if (ls->t.token != ')') {
+          nparams = 1;
+          /* skip type name (may be nested like Array<Int64>) */
+          {
+            int depth = 0;
+            while (ls->t.token != ')' || depth > 0) {
+              if (ls->t.token == '(' || ls->t.token == '<') depth++;
+              else if (ls->t.token == ')' || ls->t.token == '>') {
+                if (depth > 0) depth--;
+                else break;
+              }
+              else if (ls->t.token == ',' && depth == 0) nparams++;
+              if (ls->t.token == TK_EOS) break;
+              luaX_next(ls);
+            }
+          }
+        }
+        checknext(ls, ')');
+      }
+
+      if (has_params && nparams > 0) {
+        /* Constructor with parameters: create a function using cangjie_enum_ctor
+        ** Generate: NAME.CTOR = function(...)
+        **   local __val = {}
+        **   __val.__tag = "CTOR"
+        **   __val.__enum = NAME
+        **   __val.__nargs = nparams
+        **   for i=1,select('#',...) do __val[i] = select(i,...) end
+        **   return __val
+        ** end
+        ** We use a simpler approach: emit a closure with upvalues.
+        ** Actually, we'll generate Lua code that does this:
+        **   NAME.CTOR = function(a1, a2, ...)
+        **     return { __tag="CTOR", __enum=NAME, a1, a2, ..., __nargs=N }
+        **   end
+        **
+        ** For simplicity, we'll create a closure that captures NAME and CTOR string:
+        */
+        expdesc mv;
+        /* Build NAME.CTOR = __cangjie_enum_ctor_wrapper(NAME, "CTOR", nparams) */
+        /* We do it differently: create a small function inline */
+
+        /* NAME.CTOR */
+        buildvar(ls, ename, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, ctorname);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+
+        /* Create a function that takes nparams args and returns enum value table */
+        {
+          expdesc fb;
+          FuncState new_fs;
+          BlockCnt bl;
+          int param_i;
+          char pname[16];
+
+          new_fs.f = addprototype(ls);
+          new_fs.f->linedefined = line;
+          open_func(ls, &new_fs, &bl);
+
+          /* Create parameter variables a1, a2, ..., aN */
+          for (param_i = 0; param_i < nparams; param_i++) {
+            TString *pn;
+            sprintf(pname, "__p%d", param_i);
+            pn = luaX_newstring(ls, pname, (size_t)strlen(pname));
+            new_localvar(ls, pn);
+          }
+          new_fs.f->numparams = cast_byte(nparams);
+          adjustlocalvars(ls, nparams);
+          luaK_reserveregs(&new_fs, cast_int(new_fs.f->numparams));
+
+          /* Generate: local __val = {} */
+          {
+            TString *valname = luaX_newstring(ls, "__val", 5);
+            expdesc val_exp;
+            int pc2;
+            new_localvar(ls, valname);
+            pc2 = luaK_codevABCk(&new_fs, OP_NEWTABLE, 0, 0, 0, 0);
+            luaK_code(&new_fs, 0);
+            init_exp(&val_exp, VNONRELOC, new_fs.freereg);
+            luaK_reserveregs(&new_fs, 1);
+            luaK_settablesize(&new_fs, pc2, val_exp.u.info, 0, 0);
+            adjustlocalvars(ls, 1);
+
+            /* __val.__tag = "CTOR" */
+            {
+              expdesc tab2, key2, str_v;
+              init_exp(&tab2, VLOCAL, new_fs.freereg - 1);
+              luaK_exp2anyregup(&new_fs, &tab2);
+              codestring(&key2, luaX_newstring(ls, "__tag", 5));
+              luaK_indexed(&new_fs, &tab2, &key2);
+              codestring(&str_v, ctorname);
+              luaK_storevar(&new_fs, &tab2, &str_v);
+            }
+
+            /* __val.__enum = NAME (upvalue) */
+            {
+              expdesc tab2, key2, enum_v;
+              init_exp(&tab2, VLOCAL, new_fs.freereg - 1);
+              luaK_exp2anyregup(&new_fs, &tab2);
+              codestring(&key2, luaX_newstring(ls, "__enum", 6));
+              luaK_indexed(&new_fs, &tab2, &key2);
+              singlevaraux(&new_fs, ename, &enum_v, 1);
+              if (enum_v.k == VGLOBAL)
+                buildglobal(ls, ename, &enum_v);
+              luaK_storevar(&new_fs, &tab2, &enum_v);
+            }
+
+            /* __val.__nargs = nparams */
+            {
+              expdesc tab2, key2, nval;
+              init_exp(&tab2, VLOCAL, new_fs.freereg - 1);
+              luaK_exp2anyregup(&new_fs, &tab2);
+              codestring(&key2, luaX_newstring(ls, "__nargs", 7));
+              luaK_indexed(&new_fs, &tab2, &key2);
+              init_exp(&nval, VKINT, 0);
+              nval.u.ival = nparams;
+              luaK_storevar(&new_fs, &tab2, &nval);
+            }
+
+            /* __val[i] = param_i for each parameter */
+            for (param_i = 0; param_i < nparams; param_i++) {
+              expdesc tab2, key2, pval;
+              init_exp(&tab2, VLOCAL, new_fs.freereg - 1);
+              luaK_exp2anyregup(&new_fs, &tab2);
+              init_exp(&key2, VKINT, 0);
+              key2.u.ival = param_i + 1;
+              luaK_indexed(&new_fs, &tab2, &key2);
+              init_exp(&pval, VLOCAL, param_i);
+              luaK_storevar(&new_fs, &tab2, &pval);
+            }
+
+            /* return __val */
+            {
+              expdesc ret;
+              init_exp(&ret, VLOCAL, new_fs.freereg - 1);
+              luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
+            }
+          }
+
+          new_fs.f->lastlinedefined = ls->linenumber;
+          codeclosure(ls, &fb);
+          close_func(ls);
+
+          luaK_storevar(fs, &mv, &fb);
+        }
+      }
+      else {
+        /* No-parameter constructor: create a static enum value table */
+        /* NAME.CTOR = { __tag = "CTOR", __enum = NAME, __nargs = 0 } */
+        expdesc mv_v;
+
+        /* Build NAME.CTOR */
+        buildvar(ls, ename, &mv_v);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv_v);
+          codestring(&mkey, ctorname);
+          luaK_indexed(fs, &mv_v, &mkey);
+        }
+
+        /* Create the value table */
+        {
+          expdesc tbl_exp;
+          int pc2 = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+          luaK_code(fs, 0);
+          init_exp(&tbl_exp, VNONRELOC, fs->freereg);
+          luaK_reserveregs(fs, 1);
+          luaK_settablesize(fs, pc2, tbl_exp.u.info, 0, 0);
+          luaK_storevar(fs, &mv_v, &tbl_exp);
+        }
+
+        /* Set __tag = "CTOR" */
+        {
+          expdesc tab2, key2, str_v;
+          buildvar(ls, ename, &tab2);
+          {
+            expdesc ck;
+            luaK_exp2anyregup(fs, &tab2);
+            codestring(&ck, ctorname);
+            luaK_indexed(fs, &tab2, &ck);
+          }
+          luaK_exp2anyregup(fs, &tab2);
+          codestring(&key2, luaX_newstring(ls, "__tag", 5));
+          luaK_indexed(fs, &tab2, &key2);
+          codestring(&str_v, ctorname);
+          luaK_storevar(fs, &tab2, &str_v);
+        }
+
+        /* Set __enum = NAME */
+        {
+          expdesc tab2, key2, enum_v;
+          buildvar(ls, ename, &tab2);
+          {
+            expdesc ck;
+            luaK_exp2anyregup(fs, &tab2);
+            codestring(&ck, ctorname);
+            luaK_indexed(fs, &tab2, &ck);
+          }
+          luaK_exp2anyregup(fs, &tab2);
+          codestring(&key2, luaX_newstring(ls, "__enum", 6));
+          luaK_indexed(fs, &tab2, &key2);
+          buildvar(ls, ename, &enum_v);
+          luaK_storevar(fs, &tab2, &enum_v);
+        }
+
+        /* Set __nargs = 0 */
+        {
+          expdesc tab2, key2, nval;
+          buildvar(ls, ename, &tab2);
+          {
+            expdesc ck;
+            luaK_exp2anyregup(fs, &tab2);
+            codestring(&ck, ctorname);
+            luaK_indexed(fs, &tab2, &ck);
+          }
+          luaK_exp2anyregup(fs, &tab2);
+          codestring(&key2, luaX_newstring(ls, "__nargs", 7));
+          luaK_indexed(fs, &tab2, &key2);
+          init_exp(&nval, VKINT, 0);
+          nval.u.ival = 0;
+          luaK_storevar(fs, &tab2, &nval);
+        }
+
+        /* Also set as a global so constructors can be used without enum prefix */
+        {
+          expdesc gv, ctv;
+          buildvar(ls, ctorname, &gv);
+          buildvar(ls, ename, &ctv);
+          {
+            expdesc ck;
+            luaK_exp2anyregup(fs, &ctv);
+            codestring(&ck, ctorname);
+            luaK_indexed(fs, &ctv, &ck);
+          }
+          luaK_storevar(fs, &gv, &ctv);
+        }
+      }
+
+      /* Also register as global for direct access: CTOR = NAME.CTOR */
+      if (has_params && nparams > 0) {
+        expdesc gv, ctv;
+        buildvar(ls, ctorname, &gv);
+        buildvar(ls, ename, &ctv);
+        {
+          expdesc ck;
+          luaK_exp2anyregup(fs, &ctv);
+          codestring(&ck, ctorname);
+          luaK_indexed(fs, &ctv, &ck);
+        }
+        luaK_storevar(fs, &gv, &ctv);
+      }
+    }
+    else {
+      luaX_next(ls);  /* skip unknown tokens (e.g. method decls in enum) */
+    }
+    testnext(ls, ';');
+  }
+
+  check_match(ls, /*{*/ '}', TK_ENUM, line);
+}
+
+
+static void matchstat (LexState *ls, int line) {
+  /*
+  ** match '(' expr ')' '{' case_clauses '}'
+  ** Compiles to if-elseif chain:
+  **   local __match_val = expr
+  **   if __cangjie_match_tag(__match_val, "Ctor") then
+  **     local p1, p2 = __match_val[1], __match_val[2]
+  **     <body>
+  **   elseif ... then ...
+  **   end
+  **
+  ** For match as expression (assigned to var), uses a result temp.
+  **
+  ** Actually: we treat match as a statement that can also be used
+  ** in expression context. For simplicity, we compile it as a statement
+  ** with an intermediate variable for the result.
+  */
+  FuncState *fs = ls->fs;
+  expdesc match_val;
+  int first_case = 1;
+  int jmp_to_end[256];
+  int njumps = 0;
+  TString *match_var_name;
+
+  luaX_next(ls);  /* skip 'match' */
+  checknext(ls, '(');
+  expr(ls, &match_val);
+  checknext(ls, ')');
+
+  /* Store match value in a local variable */
+  match_var_name = luaX_newstring(ls, "__match_val", 11);
+  {
+    new_varkind(ls, match_var_name, VDKREG);
+    luaK_exp2nextreg(fs, &match_val);
+    adjustlocalvars(ls, 1);
+  }
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse case clauses */
+  while (ls->t.token == TK_CASE && ls->t.token != TK_EOS) {
+    BlockCnt bl;
+    luaX_next(ls);  /* skip 'case' */
+
+    if (first_case) {
+      first_case = 0;
+    }
+
+    /* Parse pattern */
+    if (ls->t.token == TK_NAME &&
+        strcmp(getstr(ls->t.seminfo.ts), "_") == 0 &&
+        luaX_lookahead(ls) == TK_ARROW) {
+      /* Wildcard pattern: _ => body */
+      luaX_next(ls);  /* skip '_' */
+      checknext(ls, TK_ARROW);  /* skip '=>' */
+      /* Execute body unconditionally */
+      enterblock(fs, &bl, 0);
+      if (ls->t.token == '{') {
+        luaX_next(ls);  /* skip '{' */
+        statlist(ls);
+        checknext(ls, '}');
+      }
+      else {
+        /* Single expression */
+        expdesc dummy;
+        expr(ls, &dummy);
+        /* Discard the expression result */
+        luaK_exp2nextreg(fs, &dummy);
+        fs->freereg--;
+      }
+      leaveblock(fs);
+      /* Jump to end */
+      if (njumps < 256)
+        jmp_to_end[njumps++] = luaK_jump(fs);
+    }
+    else if (ls->t.token == TK_NAME) {
+      /* Could be:
+      ** 1. Enum constructor: Ctor(p1, p2) => body
+      ** 2. Binding pattern: name => body
+      ** 3. Constant: name (that resolves to known value)
+      */
+      TString *patname = ls->t.seminfo.ts;
+      luaX_next(ls);  /* skip name */
+
+      if (ls->t.token == '(') {
+        /* Enum constructor pattern: Ctor(p1, p2, ...) => body */
+        int nparams = 0;
+        TString *param_names[32];
+
+        luaX_next(ls);  /* skip '(' */
+        /* Parse parameter bindings */
+        while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+          if (ls->t.token == TK_NAME) {
+            if (nparams < 32)
+              param_names[nparams++] = ls->t.seminfo.ts;
+            luaX_next(ls);
+          }
+          else if (ls->t.token == '_') {
+            if (nparams < 32)
+              param_names[nparams++] = NULL;  /* wildcard */
+            luaX_next(ls);
+          }
+          if (!testnext(ls, ',')) break;
+        }
+        checknext(ls, ')');
+        checknext(ls, TK_ARROW);  /* skip '=>' */
+
+        /* Generate: if __cangjie_match_tag(__match_val, "Ctor") then */
+        {
+          expdesc cond, fn, arg1, arg2;
+          int base2;
+          int condjmp;
+
+          buildvar(ls, luaX_newstring(ls, "__cangjie_match_tag", 19), &fn);
+          luaK_exp2nextreg(fs, &fn);
+          base2 = fn.u.info;
+          buildvar(ls, match_var_name, &arg1);
+          luaK_exp2nextreg(fs, &arg1);
+          codestring(&arg2, patname);
+          luaK_exp2nextreg(fs, &arg2);
+          init_exp(&fn, VCALL,
+                   luaK_codeABC(fs, OP_CALL, base2, 3, 2));
+          fs->freereg = cast_byte(base2 + 1);
+
+          init_exp(&cond, VNONRELOC, base2);
+          luaK_goiftrue(fs, &cond);
+          condjmp = cond.f;
+          fs->freereg = cast_byte(base2);
+
+          /* Body block */
+          enterblock(fs, &bl, 0);
+
+          /* Bind destructured parameters as local variables */
+          {
+            int pi;
+            for (pi = 0; pi < nparams; pi++) {
+              if (param_names[pi] != NULL) {
+                expdesc pval, idx_exp;
+                new_varkind(ls, param_names[pi], VDKREG);
+                /* __match_val[pi+1] */
+                buildvar(ls, match_var_name, &pval);
+                luaK_exp2anyregup(fs, &pval);
+                init_exp(&idx_exp, VKINT, 0);
+                idx_exp.u.ival = pi + 1;
+                luaK_indexed(fs, &pval, &idx_exp);
+                luaK_exp2nextreg(fs, &pval);
+                adjustlocalvars(ls, 1);
+              }
+              else {
+                /* Wildcard binding - create dummy local */
+                char dummy_name[16];
+                TString *dn;
+                expdesc pval, idx_exp;
+                sprintf(dummy_name, "__wd%d", pi);
+                dn = luaX_newstring(ls, dummy_name, (size_t)strlen(dummy_name));
+                new_varkind(ls, dn, VDKREG);
+                buildvar(ls, match_var_name, &pval);
+                luaK_exp2anyregup(fs, &pval);
+                init_exp(&idx_exp, VKINT, 0);
+                idx_exp.u.ival = pi + 1;
+                luaK_indexed(fs, &pval, &idx_exp);
+                luaK_exp2nextreg(fs, &pval);
+                adjustlocalvars(ls, 1);
+              }
+            }
+          }
+
+          if (ls->t.token == '{') {
+            luaX_next(ls);
+            statlist(ls);
+            checknext(ls, '}');
+          }
+          else {
+            expdesc dummy;
+            expr(ls, &dummy);
+            luaK_exp2nextreg(fs, &dummy);
+            fs->freereg--;
+          }
+
+          leaveblock(fs);
+
+          /* Jump to end */
+          if (njumps < 256)
+            jmp_to_end[njumps++] = luaK_jump(fs);
+
+          /* Patch the false branch */
+          luaK_patchtohere(fs, condjmp);
+        }
+      }
+      else {
+        /* Simple binding or constant pattern */
+        checknext(ls, TK_ARROW);  /* skip '=>' */
+
+        /* Check if this is a no-arg enum constructor match */
+        /* Generate: if __cangjie_match_tag(__match_val, "patname") ... */
+        /* We'll try tag match first, then fall back to value comparison */
+        {
+          expdesc cond, fn, arg1, arg2;
+          int base2;
+          int condjmp;
+
+          /* Try tag match: __cangjie_match_tag(__match_val, "patname") */
+          buildvar(ls, luaX_newstring(ls, "__cangjie_match_tag", 19), &fn);
+          luaK_exp2nextreg(fs, &fn);
+          base2 = fn.u.info;
+          buildvar(ls, match_var_name, &arg1);
+          luaK_exp2nextreg(fs, &arg1);
+          codestring(&arg2, patname);
+          luaK_exp2nextreg(fs, &arg2);
+          init_exp(&fn, VCALL,
+                   luaK_codeABC(fs, OP_CALL, base2, 3, 2));
+          fs->freereg = cast_byte(base2 + 1);
+
+          init_exp(&cond, VNONRELOC, base2);
+          luaK_goiftrue(fs, &cond);
+          condjmp = cond.f;
+          fs->freereg = cast_byte(base2);
+
+          enterblock(fs, &bl, 0);
+          if (ls->t.token == '{') {
+            luaX_next(ls);
+            statlist(ls);
+            checknext(ls, '}');
+          }
+          else {
+            expdesc dummy;
+            expr(ls, &dummy);
+            luaK_exp2nextreg(fs, &dummy);
+            fs->freereg--;
+          }
+          leaveblock(fs);
+
+          if (njumps < 256)
+            jmp_to_end[njumps++] = luaK_jump(fs);
+          luaK_patchtohere(fs, condjmp);
+        }
+      }
+    }
+    else if (ls->t.token == TK_INT || ls->t.token == TK_FLT ||
+             ls->t.token == TK_STRING || ls->t.token == TK_TRUE ||
+             ls->t.token == TK_FALSE || ls->t.token == TK_NIL) {
+      /* Constant pattern */
+      expdesc pat_val;
+      BlockCnt bl2;
+      int condjmp;
+
+      /* Get the pattern value */
+      simpleexp(ls, &pat_val);
+      checknext(ls, TK_ARROW);
+
+      /* Generate: if __match_val == pat_val then */
+      {
+        expdesc lhs;
+        buildvar(ls, match_var_name, &lhs);
+        luaK_infix(fs, OPR_EQ, &lhs);
+        luaK_posfix(fs, OPR_EQ, &lhs, &pat_val, line);
+        luaK_goiftrue(fs, &lhs);
+        condjmp = lhs.f;
+      }
+
+      enterblock(fs, &bl2, 0);
+      if (ls->t.token == '{') {
+        luaX_next(ls);
+        statlist(ls);
+        checknext(ls, '}');
+      }
+      else {
+        expdesc dummy;
+        expr(ls, &dummy);
+        luaK_exp2nextreg(fs, &dummy);
+        fs->freereg--;
+      }
+      leaveblock(fs);
+
+      if (njumps < 256)
+        jmp_to_end[njumps++] = luaK_jump(fs);
+      luaK_patchtohere(fs, condjmp);
+    }
+    else {
+      luaX_syntaxerror(ls, "invalid pattern in match expression");
+    }
+  }
+
+  check_match(ls, /*{*/ '}', TK_MATCH, line);
+
+  /* Patch all jumps to the end */
+  {
+    int ji;
+    for (ji = 0; ji < njumps; ji++) {
+      luaK_patchtohere(fs, jmp_to_end[ji]);
+    }
+  }
+}
+
+
 static void exprstat (LexState *ls) {
   /* stat -> func | assignment */
   FuncState *fs = ls->fs;
@@ -2839,6 +3538,14 @@ static void statement (LexState *ls) {
     }
     case TK_EXTEND: {  /* stat -> extend type */
       extendstat(ls, line);
+      break;
+    }
+    case TK_ENUM: {  /* stat -> enum definition */
+      enumstat(ls, line);
+      break;
+    }
+    case TK_MATCH: {  /* stat -> match expression */
+      matchstat(ls, line);
       break;
     }
     case TK_DBCOLON: {  /* stat -> label */

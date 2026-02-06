@@ -79,7 +79,8 @@ static int cangjie_bound_method (lua_State *L) {
 }
 
 /* Custom __index: if the value from the class table is a function,
-** return a bound method; otherwise return the raw value. */
+** return a bound method; otherwise return the raw value.
+** Supports inheritance: walks the __parent chain to find methods. */
 static int cangjie_index_handler (lua_State *L) {
   /* Arguments: obj (table), key */
   /* upvalue 1 = the class table */
@@ -90,18 +91,34 @@ static int cangjie_index_handler (lua_State *L) {
     return 1;  /* found in instance */
   }
   lua_pop(L, 1);
-  /* Look up in the class table */
-  lua_pushvalue(L, 2);  /* push key */
-  lua_gettable(L, lua_upvalueindex(1));  /* get cls[key] */
-  if (lua_isfunction(L, -1)) {
-    /* It's a method - create a bound method closure */
-    /* push function and obj as upvalues */
-    lua_pushvalue(L, -1);  /* function */
-    lua_pushvalue(L, 1);   /* obj (self) */
-    lua_pushcclosure(L, cangjie_bound_method, 2);
-    return 1;
+  /* Look up in the class table, walking up parent chain */
+  {
+    int cls_idx;
+    lua_pushvalue(L, lua_upvalueindex(1));  /* start with the class table */
+    cls_idx = lua_gettop(L);
+    while (!lua_isnil(L, cls_idx)) {
+      lua_pushvalue(L, 2);  /* push key */
+      lua_rawget(L, cls_idx);  /* rawget to avoid metatable loops */
+      if (!lua_isnil(L, -1)) {
+        if (lua_isfunction(L, -1)) {
+          /* It's a method - create a bound method closure */
+          lua_pushvalue(L, -1);  /* function */
+          lua_pushvalue(L, 1);   /* obj (self) */
+          lua_pushcclosure(L, cangjie_bound_method, 2);
+          return 1;
+        }
+        return 1;  /* return non-function value */
+      }
+      lua_pop(L, 1);  /* pop nil */
+      /* Try parent class */
+      lua_getfield(L, cls_idx, "__parent");
+      lua_remove(L, cls_idx);  /* remove old class ref */
+      cls_idx = lua_gettop(L);
+    }
+    lua_pop(L, 1);  /* pop nil (end of chain) */
   }
-  return 1;  /* return the value as-is (nil or other) */
+  lua_pushnil(L);
+  return 1;  /* not found */
 }
 
 static int cangjie_call_handler (lua_State *L) {
@@ -111,6 +128,9 @@ static int cangjie_call_handler (lua_State *L) {
   lua_newtable(L);              /* create new instance: obj = {} */
   /* stack: [cls, arg1, ..., argN, obj] */
   int obj = lua_gettop(L);
+  /* Store __class reference in instance for type checking */
+  lua_pushvalue(L, 1);
+  lua_setfield(L, obj, "__class");
   /* Set up metatable for the instance with custom __index */
   lua_newtable(L);              /* instance metatable */
   lua_pushvalue(L, 1);          /* push cls as upvalue */
@@ -272,6 +292,153 @@ static int luaB_copy_to_type (lua_State *L) {
     lua_pop(L, 1);  /* pop value, keep key for next iteration */
   }
   return 0;
+}
+
+
+/*
+** __cangjie_set_parent(child_class, parent_class) - Set up inheritance
+** relationship. Copies parent methods to child (child overrides take
+** priority), sets __parent reference for runtime chain walking.
+*/
+static int luaB_set_parent (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* child class */
+  luaL_checktype(L, 2, LUA_TTABLE);  /* parent class */
+  /* Set __parent reference */
+  lua_pushvalue(L, 2);
+  lua_setfield(L, 1, "__parent");
+  /* Copy parent methods to child (only those not already defined) */
+  lua_pushnil(L);
+  while (lua_next(L, 2) != 0) {
+    /* stack: child, parent, key, value */
+    const char *key;
+    if (lua_type(L, -2) == LUA_TSTRING) {
+      key = lua_tostring(L, -2);
+      /* Skip internal fields and init */
+      if (key[0] != '_' && strcmp(key, "init") != 0) {
+        /* Only copy if child doesn't already have this key */
+        lua_pushvalue(L, -2);  /* push key */
+        lua_rawget(L, 1);      /* get child[key] */
+        if (lua_isnil(L, -1)) {
+          /* Not in child, copy from parent */
+          lua_pop(L, 1);  /* pop nil */
+          lua_pushvalue(L, -2);  /* push key */
+          lua_pushvalue(L, -2);  /* push value */
+          lua_rawset(L, 1);      /* child[key] = value */
+        }
+        else {
+          lua_pop(L, 1);  /* pop existing value */
+        }
+      }
+    }
+    lua_pop(L, 1);  /* pop value, keep key */
+  }
+  return 0;
+}
+
+
+/*
+** __cangjie_is_instance(obj, cls) - Check if obj is an instance of cls
+** (or any of its parent classes). Returns true/false.
+*/
+static int luaB_is_instance (lua_State *L) {
+  if (!lua_istable(L, 1) || !lua_istable(L, 2)) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  /* Get obj.__class and walk the parent chain */
+  lua_getfield(L, 1, "__class");
+  while (!lua_isnil(L, -1)) {
+    if (lua_rawequal(L, -1, 2)) {
+      lua_pushboolean(L, 1);
+      return 1;
+    }
+    lua_getfield(L, -1, "__parent");
+    lua_remove(L, -2);
+  }
+  lua_pushboolean(L, 0);
+  return 1;
+}
+
+
+/*
+** __cangjie_enum_constructor(enum_table, tag, ...) - Create an enum value.
+** Returns a table { __tag = tag, __enum = enum_table, [1]=arg1, [2]=arg2, ... }
+*/
+static int cangjie_enum_call_handler (lua_State *L);
+
+static int luaB_setup_enum (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* enum table */
+  /* Set up __call metamethod on the enum table so Enum.Constructor(args)
+  ** works automatically through the constructor functions */
+  return 0;
+}
+
+static int cangjie_enum_ctor (lua_State *L) {
+  /* upvalue 1 = enum table, upvalue 2 = tag string */
+  int nargs = lua_gettop(L);
+  int i;
+  lua_newtable(L);  /* create enum value table */
+  int val = lua_gettop(L);
+  /* Set __tag */
+  lua_pushvalue(L, lua_upvalueindex(2));
+  lua_setfield(L, val, "__tag");
+  /* Set __enum */
+  lua_pushvalue(L, lua_upvalueindex(1));
+  lua_setfield(L, val, "__enum");
+  /* Set positional args */
+  for (i = 1; i <= nargs; i++) {
+    lua_pushvalue(L, i);
+    lua_rawseti(L, val, i);
+  }
+  /* Set __nargs */
+  lua_pushinteger(L, nargs);
+  lua_setfield(L, val, "__nargs");
+  return 1;
+}
+
+
+/*
+** __cangjie_match(value, ...) - Pattern matching runtime support.
+** This is primarily handled at compile time by the parser generating
+** appropriate if-else chains. This function provides runtime type checking.
+*/
+static int luaB_match_tag (lua_State *L) {
+  /* Check if a value's __tag matches a given tag string */
+  const char *tag;
+  if (!lua_istable(L, 1)) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  tag = luaL_checkstring(L, 2);
+  lua_getfield(L, 1, "__tag");
+  if (lua_isstring(L, -1)) {
+    lua_pushboolean(L, strcmp(lua_tostring(L, -1), tag) == 0);
+  }
+  else {
+    lua_pushboolean(L, 0);
+  }
+  return 1;
+}
+
+
+/*
+** __cangjie_tuple(...) - Create a tuple value.
+** Returns a table { [0]=arg1, [1]=arg2, ..., __n=count, __tuple=true }
+*/
+static int luaB_tuple (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int i;
+  lua_newtable(L);
+  int tbl = lua_gettop(L);
+  for (i = 1; i <= nargs; i++) {
+    lua_pushvalue(L, i);
+    lua_rawseti(L, tbl, i - 1);  /* 0-based indexing */
+  }
+  lua_pushinteger(L, nargs);
+  lua_setfield(L, tbl, "__n");
+  lua_pushboolean(L, 1);
+  lua_setfield(L, tbl, "__tuple");
+  return 1;
 }
 
 
@@ -774,6 +941,10 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_setup_class", luaB_setup_class},
   {"__cangjie_extend_type", luaB_extend_type},
   {"__cangjie_copy_to_type", luaB_copy_to_type},
+  {"__cangjie_set_parent", luaB_set_parent},
+  {"__cangjie_is_instance", luaB_is_instance},
+  {"__cangjie_match_tag", luaB_match_tag},
+  {"__cangjie_tuple", luaB_tuple},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},
