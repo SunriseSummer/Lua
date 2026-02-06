@@ -1578,40 +1578,89 @@ static void bracelambda (LexState *ls, expdesc *e, int line) {
     new_fs.f->numparams = cast_byte(new_fs.nactvar);
     luaK_reserveregs(&new_fs, new_fs.nactvar);
   }
-  /* Parse body until '}'. Check if it's a simple expression for auto-return,
-  ** or if it starts with a statement keyword (let/var/if/while/for/return/etc.) */
+  /* Parse body until '}'. 
+  ** Strategy: scan the raw input to check if the body contains assignment ('=')
+  ** or statement keywords. If it does, parse as statlist. Otherwise, parse as
+  ** a single expression with auto-return. */
   {
+    int use_statlist = 0;
     int tok = ls->t.token;
+    /* Quick check: if first token is a statement keyword, use statlist */
     if (tok == TK_LET || tok == TK_VAR || tok == TK_IF || tok == TK_WHILE ||
         tok == TK_FOR || tok == TK_RETURN || tok == TK_MATCH ||
         tok == TK_FUNC || tok == TK_CLASS || tok == TK_STRUCT ||
-        tok == TK_ENUM || tok == TK_INTERFACE || tok == TK_EXTEND) {
-      /* Body starts with a statement keyword - parse as statement list */
-      statlist(ls);
+        tok == TK_ENUM || tok == TK_INTERFACE || tok == TK_EXTEND ||
+        tok == TK_BREAK || tok == TK_CONTINUE) {
+      use_statlist = 1;
     }
     else if (tok == /*{*/ '}') {
-      /* Empty body - no-op lambda */
+      /* Empty body */
+      use_statlist = 0;
     }
     else {
-      /* Try to parse as an expression for auto-return */
+      /* Scan raw chars to see if body has assignment or newlines with statements */
+      const char *saved_p2 = ls->z->p;
+      size_t saved_n2 = ls->z->n;
+      int saved_current2 = ls->current;
+      int depth2 = 0;
+      int ch2 = ls->current;
+      while (ch2 != EOZ) {
+        if (ch2 == '{' || ch2 == '(' || ch2 == '[') depth2++;
+        else if (ch2 == ')' || ch2 == ']') depth2--;
+        else if (ch2 == '}') {
+          if (depth2 <= 0) break;
+          depth2--;
+        }
+        else if (ch2 == '=' && depth2 == 0) {
+          /* Check it's not == or => */
+          if (ls->z->n > 0) {
+            char next_ch = *(ls->z->p);
+            if (next_ch == '=' || next_ch == '>') {
+              /* Skip the second char of == or => */
+              ls->z->p++; ls->z->n--;
+            }
+            else {
+              use_statlist = 1;
+              break;
+            }
+          }
+          else {
+            use_statlist = 1;
+            break;
+          }
+        }
+        else if (ch2 == '"' || ch2 == '\'') {
+          int delim2 = ch2;
+          if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+          while (ch2 != delim2 && ch2 != EOZ) {
+            if (ch2 == '\\') {
+              if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
+              else break;
+            }
+            if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
+            else break;
+          }
+        }
+        if (ls->z->n > 0) { ch2 = *(ls->z->p); ls->z->p++; ls->z->n--; }
+        else break;
+      }
+      ls->z->p = saved_p2;
+      ls->z->n = saved_n2;
+      ls->current = saved_current2;
+    }
+
+    if (tok == /*{*/ '}') {
+      /* Empty body - no-op */
+    }
+    else if (use_statlist) {
+      statlist(ls);
+    }
+    else {
+      /* Single expression body - auto return */
       expdesc ret;
       expr(ls, &ret);
-      if (ls->t.token == /*{*/ '}') {
-        /* Single expression - auto return */
-        luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
-      }
-      else {
-        /* Expression followed by more code - treat expression as statement
-        ** (e.g., function call), then parse remaining statements */
-        if (ret.k == VCALL) {
-          SETARG_C(getinstruction(ls->fs, &ret), 1);  /* discard results */
-        }
-        else {
-          luaK_exp2nextreg(&new_fs, &ret);
-          new_fs.freereg = cast_byte(new_fs.nactvar);
-        }
-        statlist(ls);
-      }
+      luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
     }
   }
   new_fs.f->lastlinedefined = ls->linenumber;
