@@ -63,8 +63,6 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
-static void initglobal (LexState *ls, int nvars, int firstidx, int n,
-                        int line);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -148,12 +146,6 @@ static TString *str_checkname (LexState *ls) {
   ts = ls->t.seminfo.ts;
   luaX_next(ls);
   return ts;
-}
-
-
-static void skiptype (LexState *ls) {
-  if (testnext(ls, ':'))
-    str_checkname(ls);
 }
 
 
@@ -1876,78 +1868,6 @@ static void localstat (LexState *ls) {
 }
 
 
-static void letlocalstat (LexState *ls) {
-  /* stat -> LET NAME [':' NAME] attrib { ',' NAME [':' NAME] attrib } ['=' explist] */
-  FuncState *fs = ls->fs;
-  int toclose = -1;  /* index of to-be-closed variable (if any) */
-  Vardesc *var;  /* last variable */
-  int vidx;  /* index of last variable */
-  int nvars = 0;
-  int nexps;
-  expdesc e;
-  /* get prefixed attribute (if any); default is const local variable */
-  lu_byte defkind = getvarattribute(ls, RDKCONST);
-  lu_byte kind;
-  do {  /* for each variable */
-    TString *vname = str_checkname(ls);  /* get its name */
-    skiptype(ls);
-    kind = getvarattribute(ls, defkind);  /* postfixed attribute */
-    vidx = new_varkind(ls, vname, kind);  /* predeclare it */
-    if (kind == RDKTOCLOSE) {  /* to-be-closed? */
-      if (toclose != -1)  /* one already present? */
-        luaK_semerror(ls, "multiple to-be-closed variables in local list");
-      toclose = fs->nactvar + nvars;
-    }
-    nvars++;
-  } while (testnext(ls, ','));
-  if (testnext(ls, '='))  /* initialization? */
-    nexps = explist(ls, &e);
-  else {
-    e.k = VVOID;
-    nexps = 0;
-  }
-  var = getlocalvardesc(fs, vidx);  /* retrieve last variable */
-  if (nvars == nexps &&  /* no adjustments? */
-      var->vd.kind == RDKCONST &&  /* last variable is const? */
-      luaK_exp2const(fs, &e, &var->k)) {  /* compile-time constant? */
-    var->vd.kind = RDKCTC;  /* variable is a compile-time constant */
-    adjustlocalvars(ls, nvars - 1);  /* exclude last variable */
-    fs->nactvar++;  /* but count it */
-  }
-  else {
-    adjust_assign(ls, nvars, nexps, &e);
-    adjustlocalvars(ls, nvars);
-  }
-  checktoclose(fs, toclose);
-}
-
-
-static void letglobalstat (LexState *ls) {
-  /* stat -> LET NAME [':' NAME] {',' NAME [':' NAME]} ['=' explist] */
-  FuncState *fs = ls->fs;
-  int nvars = 0;
-  int lastidx;  /* index of last registered variable */
-  do {  /* for each name */
-    TString *vname = str_checkname(ls);
-    skiptype(ls);
-    lastidx = new_varkind(ls, vname, GDKCONST);
-    nvars++;
-  } while (testnext(ls, ','));
-  if (testnext(ls, '='))  /* initialization? */
-    initglobal(ls, nvars, lastidx - nvars + 1, 0,
-               ls->linenumber);  /* start recursion at first variable */
-  fs->nactvar = cast_short(fs->nactvar + nvars);  /* activate declaration */
-}
-
-
-static void letstat (LexState *ls) {
-  if (ls->fs->prev == NULL)
-    letglobalstat(ls);
-  else
-    letlocalstat(ls);
-}
-
-
 static lu_byte getglobalattribute (LexState *ls, lu_byte df) {
   lu_byte kind = getvarattribute(ls, df);
   switch (kind) {
@@ -2177,11 +2097,6 @@ static void statement (LexState *ls) {
         localstat(ls);
       break;
     }
-    case TK_LET: {  /* stat -> letstat */
-      luaX_next(ls);  /* skip LET */
-      letstat(ls);
-      break;
-    }
     case TK_GLOBAL: {  /* stat -> globalstatfunc */
       globalstatfunc(ls, line);
       break;
@@ -2284,3 +2199,4 @@ LClosure *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff,
   L->top.p--;  /* remove scanner's table */
   return cl;  /* closure is on the stack, too */
 }
+
