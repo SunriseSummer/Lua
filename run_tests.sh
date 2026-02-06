@@ -50,6 +50,27 @@ if [ -d "${TEST_DIR}/ext-features" ]; then
   done
 fi
 
+# Run usages tests
+if [ -d "${TEST_DIR}/usages" ]; then
+  echo
+  echo "=== Usage Examples ==="
+  for f in "${TEST_DIR}/usages"/*.cj; do
+    [ -f "$f" ] || continue
+    name="usages/$(basename "$f")"
+    TOTAL=$((TOTAL + 1))
+    printf "Running %-40s ... " "$name"
+    output=$("$LUA" "$f" 2>&1)
+    if echo "$output" | grep -q "^PASS:"; then
+      echo "PASS"
+      PASS=$((PASS + 1))
+    else
+      echo "FAIL"
+      FAIL=$((FAIL + 1))
+      FAILURES="${FAILURES}\n--- ${name} ---\n${output}\n"
+    fi
+  done
+fi
+
 echo
 echo "=== Results ==="
 echo "Passed: ${PASS}"

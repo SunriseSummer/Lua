@@ -297,6 +297,18 @@ static int arith (lua_State *L, int op, const char *mtname) {
 
 
 static int arith_add (lua_State *L) {
+  /* Cangjie: string + string = concatenation */
+  if (lua_type(L, 1) == LUA_TSTRING && lua_type(L, 2) == LUA_TSTRING) {
+    lua_concat(L, 2);
+    return 1;
+  }
+  /* Cangjie: string + number = concatenation (auto-convert) */
+  if (lua_type(L, 1) == LUA_TSTRING && lua_type(L, 2) == LUA_TNUMBER) {
+    luaL_tolstring(L, 2, NULL);
+    lua_remove(L, 2);
+    lua_concat(L, 2);
+    return 1;
+  }
   return arith(L, LUA_OPADD, "__add");
 }
 

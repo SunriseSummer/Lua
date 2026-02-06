@@ -24,7 +24,7 @@ println("not t = ${not t}")
 // String operations
 let s1: String = "Hello"
 let s2: String = "World"
-let s3 = s1 .. ", " .. s2 .. "!"
+let s3 = s1 + ", " + s2 + "!"
 println(s3)
 
 // Comparison operators
