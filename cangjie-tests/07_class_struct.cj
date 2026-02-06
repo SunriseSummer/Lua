@@ -43,11 +43,6 @@ let cat = Animal("Cat", "Meow")
 println(dog.speak())
 println(cat.speak())
 
-// Interface (marker table)
-interface Printable {
-  func toString(): String
-}
-
 // Extend - add methods to existing types
 extend Point {
   func translate(dx: Int64, dy: Int64) {
