@@ -1103,6 +1103,10 @@ static void parlist (LexState *ls) {
   Proto *f = fs->f;
   int nparams = 0;
   int varargk = 0;
+  /* Track parameters with default values (max 32) */
+  int def_param[32];     /* parameter index (0-based) */
+  expdesc def_val[32];   /* default value expression */
+  int ndef = 0;          /* number of params with defaults */
   if (ls->t.token != ')') {  /* is 'parlist' not empty? */
     do {
       switch (ls->t.token) {
@@ -1147,12 +1151,52 @@ static void parlist (LexState *ls) {
               }
             }
           }
-          /* optional default value '= expr' - parse and discard */
-          if (testnext(ls, '=')) {
-            expdesc defval;
-            expr(ls, &defval);
-            /* Default values are parsed but not enforced at compile time.
-            ** In a dynamic runtime, callers must pass all positional args. */
+          /* optional default value '= expr' - save for later emission */
+          if (ls->t.token == '=' && ndef < 32) {
+            luaX_next(ls);  /* skip '=' */
+            def_param[ndef] = nparams;
+            /* Parse the default value as a simple constant expression */
+            switch (ls->t.token) {
+              case TK_INT:
+                init_exp(&def_val[ndef], VKINT, 0);
+                def_val[ndef].u.ival = ls->t.seminfo.i;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_FLT:
+                init_exp(&def_val[ndef], VKFLT, 0);
+                def_val[ndef].u.nval = ls->t.seminfo.r;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_STRING:
+                init_exp(&def_val[ndef], VKSTR, 0);
+                def_val[ndef].u.strval = ls->t.seminfo.ts;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_TRUE:
+                init_exp(&def_val[ndef], VTRUE, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_FALSE:
+                init_exp(&def_val[ndef], VFALSE, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_NIL:
+                init_exp(&def_val[ndef], VNIL, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              default: {
+                /* For complex expressions, parse and discard */
+                expdesc defval;
+                expr(ls, &defval);
+                break;
+              }
+            }
           }
           nparams++;
           break;
@@ -1178,6 +1222,36 @@ static void parlist (LexState *ls) {
   }
   /* reserve registers for parameters (plus vararg parameter, if present) */
   luaK_reserveregs(fs, fs->nactvar);
+  /* Emit default value preamble: if param == nil then param = default end
+  ** Note: uses truthiness test, so `false` as param value is treated as nil.
+  ** This is a known limitation for Bool parameters with default values. */
+  {
+    int i;
+    int firstparam = fs->nactvar - nparams - (varargk ? 1 : 0);
+    for (i = 0; i < ndef; i++) {
+      int reg = firstparam + def_param[i];
+      int skip_jmp;
+      expdesc defv, var_e, cond_e;
+      /* Build condition: test if param register is truthy */
+      init_exp(&cond_e, VNONRELOC, reg);
+      /* goiftrue: emit code that falls through if true, jumps if false.
+      ** After goiftrue, the false list (cond_e.f) contains jumps to the
+      ** code that should execute when the param is nil/false. */
+      luaK_goiftrue(fs, &cond_e);
+      /* Skip past default when param is truthy */
+      skip_jmp = luaK_jump(fs);
+      /* Patch false-list to here (default assignment) */
+      luaK_patchtohere(fs, cond_e.f);
+      /* Default value assignment: R[reg] = default */
+      defv = def_val[i];
+      init_exp(&var_e, VLOCAL, reg);
+      var_e.u.var.ridx = cast_byte(reg);
+      var_e.u.var.vidx = cast(short, firstparam + def_param[i]);
+      luaK_storevar(fs, &var_e, &defv);
+      /* Patch skip jump target to here */
+      luaK_patchtohere(fs, skip_jmp);
+    }
+  }
 }
 
 
@@ -1375,13 +1449,15 @@ static void primaryexp (LexState *ls, expdesc *v) {
       int line = ls->linenumber;
       luaX_next(ls);
       if (ls->t.token == ')') {
-        /* empty parens () - check for lambda => */
+        /* empty parens () - check for lambda => or Unit literal */
         luaX_next(ls);
         if (ls->t.token == TK_ARROW) {
           lambdabody(ls, v, line);
           return;
         }
-        luaX_syntaxerror(ls, "unexpected '()'");
+        /* '()' as Unit type literal (Cangjie): evaluates to nil */
+        init_exp(v, VNIL, 0);
+        return;
       }
       expr(ls, v);
       if (ls->t.token == ',') {
@@ -3115,7 +3191,7 @@ static void enumstat (LexState *ls, int line) {
 
   /* Parse enum constructors */
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
-    if (testnext(ls, '|')) {
+    if (testnext(ls, '|') || ls->t.token == TK_NAME) {
       /* '|' CTOR_NAME ['(' type_list ')'] */
       TString *ctorname;
       int has_params = 0;
@@ -4011,6 +4087,12 @@ static void statement (LexState *ls) {
       break;
     }
     default: {  /* stat -> func | assignment */
+      /* Check for Unit literal '()' used as a no-op statement */
+      if (ls->t.token == '(' && luaX_lookahead(ls) == ')') {
+        luaX_next(ls);  /* skip '(' */
+        luaX_next(ls);  /* skip ')' */
+        break;  /* no-op */
+      }
       exprstat(ls);
       break;
     }
