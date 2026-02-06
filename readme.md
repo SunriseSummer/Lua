@@ -55,8 +55,14 @@
   ```cangjie
   func power(base: Int64, exponent!: Int64 = 2): Int64 { ... }
   power(3, 2)     // 按位置传参
-  power(3)        // 使用默认值（需运行时支持）
+  power(3)        // 使用默认值 exponent=2，结果为 9
   ```
+- **Lambda 直接传参**：Lambda 表达式可直接作为函数类型参数传递
+  ```cangjie
+  func apply(fn: (Int64, Int64) -> Int64, a: Int64, b: Int64): Int64 { ... }
+  apply({ x, y => x + y }, 3, 4)  // 结果为 7
+  ```
+- **Unit 类型字面量**：`()` 表示空值（映射为 nil），可用于 match 分支中的空操作
 - **递归**
 - **多返回值**
 
@@ -257,7 +263,8 @@ enum Expr {
 - **无参构造器**：`| Red` - 创建单例值
 - **带参构造器**：`| Blue(Int64)` - 创建工厂函数
 - **多参数构造器**：`| RGB(Int64, Int64, Int64)`
-- **递归枚举**：构造器参数可引用枚举自身类型
+- **递归枚举**：构造器参数可引用枚举自身类型（如 `Node(Int64, Tree, Tree)`）
+- **行内构造器**：支持 `Empty | Leaf(Int64) | Node(Int64, Tree, Tree)` 行内语法（首个构造器无需 `|` 前缀）
 - **泛型枚举**：`enum Option<T> { | Some(T) | None }`
 - **成员函数**：枚举类型内可定义 `func`，通过 `this` 引用当前枚举实例
 - **直接访问**：`Color.Red` 或省略前缀 `Red`
@@ -402,9 +409,11 @@ func eval(e) {
 10. **模式匹配**：支持枚举模式、常量模式、通配符模式、类型模式和元组模式，但不支持守卫条件（where）
 11. **异常处理**：不支持 `try/catch/finally`，使用 Lua 的 `pcall` 替代
 12. **文件模块**：不支持仓颉的 `package`/`import` 模块系统，使用 Lua 的 `require` 替代
-13. **命名参数**：语法层面支持 `param!: Type = default` 声明形式和默认值语法，但由于运行时为动态类型，默认值在解析阶段被跳过；调用时需按位置传参，暂不支持 `name: value` 命名调用语法
+13. **命名参数**：支持 `param!: Type = default` 声明形式，未传参时自动使用默认值；调用时按位置传参，暂不支持 `name: value` 命名调用语法
 14. **Lambda 表达式**：花括号 Lambda `{ x => expr }` 中，如果 body 包含赋值语句则使用 `statlist` 解析（需显式 `return`），否则自动返回表达式值
 15. **幂运算**：`**` 运算结果为浮点数（遵循 Lua 底层实现），如 `2 ** 10` 返回 `1024.0`
+16. **默认值与 false**：默认值检测基于 Lua 的真值判断（nil/false 均视为"未传参"），因此 `false` 作为 Bool 参数的实参可能被覆盖为默认值
+17. **Unit 类型**：`()` 映射为 nil，可用作表达式或空操作语句
 
 ## 构建与测试
 
