@@ -386,6 +386,158 @@ static int luaB_match_tag (lua_State *L) {
 
 
 /*
+** __cangjie_match_tuple(value, n) - Check if value is a tuple with n elements.
+*/
+static int luaB_match_tuple (lua_State *L) {
+  if (!lua_istable(L, 1)) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  lua_getfield(L, 1, "__tuple");
+  if (!lua_toboolean(L, -1)) {
+    lua_pushboolean(L, 0);
+    return 1;
+  }
+  lua_pop(L, 1);
+  lua_getfield(L, 1, "__n");
+  if (lua_isinteger(L, -1)) {
+    lua_Integer n = lua_tointeger(L, -1);
+    lua_Integer expected = luaL_checkinteger(L, 2);
+    lua_pushboolean(L, n == expected);
+  }
+  else {
+    lua_pushboolean(L, 0);
+  }
+  return 1;
+}
+
+
+/*
+** __cangjie_setup_enum(enum_table) - Set up enum table so that enum values
+** (both constructor results and static values) get a metatable with __index
+** pointing to the enum table, enabling method calls on enum values via this.
+** Wraps parameterized constructors to set metatable on created values.
+*/
+
+/* Helper: wraps an enum constructor to set metatable on result */
+static int cangjie_enum_ctor_wrapper (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int i;
+  /* upvalue 1 = original constructor, upvalue 2 = enum metatable */
+  lua_pushvalue(L, lua_upvalueindex(1));  /* push original ctor */
+  for (i = 1; i <= nargs; i++) {
+    lua_pushvalue(L, i);
+  }
+  lua_call(L, nargs, 1);  /* call original ctor */
+  /* Set metatable on the result (if it's a table) */
+  if (lua_istable(L, -1)) {
+    lua_pushvalue(L, lua_upvalueindex(2));  /* push mt */
+    lua_setmetatable(L, -2);
+  }
+  return 1;
+}
+
+/* __index handler for enum values: looks up in enum table, auto-binds methods */
+static int cangjie_enum_index_handler (lua_State *L) {
+  /* Arguments: obj (enum value), key */
+  /* upvalue 1 = the enum table */
+  /* First, check raw access on the instance */
+  lua_pushvalue(L, 2);  /* push key */
+  lua_rawget(L, 1);
+  if (!lua_isnil(L, -1)) {
+    return 1;  /* found in instance */
+  }
+  lua_pop(L, 1);
+  /* Look up in enum table */
+  lua_pushvalue(L, 2);  /* push key */
+  lua_rawget(L, lua_upvalueindex(1));
+  if (!lua_isnil(L, -1)) {
+    if (lua_isfunction(L, -1)) {
+      /* Method: create bound closure */
+      lua_pushvalue(L, -1);  /* function */
+      lua_pushvalue(L, 1);   /* obj (self) */
+      lua_pushcclosure(L, cangjie_bound_method, 2);
+      return 1;
+    }
+    return 1;  /* non-function value */
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+static int luaB_setup_enum (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* enum table */
+  /* Create a metatable for enum values:
+  ** { __index = cangjie_enum_index_handler(enum_table) }
+  */
+  lua_newtable(L);  /* mt = {} */
+  lua_pushvalue(L, 1);  /* push enum table as upvalue */
+  lua_pushcclosure(L, cangjie_enum_index_handler, 1);
+  lua_setfield(L, -2, "__index");  /* mt.__index = handler */
+  /* Stack: [enum_table, mt] */
+
+  {
+    int mt_idx = lua_gettop(L);  /* index of mt */
+    /* Collect keys of functions to wrap */
+    int nfuncs = 0;
+    const char *func_keys[64];
+    lua_pushnil(L);  /* first key */
+    while (lua_next(L, 1) != 0) {
+      /* key at -2, value at -1 */
+      if (lua_type(L, -2) == LUA_TSTRING) {
+        if (lua_istable(L, -1)) {
+          lua_getfield(L, -1, "__tag");
+          if (lua_isstring(L, -1)) {
+            /* No-arg enum value: set metatable */
+            lua_pop(L, 1);  /* pop __tag */
+            lua_pushvalue(L, mt_idx);  /* push mt */
+            lua_setmetatable(L, -2);
+          }
+          else {
+            lua_pop(L, 1);  /* pop nil */
+          }
+        }
+        else if (lua_isfunction(L, -1) && nfuncs < 64) {
+          const char *key = lua_tostring(L, -2);
+          /* Skip internal fields and methods (only wrap constructors) */
+          if (key[0] != '_') {
+            /* Check if this looks like a constructor (capitalized name) */
+            if (key[0] >= 'A' && key[0] <= 'Z') {
+              func_keys[nfuncs++] = key;
+            }
+          }
+        }
+      }
+      lua_pop(L, 1);  /* pop value, keep key */
+    }
+    /* Now wrap collected constructor keys */
+    {
+      int fi;
+      for (fi = 0; fi < nfuncs; fi++) {
+        lua_getfield(L, 1, func_keys[fi]);  /* push original ctor */
+        lua_pushvalue(L, mt_idx);  /* push mt */
+        lua_pushcclosure(L, cangjie_enum_ctor_wrapper, 2);  /* wrap */
+        lua_setfield(L, 1, func_keys[fi]);  /* enum_table[key] = wrapper */
+        /* Also update global if it exists */
+        lua_getglobal(L, func_keys[fi]);
+        if (lua_isfunction(L, -1)) {
+          lua_pop(L, 1);
+          lua_getfield(L, 1, func_keys[fi]);  /* get wrapped version */
+          lua_setglobal(L, func_keys[fi]);  /* update global */
+        }
+        else {
+          lua_pop(L, 1);
+        }
+      }
+    }
+  }
+
+  lua_pop(L, 1);  /* pop mt */
+  return 0;
+}
+
+
+/*
 ** __cangjie_tuple(...) - Create a tuple value.
 ** Returns a table { [0]=arg1, [1]=arg2, ..., __n=count, __tuple=true }
 */
@@ -909,6 +1061,8 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_set_parent", luaB_set_parent},
   {"__cangjie_is_instance", luaB_is_instance},
   {"__cangjie_match_tag", luaB_match_tag},
+  {"__cangjie_match_tuple", luaB_match_tuple},
+  {"__cangjie_setup_enum", luaB_setup_enum},
   {"__cangjie_tuple", luaB_tuple},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
