@@ -125,9 +125,10 @@ static int cangjie_call_handler (lua_State *L) {
   /* Arguments: cls, arg1, arg2, ... (cls is first arg via __call) */
   int nargs = lua_gettop(L) - 1;  /* number of constructor args (excluding cls) */
   int i;
+  int obj;
   lua_newtable(L);              /* create new instance: obj = {} */
   /* stack: [cls, arg1, ..., argN, obj] */
-  int obj = lua_gettop(L);
+  obj = lua_gettop(L);
   /* Store __class reference in instance for type checking */
   lua_pushvalue(L, 1);
   lua_setfield(L, obj, "__class");
@@ -360,47 +361,10 @@ static int luaB_is_instance (lua_State *L) {
 }
 
 
-/*
-** __cangjie_enum_constructor(enum_table, tag, ...) - Create an enum value.
-** Returns a table { __tag = tag, __enum = enum_table, [1]=arg1, [2]=arg2, ... }
-*/
-static int cangjie_enum_call_handler (lua_State *L);
-
-static int luaB_setup_enum (lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);  /* enum table */
-  /* Set up __call metamethod on the enum table so Enum.Constructor(args)
-  ** works automatically through the constructor functions */
-  return 0;
-}
-
-static int cangjie_enum_ctor (lua_State *L) {
-  /* upvalue 1 = enum table, upvalue 2 = tag string */
-  int nargs = lua_gettop(L);
-  int i;
-  lua_newtable(L);  /* create enum value table */
-  int val = lua_gettop(L);
-  /* Set __tag */
-  lua_pushvalue(L, lua_upvalueindex(2));
-  lua_setfield(L, val, "__tag");
-  /* Set __enum */
-  lua_pushvalue(L, lua_upvalueindex(1));
-  lua_setfield(L, val, "__enum");
-  /* Set positional args */
-  for (i = 1; i <= nargs; i++) {
-    lua_pushvalue(L, i);
-    lua_rawseti(L, val, i);
-  }
-  /* Set __nargs */
-  lua_pushinteger(L, nargs);
-  lua_setfield(L, val, "__nargs");
-  return 1;
-}
-
 
 /*
-** __cangjie_match(value, ...) - Pattern matching runtime support.
-** This is primarily handled at compile time by the parser generating
-** appropriate if-else chains. This function provides runtime type checking.
+** __cangjie_match_tag(value, tag) - Check if a value's __tag matches tag.
+** Used by the pattern matching compiler to dispatch match cases.
 */
 static int luaB_match_tag (lua_State *L) {
   /* Check if a value's __tag matches a given tag string */
@@ -428,8 +392,9 @@ static int luaB_match_tag (lua_State *L) {
 static int luaB_tuple (lua_State *L) {
   int nargs = lua_gettop(L);
   int i;
+  int tbl;
   lua_newtable(L);
-  int tbl = lua_gettop(L);
+  tbl = lua_gettop(L);
   for (i = 1; i <= nargs; i++) {
     lua_pushvalue(L, i);
     lua_rawseti(L, tbl, i - 1);  /* 0-based indexing */

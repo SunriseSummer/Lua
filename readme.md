@@ -94,7 +94,7 @@ class Dog <: Animal {
 支持的继承特性：
 - **单继承**：`class Child <: Parent { ... }`
 - **接口实现**：`class Point <: Printable { ... }`
-- **多级继承**：`class GuideDog <: Dog <: Animal`
+- **多级继承**：`class GuideDog <: Dog`（Dog 已继承 Animal）
 - **方法重写**：子类可重写父类方法，运行时动态派发
 - **方法继承**：子类自动继承父类未重写的方法
 - **多态**：父类引用可调用子类重写的方法

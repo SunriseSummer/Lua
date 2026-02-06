@@ -2935,7 +2935,7 @@ static void enumstat (LexState *ls, int line) {
           /* Create parameter variables a1, a2, ..., aN */
           for (param_i = 0; param_i < nparams; param_i++) {
             TString *pn;
-            sprintf(pname, "__p%d", param_i);
+            snprintf(pname, sizeof(pname), "__p%d", param_i);
             pn = luaX_newstring(ls, pname, (size_t)strlen(pname));
             new_localvar(ls, pn);
           }
@@ -3288,7 +3288,7 @@ static void matchstat (LexState *ls, int line) {
                 char dummy_name[16];
                 TString *dn;
                 expdesc pval, idx_exp;
-                sprintf(dummy_name, "__wd%d", pi);
+                snprintf(dummy_name, sizeof(dummy_name), "__wd%d", pi);
                 dn = luaX_newstring(ls, dummy_name, (size_t)strlen(dummy_name));
                 new_varkind(ls, dn, VDKREG);
                 buildvar(ls, match_var_name, &pval);
