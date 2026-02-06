@@ -17,9 +17,9 @@ println("area = ${area}")
 // Boolean operations
 let t: Bool = true
 let f: Bool = false
-println("t and f = ${t and f}")
-println("t or f = ${t or f}")
-println("not t = ${not t}")
+println("t and f = ${t && f}")
+println("t or f = ${t || f}")
+println("not t = ${!t}")
 
 // String operations
 let s1: String = "Hello"

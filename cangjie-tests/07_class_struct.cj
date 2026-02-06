@@ -14,7 +14,7 @@ struct Point {
   func distance(other) {
     let dx = this.x - other.x
     let dy = this.y - other.y
-    return (dx * dx + dy * dy) ^ 0.5
+    return (dx * dx + dy * dy) ** 0.5
   }
 }
 

@@ -1098,27 +1098,108 @@ static void setvararg (FuncState *fs) {
 
 
 static void parlist (LexState *ls) {
-  /* parlist -> [ {NAME ':' TYPE ','} (NAME ':' TYPE | '...') ] */
+  /* parlist -> [ {NAME ['!'] ':' TYPE ['=' expr] ','} (NAME ['!'] ':' TYPE | '...') ] */
   FuncState *fs = ls->fs;
   Proto *f = fs->f;
   int nparams = 0;
   int varargk = 0;
+  /* Track parameters with default values */
+#define MAX_DEFAULT_PARAMS 32
+  int def_param[MAX_DEFAULT_PARAMS];     /* parameter index (0-based) */
+  expdesc def_val[MAX_DEFAULT_PARAMS];   /* default value expression */
+  int ndef = 0;          /* number of params with defaults */
   if (ls->t.token != ')') {  /* is 'parlist' not empty? */
     do {
       switch (ls->t.token) {
         case TK_NAME: {
           new_localvar(ls, str_checkname(ls));
+          /* optional '!' suffix for Cangjie named parameter declaration (skip it).
+          ** In Cangjie, 'param!: Type' declares a named parameter that can
+          ** be passed by name at call site, e.g. 'func(param: value)'. */
+          testnext(ls, TK_NOT);
           /* optional type annotation ': Type' - skip it */
           if (testnext(ls, ':')) {
-            /* skip type name (possibly generic like Array<Int64>) */
+            /* skip type name (possibly generic like Array<Int64> or
+            ** function type like (Int64, Int64) -> Int64) */
             int depth = 0;
-            while (ls->t.token == TK_NAME ||
-                   (ls->t.token == '<' ) ||
-                   (ls->t.token == '>' && depth > 0) ||
-                   (ls->t.token == ',' && depth > 0)) {
-              if (ls->t.token == '<') depth++;
-              else if (ls->t.token == '>') depth--;
-              luaX_next(ls);
+            for (;;) {
+              if (ls->t.token == TK_NAME) {
+                luaX_next(ls);
+              }
+              else if (ls->t.token == '<' || ls->t.token == '(') {
+                depth++;
+                luaX_next(ls);
+              }
+              else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+                depth--;
+                luaX_next(ls);
+                /* After closing ')' at depth 0, check for '-> Type' */
+                if (depth == 0 && ls->t.token == '-') {
+                  if (luaX_lookahead(ls) == '>') {
+                    luaX_next(ls);  /* skip '-' */
+                    luaX_next(ls);  /* skip '>' */
+                  }
+                }
+              }
+              else if (ls->t.token == ',' && depth > 0) {
+                luaX_next(ls);
+              }
+              else if (ls->t.token == TK_NOT && depth > 0) {
+                luaX_next(ls);  /* '!' in named params in function types */
+              }
+              else {
+                break;
+              }
+            }
+          }
+          /* optional default value '= expr' - save for later emission */
+          if (ls->t.token == '=') {
+            luaX_next(ls);  /* skip '=' */
+            if (ndef >= MAX_DEFAULT_PARAMS) {
+              luaX_syntaxerror(ls, "too many parameters with default values");
+            }
+            def_param[ndef] = nparams;
+            /* Parse the default value as a simple constant expression */
+            switch (ls->t.token) {
+              case TK_INT:
+                init_exp(&def_val[ndef], VKINT, 0);
+                def_val[ndef].u.ival = ls->t.seminfo.i;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_FLT:
+                init_exp(&def_val[ndef], VKFLT, 0);
+                def_val[ndef].u.nval = ls->t.seminfo.r;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_STRING:
+                init_exp(&def_val[ndef], VKSTR, 0);
+                def_val[ndef].u.strval = ls->t.seminfo.ts;
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_TRUE:
+                init_exp(&def_val[ndef], VTRUE, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_FALSE:
+                init_exp(&def_val[ndef], VFALSE, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              case TK_NIL:
+                init_exp(&def_val[ndef], VNIL, 0);
+                luaX_next(ls);
+                ndef++;
+                break;
+              default: {
+                /* For complex expressions, parse and discard */
+                expdesc defval;
+                expr(ls, &defval);
+                break;
+              }
             }
           }
           nparams++;
@@ -1145,6 +1226,40 @@ static void parlist (LexState *ls) {
   }
   /* reserve registers for parameters (plus vararg parameter, if present) */
   luaK_reserveregs(fs, fs->nactvar);
+  /* Emit default value preamble: if param == nil then param = default end
+  ** Note: uses truthiness test, so `false` as param value is treated as nil.
+  ** This is a known limitation for Bool parameters with default values. */
+  {
+    int i;
+    /* firstparam: the register index of the first parameter.
+    ** fs->nactvar is the total number of active locals (params + vararg param).
+    ** We subtract nparams and any vararg to get the base register index,
+    ** accounting for any 'self' parameter that was added before parlist. */
+    int firstparam = fs->nactvar - nparams - (varargk ? 1 : 0);
+    for (i = 0; i < ndef; i++) {
+      int reg = firstparam + def_param[i];
+      int skip_jmp;
+      expdesc defv, var_e, cond_e;
+      /* Build condition: test if param register is truthy */
+      init_exp(&cond_e, VNONRELOC, reg);
+      /* goiftrue: emit code that falls through if true, jumps if false.
+      ** After goiftrue, the false list (cond_e.f) contains jumps to the
+      ** code that should execute when the param is nil/false. */
+      luaK_goiftrue(fs, &cond_e);
+      /* Skip past default when param is truthy */
+      skip_jmp = luaK_jump(fs);
+      /* Patch false-list to here (default assignment) */
+      luaK_patchtohere(fs, cond_e.f);
+      /* Default value assignment: R[reg] = default */
+      defv = def_val[i];
+      init_exp(&var_e, VLOCAL, reg);
+      var_e.u.var.ridx = cast_byte(reg);
+      var_e.u.var.vidx = cast(short, firstparam + def_param[i]);
+      luaK_storevar(fs, &var_e, &defv);
+      /* Patch skip jump target to here */
+      luaK_patchtohere(fs, skip_jmp);
+    }
+  }
 }
 
 
@@ -1165,13 +1280,30 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   /* optional return type annotation ': Type' - skip it */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0)) {
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') depth--;
-      luaX_next(ls);
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
   checknext(ls, '{' /*}*/);
@@ -1203,13 +1335,30 @@ static void body_init (LexState *ls, expdesc *e, int line) {
   /* skip optional return type annotation */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0)) {
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') depth--;
-      luaX_next(ls);
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
   checknext(ls, '{' /*}*/);
@@ -1299,6 +1448,7 @@ static void funcargs (LexState *ls, expdesc *f) {
 
 
 static void lambdabody (LexState *ls, expdesc *e, int line);
+static void bracelambda (LexState *ls, expdesc *e, int line);
 
 static void primaryexp (LexState *ls, expdesc *v) {
   /* primaryexp -> NAME | '(' expr [',' expr]* ')' | '(' ')' '=>' ... */
@@ -1307,13 +1457,15 @@ static void primaryexp (LexState *ls, expdesc *v) {
       int line = ls->linenumber;
       luaX_next(ls);
       if (ls->t.token == ')') {
-        /* empty parens () - check for lambda => */
+        /* empty parens () - check for lambda => or Unit literal */
         luaX_next(ls);
         if (ls->t.token == TK_ARROW) {
           lambdabody(ls, v, line);
           return;
         }
-        luaX_syntaxerror(ls, "unexpected '()'");
+        /* '()' as Unit type literal (Cangjie): evaluates to nil */
+        init_exp(v, VNIL, 0);
+        return;
       }
       expr(ls, v);
       if (ls->t.token == ',') {
@@ -1435,8 +1587,81 @@ static void suffixedexp (LexState *ls, expdesc *v) {
 
 
 /*
+** Scan raw input characters from the current lexer position to check for
+** a specific pattern within a brace-delimited block. The scan tracks
+** nesting depth of {}, (), [].
+** mode: 0 = check for '=>' at depth 0 (lambda detection)
+**        1 = check for bare '=' (not '==' or '=>') at depth 0 (assignment detection)
+** Returns 1 if the pattern was found, 0 otherwise.
+** Saves and restores the lexer input stream position.
+*/
+static int scan_brace_block (LexState *ls, int mode) {
+  const char *saved_p = ls->z->p;
+  size_t saved_n = ls->z->n;
+  int saved_current = ls->current;
+  int depth = 0;
+  int ch = ls->current;
+  int found = 0;
+  while (ch != EOZ) {
+    if (ch == '{' || ch == '(' || ch == '[') depth++;
+    else if (ch == ')' || ch == ']') depth--;
+    else if (ch == '}') {
+      if (depth <= 0) break;
+      depth--;
+    }
+    else if (ch == '=' && depth == 0) {
+      if (ls->z->n > 0) {
+        char next_ch = *(ls->z->p);
+        if (mode == 0 && next_ch == '>') {
+          found = 1;
+          break;
+        }
+        if (mode == 1) {
+          if (next_ch == '=' || next_ch == '>') {
+            /* Skip the second char of == or => */
+            ls->z->p++; ls->z->n--;
+          }
+          else {
+            found = 1;
+            break;
+          }
+        }
+      }
+      else if (mode == 1) {
+        found = 1;
+        break;
+      }
+    }
+    else if (ch == '"' || ch == '\'') {
+      /* Skip string literals */
+      int delim = ch;
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while (ch != delim && ch != EOZ) {
+        if (ch == '\\') {
+          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+        }
+        if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+        else break;
+      }
+    }
+    /* Advance to next character */
+    if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+    else break;
+  }
+  /* Restore input stream position */
+  ls->z->p = saved_p;
+  ls->z->n = saved_n;
+  ls->current = saved_current;
+  return found;
+}
+
+
+/*
 ** Lambda body: => expr or => { block }
 ** Creates an anonymous function that returns the expression
+** Used for () => expr syntax
 */
 static void lambdabody (LexState *ls, expdesc *e, int line) {
   /* lambdabody -> '=>' expr | '=>' '{' block '}' */
@@ -1462,6 +1687,94 @@ static void lambdabody (LexState *ls, expdesc *e, int line) {
     luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
     new_fs.f->lastlinedefined = ls->linenumber;
   }
+  codeclosure(ls, e);
+  close_func(ls);
+}
+
+
+/*
+** Brace lambda: { [params] => body }
+** Cangjie-style lambda expression enclosed in braces.
+** Examples: { => 42 }, { x: Int64 => x + 1 }, { x, y => x + y }
+** The body after '=>' is parsed as follows:
+** - If there is only a single expression before '}', auto-return it
+** - Otherwise, parse as a statement list (explicit 'return' needed)
+*/
+static void bracelambda (LexState *ls, expdesc *e, int line) {
+  FuncState new_fs;
+  BlockCnt bl;
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  /* Parse parameters before '=>' */
+  {
+    int nparams = 0;
+    /* current token is the first token after '{' */
+    if (ls->t.token != TK_ARROW) {
+      /* parse parameter list: NAME [':' Type] { ',' NAME [':' Type] } '=>' */
+      do {
+        if (ls->t.token != TK_NAME)
+          luaX_syntaxerror(ls, "<name> expected in lambda parameter list");
+        new_localvar(ls, str_checkname(ls));
+        /* optional type annotation ': Type' - skip it */
+        if (testnext(ls, ':')) {
+          int depth = 0;
+          while (ls->t.token == TK_NAME ||
+                 (ls->t.token == '<') ||
+                 (ls->t.token == '>' && depth > 0) ||
+                 (ls->t.token == ',' && depth > 0)) {
+            if (ls->t.token == '<') depth++;
+            else if (ls->t.token == '>') depth--;
+            luaX_next(ls);
+          }
+        }
+        nparams++;
+      } while (testnext(ls, ','));
+    }
+    checknext(ls, TK_ARROW);  /* skip '=>' */
+    adjustlocalvars(ls, nparams);
+    new_fs.f->numparams = cast_byte(new_fs.nactvar);
+    luaK_reserveregs(&new_fs, new_fs.nactvar);
+  }
+  /* Parse body until '}'. 
+  ** Strategy: scan the raw input to check if the body contains assignment ('=')
+  ** or statement keywords. If it does, parse as statlist. Otherwise, parse as
+  ** a single expression with auto-return. */
+  {
+    int use_statlist = 0;
+    int tok = ls->t.token;
+    /* Quick check: if first token is a statement keyword, use statlist */
+    if (tok == TK_LET || tok == TK_VAR || tok == TK_IF || tok == TK_WHILE ||
+        tok == TK_FOR || tok == TK_RETURN || tok == TK_MATCH ||
+        tok == TK_FUNC || tok == TK_CLASS || tok == TK_STRUCT ||
+        tok == TK_ENUM || tok == TK_INTERFACE || tok == TK_EXTEND ||
+        tok == TK_BREAK || tok == TK_CONTINUE) {
+      use_statlist = 1;
+    }
+    else if (tok == /*{*/ '}') {
+      /* Empty body */
+      use_statlist = 0;
+    }
+    else {
+      /* Scan raw chars to see if body has a bare assignment '=' */
+      use_statlist = scan_brace_block(ls, 1);
+    }
+
+    if (tok == /*{*/ '}') {
+      /* Empty body - no-op */
+    }
+    else if (use_statlist) {
+      statlist(ls);
+    }
+    else {
+      /* Single expression body - auto return */
+      expdesc ret;
+      expr(ls, &ret);
+      luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
+    }
+  }
+  new_fs.f->lastlinedefined = ls->linenumber;
+  checknext(ls, /*{*/ '}');
   codeclosure(ls, e);
   close_func(ls);
 }
@@ -1558,7 +1871,14 @@ static void simpleexp (LexState *ls, expdesc *v) {
       init_exp(v, VFALSE, 0);
       break;
     }
-    case '{' /*}*/: {  /* constructor */
+    case '{' /*}*/: {  /* constructor or brace lambda { params => body } */
+      /* Detect brace lambda by scanning ahead for '=>' at depth 0 */
+      if (scan_brace_block(ls, 0)) {
+        int line2 = ls->linenumber;
+        luaX_next(ls);  /* skip '{' */
+        bracelambda(ls, v, line2);
+        return;
+      }
       constructor(ls, v);
       return;
     }
@@ -1641,12 +1961,12 @@ static BinOpr getbinopr (int op) {
     case '-': return OPR_SUB;
     case '*': return OPR_MUL;
     case '%': return OPR_MOD;
-    case '^': return OPR_POW;
+    case TK_POW: return OPR_POW;
     case '/': return OPR_DIV;
     case TK_IDIV: return OPR_IDIV;
     case '&': return OPR_BAND;
     case '|': return OPR_BOR;
-    case '~': return OPR_BXOR;
+    case '^': return OPR_BXOR;
     case TK_SHL: return OPR_SHL;
     case TK_SHR: return OPR_SHR;
     case TK_CONCAT: return OPR_CONCAT;
@@ -2329,24 +2649,47 @@ static void funcstat (LexState *ls, int line) {
 ** Generates table construction and method definitions
 */
 static void skip_type_annotation (LexState *ls) {
-  /* skip optional type annotation after ':' */
+  /* skip optional type annotation after ':'
+  ** Handles simple types (Int64), generic types (Array<Int64>),
+  ** and function types ((Int64, Int64) -> Int64) */
   if (testnext(ls, ':')) {
     int depth = 0;
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0) ||
-           (ls->t.token == '(' ) ||
-           (ls->t.token == ')' && depth > 0)) {
-      if (ls->t.token == TK_NAME && depth == 0) {
-        /* If this NAME is followed by '(' at top level, it's likely
-        ** a new member definition (e.g. init(...)), not part of type.
-        ** Stop consuming here. */
-        if (luaX_lookahead(ls) == '(') break;
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        if (depth == 0) {
+          /* If this NAME is followed by '(' at top level, it's likely
+          ** a new member definition (e.g. init(...)), not part of type.
+          ** Stop consuming here. */
+          if (luaX_lookahead(ls) == '(') break;
+        }
+        luaX_next(ls);
       }
-      if (ls->t.token == '<' || ls->t.token == '(') depth++;
-      else if (ls->t.token == '>' || ls->t.token == ')') depth--;
-      luaX_next(ls);
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        /* After closing ')' at depth 0, check for function return type '-> Type' */
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);  /* skip '-' */
+            luaX_next(ls);  /* skip '>' */
+            /* continue to parse the return type */
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == TK_NOT && depth > 0) {
+        /* '!' in parameter names for named params in function types */
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
     }
   }
 }
@@ -2856,7 +3199,7 @@ static void enumstat (LexState *ls, int line) {
 
   /* Parse enum constructors */
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
-    if (testnext(ls, '|')) {
+    if (testnext(ls, '|') || ls->t.token == TK_NAME) {
       /* '|' CTOR_NAME ['(' type_list ')'] */
       TString *ctorname;
       int has_params = 0;
@@ -3752,6 +4095,12 @@ static void statement (LexState *ls) {
       break;
     }
     default: {  /* stat -> func | assignment */
+      /* Check for Unit literal '()' used as a no-op statement */
+      if (ls->t.token == '(' && luaX_lookahead(ls) == ')') {
+        luaX_next(ls);  /* skip '(' */
+        luaX_next(ls);  /* skip ')' */
+        break;  /* no-op */
+      }
       exprstat(ls);
       break;
     }

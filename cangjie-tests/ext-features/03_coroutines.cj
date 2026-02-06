@@ -30,7 +30,7 @@ let gen = producer()
 var sum = 0
 while (true) {
   let ok, val = coroutine.resume(gen)
-  if (not ok or val == nil) {
+  if (!ok || val == nil) {
     break
   }
   sum = sum + val
