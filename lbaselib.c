@@ -38,6 +38,7 @@ static int luaB_print (lua_State *L) {
 }
 
 
+/* alias for print; Lua print already appends a newline (Cangjie compatibility) */
 /*
 ** Creates a warning with all given arguments.
 ** Check first for errors; otherwise an error may interrupt
@@ -556,4 +557,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   return 1;
 }
-

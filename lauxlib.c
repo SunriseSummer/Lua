@@ -10,6 +10,7 @@
 #include "lprefix.h"
 
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -792,6 +793,15 @@ static int skipBOM (FILE *f) {
 ** first "valid" character of the file (after the optional BOM and
 ** a first-line comment).
 */
+/* LoadS is shared by loadfile/loadbuffer helpers and cj translation. */
+typedef struct LoadS {
+  const char *s;
+  size_t size;
+} LoadS;
+
+static const char *getS (lua_State *L, void *ud, size_t *size);
+
+
 static int skipcomment (FILE *f, int *cp) {
   int c = *cp = skipBOM(f);
   if (c == '#') {  /* first line is a comment (Unix exec. file)? */
@@ -805,12 +815,466 @@ static int skipcomment (FILE *f, int *cp) {
 }
 
 
+static int cj_isidentstart (int c) {
+  return isalpha(cast_uchar(c)) || c == '_';
+}
+
+
+static int cj_isident (int c) {
+  return isalnum(cast_uchar(c)) || c == '_';
+}
+
+
+static int cj_prev_nonspace (const char *src, size_t i) {
+  while (i > 0) {
+    i--;
+    if (!isspace(cast_uchar(src[i]))) return src[i];
+  }
+  return 0;
+}
+
+
+static int cj_prev_is_return (const char *src, size_t i) {
+  size_t end = i;
+  size_t start;
+  while (end > 0 && isspace(cast_uchar(src[end - 1]))) end--;
+  if (end < 6) return 0;
+  start = end - 6;
+  if (strncmp(src + start, "return", 6) != 0) return 0;
+  if (start > 0 && cj_isident(cast_uchar(src[start - 1]))) return 0;
+  return 1;
+}
+
+
+static int cj_name_is_cangjie (const char *name) {
+  size_t len;
+  if (name == NULL) return 0;
+  if (*name == '@' || *name == '=') name++;
+  len = strlen(name);
+  return (len >= 3 && strcmp(name + len - 3, ".cj") == 0);
+}
+
+
+static int cj_long_bracket_level (const char *src, size_t i, size_t len) {
+  size_t j;
+  if (i >= len || src[i] != '[') return -1;
+  j = i + 1;
+  while (j < len && src[j] == '=') j++;
+  if (j < len && src[j] == '[')
+    return cast_int(j - i - 1);
+  return -1;
+}
+
+
+static size_t cj_long_bracket_end (const char *src, size_t i, size_t len,
+                                   int level) {
+  size_t j = i + 1 + cast_sizet(level);
+  for (; j < len; j++) {
+    if (src[j] == ']') {
+      size_t k;
+      size_t n;
+      k = j + 1;
+      for (n = 0; n < cast_sizet(level) && k < len && src[k] == '='; n++)
+        k++;
+      if (n == cast_sizet(level) && k < len && src[k] == ']')
+        return k + 1;
+    }
+  }
+  return len;
+}
+
+
+static size_t cj_find_interp_end (const char *src, size_t i, size_t len) {
+  int depth = 1;
+  char quote = '\0';
+  for (; i < len; i++) {
+    char c = src[i];
+    if (quote != '\0') {
+      if (c == '\\' && i + 1 < len) {  /* skip escaped character */
+        i++;
+        continue;
+      }
+      if (c == quote) quote = '\0';
+      continue;
+    }
+    if (c == '"' || c == '\'') {
+      quote = c;
+      continue;
+    }
+    if (c == '(') depth++;
+    else if (c == ')') {
+      depth--;
+      if (depth == 0) return i;
+    }
+  }
+  return len;
+}
+
+
+static void cj_add_segment (luaL_Buffer *b, char quote,
+                            const char *src, size_t start, size_t end) {
+  luaL_addchar(b, quote);
+  luaL_addlstring(b, src + start, end - start);
+  luaL_addchar(b, quote);
+}
+
+
+static size_t cj_translate_string (luaL_Buffer *b, const char *src, size_t i,
+                                   size_t len, int *changed) {
+  char quote = src[i++];
+  size_t expr_start = 0;
+  size_t expr_end = 0;
+  size_t seg_start = i;
+  int hasinterp = 0;
+  while (i < len) {
+    char c = src[i];
+    if (c == '\\' && i + 1 < len) {
+      i += 2;
+      continue;
+    }
+    if (c == quote) {
+      if (!hasinterp)
+        luaL_addlstring(b, src + seg_start - 1, i - seg_start + 2);
+      else
+        cj_add_segment(b, quote, src, seg_start, i);
+      return i + 1;
+    }
+    if (c == '$' && i + 1 < len && src[i + 1] == '(') {
+      if (!hasinterp) {
+        hasinterp = 1;
+        *changed = 1;
+      }
+      cj_add_segment(b, quote, src, seg_start, i);
+      luaL_addstring(b, " .. tostring(");
+      expr_start = i + 2;
+      expr_end = cj_find_interp_end(src, expr_start, len);
+      luaL_addlstring(b, src + expr_start, expr_end - expr_start);
+      luaL_addstring(b, ")");
+      luaL_addstring(b, " .. ");
+      if (expr_end >= len) return expr_end;
+      i = expr_end + 1;
+      seg_start = i;
+      continue;
+    }
+    i++;
+  }
+  luaL_addlstring(b, src + seg_start - 1, len - seg_start + 1);
+  return len;
+}
+
+
+static size_t cj_translate_number (luaL_Buffer *b, const char *src, size_t i,
+                                   size_t len, int *changed) {
+  size_t start = i;
+  size_t j = i;
+  int is_hex = 0;
+  int has_suffix = 0;
+  int seen_dot = 0;
+  int seen_exp = 0;
+  if (src[j] == '0' && j + 1 < len &&
+      (src[j + 1] == 'x' || src[j + 1] == 'X')) {
+    is_hex = 1;
+    j += 2;
+  }
+  else
+    j++;
+  for (; j < len; j++) {
+    char c = src[j];
+    if (isdigit(cast_uchar(c)) ||
+        (is_hex && isxdigit(cast_uchar(c))) || c == '_')
+      continue;
+    if (!seen_dot && c == '.') {
+      seen_dot = 1;
+      continue;
+    }
+    if (!seen_exp && (c == 'e' || c == 'E' || c == 'p' || c == 'P')) {
+      seen_exp = 1;
+      if (j + 1 < len && (src[j + 1] == '+' || src[j + 1] == '-'))
+        j++;
+      continue;
+    }
+    break;
+  }
+  if (j < len && (src[j] == 'f' || src[j] == 'F')) {
+    has_suffix = 1;
+    j++;
+  }
+  if (!is_hex && has_suffix && j > start) {
+    luaL_addlstring(b, src + start, j - start - 1);
+    *changed = 1;
+  }
+  else
+    luaL_addlstring(b, src + start, j - start);
+  return j;
+}
+
+
+static size_t cj_skip_type (const char *src, size_t i, size_t len) {
+  size_t j = i + 1;
+  size_t k;
+  while (j < len && isspace(cast_uchar(src[j]))) j++;
+  if (j < len && cj_isidentstart(cast_uchar(src[j]))) {
+    j++;
+    while (j < len && cj_isident(cast_uchar(src[j]))) j++;
+    while (j < len && src[j] == '.') {
+      k = j + 1;
+      if (k >= len || !cj_isidentstart(cast_uchar(src[k]))) break;
+      j = k + 1;
+      while (j < len && cj_isident(cast_uchar(src[j]))) j++;
+    }
+    if (j < len && src[j] == '<') {
+      int depth = 1;
+      j++;
+      while (j < len && depth > 0) {
+        if (src[j] == '<') depth++;
+        else if (src[j] == '>') depth--;
+        j++;
+      }
+    }
+  }
+  return j;
+}
+
+
+static size_t cj_translate_identifier (luaL_Buffer *b, const char *src, size_t i,
+                                       size_t len, int repl, int *in_let,
+                                       int *changed, int *skip_brace,
+                                       int *in_func) {
+  size_t start = i;
+  size_t idlen;
+  size_t j;
+  i++;
+  while (i < len && cj_isident(cast_uchar(src[i]))) i++;
+  idlen = i - start;
+  if (idlen == 3 &&
+      (strncmp(src + start, "let", 3) == 0 ||
+       strncmp(src + start, "var", 3) == 0)) {
+    if (!repl) {  /* files use local bindings; REPL keeps globals */
+      luaL_addstring(b, "local");
+    }
+    *changed = 1;
+    *in_let = 1;
+    return i;
+  }
+  if (idlen == 7 && strncmp(src + start, "println", 7) == 0) {
+    /* Lua print already appends a newline. */
+    luaL_addstring(b, "print");
+    *changed = 1;
+    return i;
+  }
+  if (idlen == 4 && strncmp(src + start, "func", 4) == 0) {
+    luaL_addstring(b, "function");
+    *changed = 1;
+    *skip_brace = 1;
+    *in_func = 1;
+    return i;
+  }
+  if (idlen == 3 && strncmp(src + start, "for", 3) == 0) {
+    j = i;
+    while (j < len && isspace(cast_uchar(src[j]))) j++;
+    if (j < len && src[j] == '(') {
+      size_t var_start;
+      size_t var_end;
+      size_t expr_start;
+      size_t expr_end;
+      int depth = 0;
+      j++;
+      while (j < len && isspace(cast_uchar(src[j]))) j++;
+      if (j < len && cj_isidentstart(cast_uchar(src[j]))) {
+        var_start = j;
+        j++;
+        while (j < len && cj_isident(cast_uchar(src[j]))) j++;
+        var_end = j;
+        while (j < len && isspace(cast_uchar(src[j]))) j++;
+        if (j + 1 < len && src[j] == 'i' && src[j + 1] == 'n' &&
+            (j + 2 >= len || !cj_isident(cast_uchar(src[j + 2])))) {
+          j += 2;
+          while (j < len && isspace(cast_uchar(src[j]))) j++;
+          expr_start = j;
+          for (expr_end = j; expr_end < len; expr_end++) {
+            char c = src[expr_end];
+            if (c == '(') depth++;
+            else if (c == ')') {
+              if (depth == 0) break;
+              depth--;
+            }
+          }
+          if (expr_end < len && src[expr_end] == ')') {
+            luaL_addstring(b, "for _, ");
+            luaL_addlstring(b, src + var_start, var_end - var_start);
+            luaL_addstring(b, " in ipairs(");
+            luaL_addlstring(b, src + expr_start, expr_end - expr_start);
+            luaL_addstring(b, ") do");
+            *changed = 1;
+            *skip_brace = 1;
+            return expr_end + 1;
+          }
+        }
+      }
+    }
+  }
+  if ((start == 0 || src[start - 1] != '.') &&
+      i + 5 <= len && src[i] == '.' &&
+      strncmp(src + i + 1, "size", 4) == 0 &&
+      (i + 5 == len || !cj_isident(cast_uchar(src[i + 5])))) {
+    luaL_addstring(b, "(#");
+    luaL_addlstring(b, src + start, idlen);
+    luaL_addchar(b, ')');
+    *changed = 1;
+    return i + 5;
+  }
+  luaL_addlstring(b, src + start, idlen);
+  return i;
+}
+
+
+enum { CJ_NONREPL = 0 };
+
+
+/*
+** Returns 1 when translated source is left on the stack and should be used.
+** Returns 0 when the original source should be used (no stack changes).
+*/
+static int cj_translate (lua_State *L, const char *src, size_t len,
+                         const char *name, int repl,
+                         const char **out, size_t *outlen) {
+  luaL_Buffer b;
+  size_t i = 0;
+  int changed = 0;
+  int in_let = 0;
+  int skip_brace = 0;  /* skip next '{' after func/for */
+  int block_depth = 0;  /* translated brace depth */
+  int array_depth = 0;
+  int in_func = 0;  /* parsing function signature */
+  int in_params = 0;  /* inside parameter list */
+  int param_depth = 0;  /* nested parens in params */
+  int force = cj_name_is_cangjie(name);
+  luaL_buffinit(L, &b);
+  while (i < len) {
+    char c = src[i];
+    if (in_func && !in_params && c == '(') {
+      in_params = 1;
+      param_depth = 1;
+      luaL_addchar(&b, c);
+      i++;
+      continue;
+    }
+    if (c == '-' && i + 1 < len && src[i + 1] == '-') {
+      int bracket_level = cj_long_bracket_level(src, i + 2, len);
+      if (bracket_level >= 0) {
+        size_t end = cj_long_bracket_end(src, i + 2, len, bracket_level);
+        luaL_addlstring(&b, src + i, end - i);
+        i = end;
+        continue;
+      }
+      else {
+        size_t end = i + 2;
+        while (end < len && src[end] != '\n') end++;
+        luaL_addlstring(&b, src + i, end - i);
+        i = end;
+        continue;
+      }
+    }
+    if (c == '"' || c == '\'') {
+      i = cj_translate_string(&b, src, i, len, &changed);
+      continue;
+    }
+    if (c == '[') {
+      int bracket_level = cj_long_bracket_level(src, i, len);
+      if (bracket_level >= 0) {
+        size_t end = cj_long_bracket_end(src, i, len, bracket_level);
+        luaL_addlstring(&b, src + i, end - i);
+        i = end;
+        continue;
+      }
+      {
+        int prev = cj_prev_nonspace(src, i);
+        if (prev == '=' || prev == '(' || prev == ',' || prev == ':' ||
+            prev == '[' || prev == 0 || cj_prev_is_return(src, i)) {
+          luaL_addchar(&b, '{');
+          array_depth++;
+          changed = 1;
+          i++;
+          continue;
+        }
+      }
+    }
+    if (c == ']' && array_depth > 0) {
+      luaL_addchar(&b, '}');
+      array_depth--;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (c == '{' && skip_brace) {
+      skip_brace = 0;
+      block_depth++;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (c == '}' && block_depth > 0) {
+      luaL_addstring(&b, "end");
+      block_depth--;
+      changed = 1;
+      i++;
+      continue;
+    }
+    if (in_params) {
+      if (c == ':') {
+        i = cj_skip_type(src, i, len);
+        changed = 1;
+        continue;
+      }
+      if (c == '(') param_depth++;
+      else if (c == ')') {
+        param_depth--;
+        if (param_depth == 0) {
+          in_params = 0;
+          in_func = 0;
+        }
+      }
+    }
+    if (in_let && c == ':') {
+      i = cj_skip_type(src, i, len);
+      changed = 1;
+      continue;
+    }
+    /* type annotations only precede initializers or line terminators */
+    if (c == '=' || c == '\n' || c == ';')
+      in_let = 0;
+    if (isdigit(cast_uchar(c)) ||
+        (c == '.' && i + 1 < len && isdigit(cast_uchar(src[i + 1])))) {
+      i = cj_translate_number(&b, src, i, len, &changed);
+      continue;
+    }
+    if (cj_isidentstart(cast_uchar(c))) {
+      i = cj_translate_identifier(&b, src, i, len, repl, &in_let, &changed,
+                                  &skip_brace, &in_func);
+      continue;
+    }
+    luaL_addchar(&b, c);
+    i++;
+  }
+  luaL_pushresult(&b);
+  if (!changed && !force) {
+    lua_pop(L, 1);
+    *out = src;
+    *outlen = len;
+    return 0;
+  }
+  *out = lua_tolstring(L, -1, outlen);
+  return 1;
+}
+
+
 LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
-                                             const char *mode) {
+                                              const char *mode) {
   LoadF lf;
   int status, readstatus;
   int c;
   int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
+  int is_cangjie = (filename != NULL) && cj_name_is_cangjie(filename);
   if (filename == NULL) {
     lua_pushliteral(L, "=stdin");
     lf.f = stdin;
@@ -835,7 +1299,31 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
   }
   if (c != EOF)
     lf.buff[lf.n++] = cast_char(c);  /* 'c' is the first character */
-  status = lua_load(L, getF, &lf, lua_tostring(L, -1), mode);
+  if (is_cangjie) {
+    const char *src;
+    const char *translated;
+    size_t srclen;
+    size_t translen;
+    LoadS ls;
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
+    if (lf.n > 0)
+      luaL_addlstring(&b, lf.buff, lf.n);
+    while ((c = getc(lf.f)) != EOF)
+      luaL_addchar(&b, cast_char(c));
+    luaL_pushresult(&b);
+    src = lua_tolstring(L, -1, &srclen);
+    cj_translate(L, src, srclen, lua_tostring(L, fnameindex),
+                 CJ_NONREPL,
+                 &translated, &translen);
+    lua_remove(L, -2);  /* remove original source below translated string */
+    ls.s = translated;
+    ls.size = translen;
+    status = lua_load(L, getS, &ls, lua_tostring(L, fnameindex), mode);
+    lua_remove(L, -2);  /* remove translated source below function/error */
+  }
+  else
+    status = lua_load(L, getF, &lf, lua_tostring(L, -1), mode);
   readstatus = ferror(lf.f);
   errno = 0;  /* no useful error number until here */
   if (filename) fclose(lf.f);  /* close file (even in case of errors) */
@@ -846,12 +1334,6 @@ LUALIB_API int luaL_loadfilex (lua_State *L, const char *filename,
   lua_remove(L, fnameindex);
   return status;
 }
-
-
-typedef struct LoadS {
-  const char *s;
-  size_t size;
-} LoadS;
 
 
 static const char *getS (lua_State *L, void *ud, size_t *size) {
@@ -867,9 +1349,19 @@ static const char *getS (lua_State *L, void *ud, size_t *size) {
 LUALIB_API int luaL_loadbufferx (lua_State *L, const char *buff, size_t size,
                                  const char *name, const char *mode) {
   LoadS ls;
-  ls.s = buff;
-  ls.size = size;
-  return lua_load(L, getS, &ls, name, mode);
+  const char *translated = buff;
+  size_t translen = size;
+  int status;
+  /* lua.c uses '=stdin' when compiling interactive REPL lines. */
+  int repl = (name != NULL && strcmp(name, "=stdin") == 0);
+  int was_translated = cj_translate(L, buff, size, name, repl,
+                                    &translated, &translen);
+  ls.s = translated;
+  ls.size = translen;
+  status = lua_load(L, getS, &ls, name, mode);
+  if (was_translated)
+    lua_remove(L, -2);  /* remove translated source below function/error */
+  return status;
 }
 
 
@@ -1199,4 +1691,3 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
     luaL_error(L, "version mismatch: app. needs %f, Lua core provides %f",
                   (LUAI_UACNUMBER)ver, (LUAI_UACNUMBER)v);
 }
-
