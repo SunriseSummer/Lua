@@ -1077,8 +1077,13 @@ static void parlist (LexState *ls) {
           /* optional type annotation ': Type' - skip it */
           if (testnext(ls, ':')) {
             /* skip type name (possibly generic like Array<Int64>) */
-            while (ls->t.token == TK_NAME || ls->t.token == '<' ||
-                   ls->t.token == '>' || ls->t.token == ',') {
+            int depth = 0;
+            while (ls->t.token == TK_NAME ||
+                   (ls->t.token == '<' ) ||
+                   (ls->t.token == '>' && depth > 0) ||
+                   (ls->t.token == ',' && depth > 0)) {
+              if (ls->t.token == '<') depth++;
+              else if (ls->t.token == '>') depth--;
               luaX_next(ls);
             }
           }
@@ -1125,8 +1130,13 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   checknext(ls, ')');
   /* optional return type annotation ': Type' - skip it */
   if (testnext(ls, ':')) {
-    while (ls->t.token == TK_NAME || ls->t.token == '<' ||
-           ls->t.token == '>' || ls->t.token == ',') {
+    int depth = 0;
+    while (ls->t.token == TK_NAME ||
+           (ls->t.token == '<') ||
+           (ls->t.token == '>' && depth > 0) ||
+           (ls->t.token == ',' && depth > 0)) {
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') depth--;
       luaX_next(ls);
     }
   }
@@ -1268,7 +1278,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         funcargs(ls, v);
         break;
       }
-      case '(': case TK_STRING: case '{' /*}*/: {  /* funcargs */
+      case '(': {  /* funcargs -> '(' args ')' */
         luaK_exp2nextreg(fs, v);
         funcargs(ls, v);
         break;
@@ -1955,8 +1965,13 @@ static void letvarstat (LexState *ls, int isconst) {
     TString *vname = str_checkname(ls);  /* get variable name */
     /* optional type annotation ': Type' - skip it */
     if (testnext(ls, ':')) {
-      while (ls->t.token == TK_NAME || ls->t.token == '<' ||
-             ls->t.token == '>' || ls->t.token == ',') {
+      int depth = 0;
+      while (ls->t.token == TK_NAME ||
+             (ls->t.token == '<') ||
+             (ls->t.token == '>' && depth > 0) ||
+             (ls->t.token == ',' && depth > 0)) {
+        if (ls->t.token == '<') depth++;
+        else if (ls->t.token == '>') depth--;
         luaX_next(ls);
       }
     }
@@ -2035,14 +2050,15 @@ static void funcstat (LexState *ls, int line) {
 static void skip_type_annotation (LexState *ls) {
   /* skip optional type annotation after ':' */
   if (testnext(ls, ':')) {
-    /* skip type name, possibly generic like Array<Int64> */
     int depth = 0;
-    while (ls->t.token == TK_NAME || ls->t.token == '<' ||
-           ls->t.token == '>' || ls->t.token == ',' ||
-           ls->t.token == '(' || ls->t.token == ')' ||
-           depth > 0) {
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') { if (depth > 0) depth--; else break; }
+    while (ls->t.token == TK_NAME ||
+           (ls->t.token == '<') ||
+           (ls->t.token == '>' && depth > 0) ||
+           (ls->t.token == ',' && depth > 0) ||
+           (ls->t.token == '(' ) ||
+           (ls->t.token == ')' && depth > 0)) {
+      if (ls->t.token == '<' || ls->t.token == '(') depth++;
+      else if (ls->t.token == '>' || ls->t.token == ')') depth--;
       luaX_next(ls);
     }
   }

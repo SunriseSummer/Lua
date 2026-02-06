@@ -607,6 +607,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         else return '/';
       }
       case '[': {  /* simply '[' in Cangjie (used for arrays) */
+        next(ls);
         return '[';
       }
       case '=': {
