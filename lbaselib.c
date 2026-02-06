@@ -54,6 +54,49 @@ static int luaB_println (lua_State *L) {
 
 
 /*
+** __cangjie_setup_class(cls) - Set up a class table so that calling
+** cls(args) creates a new instance (via __call metamethod).
+** The __call creates a new table, sets cls as its metatable,
+** calls cls.init if it exists, and returns the instance.
+*/
+static int cangjie_call_handler (lua_State *L) {
+  /* Arguments: cls, arg1, arg2, ... (cls is first arg via __call) */
+  int nargs = lua_gettop(L) - 1;  /* number of constructor args (excluding cls) */
+  int i;
+  lua_newtable(L);              /* create new instance: obj = {} */
+  /* stack: [cls, arg1, ..., argN, obj] */
+  int obj = lua_gettop(L);
+  lua_pushvalue(L, 1);          /* push cls */
+  lua_setmetatable(L, obj);     /* setmetatable(obj, cls) */
+  /* Check if cls.init exists */
+  lua_getfield(L, 1, "init");
+  if (!lua_isnil(L, -1)) {
+    /* Call init(obj, arg1, arg2, ...) */
+    lua_pushvalue(L, obj);      /* push obj as first arg (self) */
+    for (i = 1; i <= nargs; i++) {
+      lua_pushvalue(L, i + 1);  /* push arg_i (original args start at index 2) */
+    }
+    lua_call(L, nargs + 1, 0);  /* call init(obj, arg1, arg2, ...) */
+  }
+  else {
+    lua_pop(L, 1);  /* pop nil */
+  }
+  lua_pushvalue(L, obj);        /* return obj */
+  return 1;
+}
+
+static int luaB_setup_class (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* cls must be a table */
+  /* Create metatable for cls: { __call = cangjie_call_handler } */
+  lua_newtable(L);
+  lua_pushcfunction(L, cangjie_call_handler);
+  lua_setfield(L, -2, "__call");
+  lua_setmetatable(L, 1);  /* setmetatable(cls, mt) */
+  return 0;
+}
+
+
+/*
 ** Creates a warning with all given arguments.
 ** Check first for errors; otherwise an error may interrupt
 ** the composition of a warning, leaving it unfinished.
@@ -549,6 +592,7 @@ static const luaL_Reg base_funcs[] = {
   {"rawset", luaB_rawset},
   {"select", luaB_select},
   {"setmetatable", luaB_setmetatable},
+  {"__cangjie_setup_class", luaB_setup_class},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},

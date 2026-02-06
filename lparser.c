@@ -1149,6 +1149,51 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
 }
 
 
+/*
+** Parse an init constructor body. Same as body() but auto-appends
+** 'return self' at the end, so Cangjie constructors don't need
+** explicit 'return this'.
+*/
+static void body_init (LexState *ls, expdesc *e, int line) {
+  FuncState new_fs;
+  BlockCnt bl;
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  checknext(ls, '(');
+  /* init always has 'self' parameter */
+  new_localvarliteral(ls, "self");
+  adjustlocalvars(ls, 1);
+  parlist(ls);
+  checknext(ls, ')');
+  /* skip optional return type annotation */
+  if (testnext(ls, ':')) {
+    int depth = 0;
+    while (ls->t.token == TK_NAME ||
+           (ls->t.token == '<') ||
+           (ls->t.token == '>' && depth > 0) ||
+           (ls->t.token == ',' && depth > 0)) {
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') depth--;
+      luaX_next(ls);
+    }
+  }
+  checknext(ls, '{' /*}*/);
+  statlist(ls);
+  /* Auto-generate: return self */
+  {
+    expdesc selfvar;
+    TString *selfname = luaS_new(ls->L, "self");
+    singlevaraux(ls->fs, selfname, &selfvar, 1);
+    luaK_ret(ls->fs, luaK_exp2anyreg(ls->fs, &selfvar), 1);
+  }
+  new_fs.f->lastlinedefined = ls->linenumber;
+  check_match(ls, /*{*/ '}', TK_FUNC, line);
+  codeclosure(ls, e);
+  close_func(ls);
+}
+
+
 static int explist (LexState *ls, expdesc *v) {
   /* explist -> expr { ',' expr } */
   int n = 1;  /* at least one expression */
@@ -1266,20 +1311,52 @@ static void suffixedexp (LexState *ls, expdesc *v) {
   primaryexp(ls, v);
   for (;;) {
     switch (ls->t.token) {
-      case '.': {  /* fieldsel */
-        /* Check for .size -> # (length operator) */
+      case '.': {  /* fieldsel or method call */
+        /* Check for .size -> read __n field (array length) */
         if (luaX_lookahead(ls) == TK_NAME) {
-          /* peek at the name after '.' */
           TString *fname = ls->lookahead.seminfo.ts;
           if (fname != NULL && strcmp(getstr(fname), "size") == 0) {
-            /* .size -> generate length operation */
             luaX_next(ls);  /* skip '.' */
             luaX_next(ls);  /* skip 'size' */
-            luaK_prefix(fs, OPR_LEN, v, ls->linenumber);
+            luaK_exp2anyregup(fs, v);
+            {
+              expdesc key;
+              codestring(&key, luaX_newstring(ls, "__n", 3));
+              luaK_indexed(fs, v, &key);
+            }
             break;
           }
         }
-        fieldsel(ls, v);
+        /* In Cangjie, obj.method(args) means method call with implicit self.
+        ** Detect .NAME( pattern and use luaK_self for method calls.
+        ** Otherwise, use regular fieldsel for field access. */
+        /* After the .size check, lookahead might be set or not.
+        ** If lookahead is set (from .size check that didn't match),
+        ** luaX_next will use it. If not, fieldsel handles it. */
+        {
+          /* We need to check ahead: is this .NAME( ? 
+          ** Step 1: Skip '.', get the name
+          ** Step 2: Check what follows the name */
+          expdesc key;
+          TString *fname2;
+          luaK_exp2anyregup(fs, v);
+          luaX_next(ls);  /* skip '.', using cached lookahead if available */
+          check(ls, TK_NAME);
+          fname2 = ls->t.seminfo.ts;
+          /* Peek at what follows the name */
+          if (luaX_lookahead(ls) == '(') {
+            /* Method call: obj.method(args) -> obj:method(args) with self */
+            codestring(&key, fname2);
+            luaK_self(fs, v, &key);
+            luaX_next(ls);  /* consume NAME */
+            funcargs(ls, v);
+          }
+          else {
+            /* Regular field access */
+            codename(ls, &key);  /* reads current NAME and advances */
+            luaK_indexed(fs, v, &key);
+          }
+        }
         break;
       }
       case '[': {  /* '[' exp ']' */
@@ -1437,31 +1514,51 @@ static void simpleexp (LexState *ls, expdesc *v) {
       return;
     }
     case '[': {  /* array constructor -> '[' [explist] ']' */
-      /* Reuse the table constructor logic for arrays */
+      /* Cangjie arrays are 0-based. We create a table and
+      ** explicitly assign: arr[0]=v1, arr[1]=v2, etc.
+      ** Also store __n = count for .size support. */
       FuncState *fs2 = ls->fs;
       int line2 = ls->linenumber;
       int pc2 = luaK_codevABCk(fs2, OP_NEWTABLE, 0, 0, 0, 0);
-      ConsControl cc;
-      luaK_code(fs2, 0);
-      cc.na = cc.nh = cc.tostore = 0;
-      cc.t = v;
+      int tabReg;
+      int count = 0;
+      luaK_code(fs2, 0);  /* space for extra arg */
       init_exp(v, VNONRELOC, fs2->freereg);
+      tabReg = fs2->freereg;
       luaK_reserveregs(fs2, 1);
-      init_exp(&cc.v, VVOID, 0);
       luaX_next(ls);  /* skip '[' */
-      cc.maxtostore = maxtostore(fs2);
       while (ls->t.token != ']' && ls->t.token != TK_EOS) {
-        if (cc.v.k != VVOID)
-          closelistfield(fs2, &cc);
-        /* Only list fields in array constructors (no key=val) */
-        expr(ls, &cc.v);
-        cc.tostore++;
+        expdesc key, val;
+        /* key = count (0-based index) */
+        init_exp(&key, VKINT, 0);
+        key.u.ival = count;
+        /* Parse value expression */
+        expr(ls, &val);
+        /* Generate: arr[count] = val */
+        {
+          expdesc tab2;
+          init_exp(&tab2, VNONRELOC, tabReg);
+          luaK_exp2anyregup(fs2, &tab2);
+          luaK_indexed(fs2, &tab2, &key);
+          luaK_storevar(fs2, &tab2, &val);
+        }
+        count++;
         if (!testnext(ls, ','))
           break;
       }
       check_match(ls, ']', '[', line2);
-      lastlistfield(fs2, &cc);
-      luaK_settablesize(fs2, pc2, v->u.info, cc.na, 0);
+      /* Store __n = count for .size */
+      {
+        expdesc tab3, nkey, nval;
+        init_exp(&tab3, VNONRELOC, tabReg);
+        luaK_exp2anyregup(fs2, &tab3);
+        codestring(&nkey, luaX_newstring(ls, "__n", 3));
+        luaK_indexed(fs2, &tab3, &nkey);
+        init_exp(&nval, VKINT, 0);
+        nval.u.ival = count;
+        luaK_storevar(fs2, &tab3, &nval);
+      }
+      luaK_settablesize(fs2, pc2, tabReg, 0, count + 1);
       return;
     }
     case TK_FUNC: {
@@ -2192,6 +2289,12 @@ static void skip_type_annotation (LexState *ls) {
            (ls->t.token == ',' && depth > 0) ||
            (ls->t.token == '(' ) ||
            (ls->t.token == ')' && depth > 0)) {
+      if (ls->t.token == TK_NAME && depth == 0) {
+        /* If this NAME is followed by '(' at top level, it's likely
+        ** a new member definition (e.g. init(...)), not part of type.
+        ** Stop consuming here. */
+        if (luaX_lookahead(ls) == '(') break;
+      }
       if (ls->t.token == '<' || ls->t.token == '(') depth++;
       else if (ls->t.token == '>' || ls->t.token == ')') depth--;
       luaX_next(ls);
@@ -2306,8 +2409,8 @@ static void structstat (LexState *ls, int line) {
         codestring(&mkey, mname);
         luaK_indexed(fs, &mv, &mkey);
       }
-      /* Parse constructor body (with 'self' parameter) */
-      body(ls, &mb, 1, ls->linenumber);
+      /* Parse constructor body (auto-returns self) */
+      body_init(ls, &mb, ls->linenumber);
       luaK_storevar(fs, &mv, &mb);
       luaK_fixline(fs, line);
     }
@@ -2329,6 +2432,21 @@ static void structstat (LexState *ls, int line) {
   }
 
   check_match(ls, /*{*/ '}', TK_STRUCT, line);
+
+  /* Generate: __cangjie_setup_class(NAME) to enable Point(x,y) constructor */
+  {
+    expdesc fn, arg;
+    int base2;
+    buildvar(ls, luaX_newstring(ls, "__cangjie_setup_class", 21), &fn);
+    luaK_exp2nextreg(fs, &fn);
+    base2 = fn.u.info;
+    buildvar(ls, sname, &arg);
+    luaK_exp2nextreg(fs, &arg);
+    init_exp(&fn, VCALL,
+             luaK_codeABC(fs, OP_CALL, base2, 2, 1));
+    fs->freereg = cast_byte(base2);
+  }
+
   reg = fs->freereg;
   fs->freereg = cast_byte(reg);
 }
