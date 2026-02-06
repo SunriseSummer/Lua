@@ -1,6 +1,9 @@
-/* basic syntax coverage for Cangjie-style Lua */
+/*
+  basic syntax coverage for Cangjie-style Lua
+  (block comment span coverage)
+*/
 let greeting: String = "hello"
-var counter: Int = 0
+var counter: Int = 0 // line comment after code
 let maybe: Int = null
 assert(maybe == nil)
 
