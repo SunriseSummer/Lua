@@ -862,8 +862,8 @@ static void cj_copy_name (char *dest, const char *src, size_t len) {
 }
 
 
-static const CJTypeInfo *cj_find_type (const CJTypeInfo *types, int count,
-                                       const char *name, size_t len) {
+static CJTypeInfo *cj_find_type (CJTypeInfo *types, int count,
+                                 const char *name, size_t len) {
   int i;
   for (i = 0; i < count; i++) {
     if (strlen(types[i].name) == len &&
@@ -874,16 +874,16 @@ static const CJTypeInfo *cj_find_type (const CJTypeInfo *types, int count,
 }
 
 
-static const CJTypeInfo *cj_store_type (CJTypeInfo *types, int *count,
-                                        CJTypeKind kind,
-                                        const char *name, size_t name_len,
-                                        const char *base, size_t base_len) {
-  const CJTypeInfo *existing = cj_find_type(types, *count, name, name_len);
+static CJTypeInfo *cj_store_type (CJTypeInfo *types, int *count,
+                                  CJTypeKind kind,
+                                  const char *name, size_t name_len,
+                                  const char *base, size_t base_len) {
+  CJTypeInfo *existing = cj_find_type(types, *count, name, name_len);
   if (existing != NULL) {
     if (base != NULL && base_len > 0) {
-      cj_copy_name(((CJTypeInfo *)existing)->base, base, base_len);
+      cj_copy_name(existing->base, base, base_len);
     }
-    ((CJTypeInfo *)existing)->kind = kind;
+    existing->kind = kind;
     return existing;
   }
   if (*count >= CJ_TYPE_MAX)
@@ -915,6 +915,7 @@ static int cj_parse_type_header (const char *src, size_t i, size_t len,
   out->base[0] = '\0';
   out->kind = kind;
   pos = cj_skip_space_and_comments(src, name_end, len);
+  /* skip generic parameters like Foo<T>; "<:" is handled as inheritance */
   if (pos < len && src[pos] == '<' &&
       !(pos + 1 < len && src[pos + 1] == ':')) {
     int depth = 0;
@@ -1022,6 +1023,33 @@ static void cj_emit_type_preamble (luaL_Buffer *b, const CJTypeContext *type) {
                  "  end\n"
                  "  return self\n"
                  "end\n");
+}
+
+
+static void cj_finalize_field_decl (luaL_Buffer *b, int *field_decl_active) {
+  if (*field_decl_active) {
+    luaL_addstring(b, " = nil");
+    *field_decl_active = 0;
+  }
+}
+
+
+static void cj_finalize_interface_method (luaL_Buffer *b,
+                                          int *pending_interface_method,
+                                          int *in_func_decl,
+                                          int *in_param_list,
+                                          int *expect_return_type,
+                                          int *func_paren_depth,
+                                          CJLast *last_keyword) {
+  if (*pending_interface_method) {
+    luaL_addstring(b, " end");
+    *pending_interface_method = 0;
+    *in_func_decl = 0;
+    *in_param_list = 0;
+    *expect_return_type = 0;
+    *func_paren_depth = 0;
+    *last_keyword = CJ_LAST_NONE;
+  }
 }
 
 
@@ -1289,24 +1317,17 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (isspace(c)) {
+      /* keep type prefix adjacent to the upcoming field name */
       if (pending_field_prefix && c != '\n') {
         i++;
         continue;
       }
       if (c == '\n') {
-        if (field_decl_active) {
-          luaL_addstring(&b, " = nil");
-          field_decl_active = 0;
-        }
-        if (pending_interface_method) {
-          luaL_addstring(&b, " end");
-          pending_interface_method = 0;
-          in_func_decl = 0;
-          in_param_list = 0;
-          expect_return_type = 0;
-          func_paren_depth = 0;
-          last_keyword = CJ_LAST_NONE;
-        }
+        cj_finalize_field_decl(&b, &field_decl_active);
+        cj_finalize_interface_method(&b, &pending_interface_method,
+                                     &in_func_decl, &in_param_list,
+                                     &expect_return_type, &func_paren_depth,
+                                     &last_keyword);
         in_var_decl = 0;
       }
       luaL_addchar(&b, cast_char(c));
@@ -1530,7 +1551,7 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
         luaL_addstring(&b, "self");
         prev_allows_index = 1;
       } else {
-        const CJTypeInfo *type_info =
+        CJTypeInfo *type_info =
             cj_find_type(type_infos, type_count, src + start, word_len);
         if (type_info != NULL &&
             (type_info->kind == CJ_TYPE_CLASS ||
@@ -1671,19 +1692,11 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (c == '}') {
-      if (field_decl_active) {
-        luaL_addstring(&b, " = nil");
-        field_decl_active = 0;
-      }
-      if (pending_interface_method) {
-        luaL_addstring(&b, " end");
-        pending_interface_method = 0;
-        in_func_decl = 0;
-        in_param_list = 0;
-        expect_return_type = 0;
-        func_paren_depth = 0;
-        last_keyword = CJ_LAST_NONE;
-      }
+      cj_finalize_field_decl(&b, &field_decl_active);
+      cj_finalize_interface_method(&b, &pending_interface_method,
+                                   &in_func_decl, &in_param_list,
+                                   &expect_return_type, &func_paren_depth,
+                                   &last_keyword);
       if (block_top > 0) {
         CJBlock block = block_stack[block_top - 1];
         if (block == CJ_BLOCK_TYPE) {
@@ -1752,19 +1765,11 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
       continue;
     }
     if (c == ';') {
-      if (field_decl_active) {
-        luaL_addstring(&b, " = nil");
-        field_decl_active = 0;
-      }
-      if (pending_interface_method) {
-        luaL_addstring(&b, " end");
-        pending_interface_method = 0;
-        in_func_decl = 0;
-        in_param_list = 0;
-        expect_return_type = 0;
-        func_paren_depth = 0;
-        last_keyword = CJ_LAST_NONE;
-      }
+      cj_finalize_field_decl(&b, &field_decl_active);
+      cj_finalize_interface_method(&b, &pending_interface_method,
+                                   &in_func_decl, &in_param_list,
+                                   &expect_return_type, &func_paren_depth,
+                                   &last_keyword);
       in_var_decl = 0;
       i++;
       continue;
