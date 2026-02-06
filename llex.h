@@ -30,15 +30,15 @@
 * grep "ORDER RESERVED"
 */
 enum RESERVED {
-  /* terminal symbols denoted by reserved words */
+  /* terminal symbols denoted by reserved words (Cangjie keywords) */
   TK_AND = FIRST_RESERVED, TK_BREAK,
-  TK_DO, TK_ELSE, TK_ELSEIF, TK_END, TK_FALSE, TK_FOR, TK_FUNCTION,
-  TK_GLOBAL, TK_GOTO, TK_IF, TK_IN, TK_LOCAL, TK_NIL, TK_NOT, TK_OR,
-  TK_REPEAT, TK_RETURN, TK_THEN, TK_TRUE, TK_UNTIL, TK_WHILE,
+  TK_CLASS, TK_CONTINUE, TK_ELSE, TK_EXTEND, TK_FALSE, TK_FOR, TK_FUNC,
+  TK_IF, TK_IN, TK_INTERFACE, TK_LET, TK_NIL, TK_NOT, TK_OR,
+  TK_RETURN, TK_STRUCT, TK_SUPER, TK_THIS, TK_TRUE, TK_VAR, TK_WHILE,
   /* other terminal symbols */
   TK_IDIV, TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE,
   TK_SHL, TK_SHR,
-  TK_DBCOLON, TK_EOS,
+  TK_DBCOLON, TK_ARROW, TK_DOTDOTEQ, TK_EOS,
   TK_FLT, TK_INT, TK_NAME, TK_STRING
 };
 
@@ -77,6 +77,7 @@ typedef struct LexState {
   TString *envn;  /* environment variable name */
   TString *brkn;  /* "break" name (used as a label) */
   TString *glbn;  /* "global" name (when not a reserved word) */
+  int interp_depth;  /* depth of string interpolation nesting */
 } LexState;
 
 
@@ -88,6 +89,7 @@ LUAI_FUNC void luaX_next (LexState *ls);
 LUAI_FUNC int luaX_lookahead (LexState *ls);
 LUAI_FUNC l_noret luaX_syntaxerror (LexState *ls, const char *s);
 LUAI_FUNC const char *luaX_token2str (LexState *ls, int token);
+LUAI_FUNC void luaX_read_interp_string (LexState *ls, SemInfo *seminfo);
 
 
 #endif

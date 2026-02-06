@@ -33,7 +33,114 @@ static int luaB_print (lua_State *L) {
     lua_writestring(s, l);  /* print it */
     lua_pop(L, 1);  /* pop result */
   }
+  return 0;
+}
+
+
+static int luaB_println (lua_State *L) {
+  int n = lua_gettop(L);  /* number of arguments */
+  int i;
+  for (i = 1; i <= n; i++) {  /* for each argument */
+    size_t l;
+    const char *s = luaL_tolstring(L, i, &l);  /* convert it to string */
+    if (i > 1)  /* not the first element? */
+      lua_writestring("\t", 1);  /* add a tab before it */
+    lua_writestring(s, l);  /* print it */
+    lua_pop(L, 1);  /* pop result */
+  }
   lua_writeline();
+  return 0;
+}
+
+
+/*
+** __cangjie_setup_class(cls) - Set up a class table so that calling
+** cls(args) creates a new instance (via __call metamethod).
+** The __call creates a new table, sets cls as its metatable,
+** calls cls.init if it exists, and returns the instance.
+** Also sets up a custom __index that auto-binds methods (wrapping
+** function values with a closure that passes self as first arg).
+*/
+
+/* Upvalue-based bound method: when called, prepend the bound object */
+static int cangjie_bound_method (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int i;
+  int top_before;
+  /* upvalue 1 = the original function, upvalue 2 = the bound object */
+  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
+  lua_pushvalue(L, lua_upvalueindex(2));  /* push self */
+  for (i = 1; i <= nargs; i++) {
+    lua_pushvalue(L, i);  /* push original args */
+  }
+  top_before = nargs;  /* original args count */
+  lua_call(L, nargs + 1, LUA_MULTRET);
+  return lua_gettop(L) - top_before;  /* only return the new results */
+}
+
+/* Custom __index: if the value from the class table is a function,
+** return a bound method; otherwise return the raw value. */
+static int cangjie_index_handler (lua_State *L) {
+  /* Arguments: obj (table), key */
+  /* upvalue 1 = the class table */
+  /* First, check if the key exists in the instance itself */
+  lua_pushvalue(L, 2);  /* push key */
+  lua_rawget(L, 1);     /* get obj[key] */
+  if (!lua_isnil(L, -1)) {
+    return 1;  /* found in instance */
+  }
+  lua_pop(L, 1);
+  /* Look up in the class table */
+  lua_pushvalue(L, 2);  /* push key */
+  lua_gettable(L, lua_upvalueindex(1));  /* get cls[key] */
+  if (lua_isfunction(L, -1)) {
+    /* It's a method - create a bound method closure */
+    /* push function and obj as upvalues */
+    lua_pushvalue(L, -1);  /* function */
+    lua_pushvalue(L, 1);   /* obj (self) */
+    lua_pushcclosure(L, cangjie_bound_method, 2);
+    return 1;
+  }
+  return 1;  /* return the value as-is (nil or other) */
+}
+
+static int cangjie_call_handler (lua_State *L) {
+  /* Arguments: cls, arg1, arg2, ... (cls is first arg via __call) */
+  int nargs = lua_gettop(L) - 1;  /* number of constructor args (excluding cls) */
+  int i;
+  lua_newtable(L);              /* create new instance: obj = {} */
+  /* stack: [cls, arg1, ..., argN, obj] */
+  int obj = lua_gettop(L);
+  /* Set up metatable for the instance with custom __index */
+  lua_newtable(L);              /* instance metatable */
+  lua_pushvalue(L, 1);          /* push cls as upvalue */
+  lua_pushcclosure(L, cangjie_index_handler, 1);
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, obj);
+  /* Check if cls.init exists */
+  lua_getfield(L, 1, "init");
+  if (!lua_isnil(L, -1)) {
+    /* Call init(obj, arg1, arg2, ...) */
+    lua_pushvalue(L, obj);      /* push obj as first arg (self) */
+    for (i = 1; i <= nargs; i++) {
+      lua_pushvalue(L, i + 1);  /* push arg_i (original args start at index 2) */
+    }
+    lua_call(L, nargs + 1, 0);  /* call init(obj, arg1, arg2, ...) */
+  }
+  else {
+    lua_pop(L, 1);  /* pop nil */
+  }
+  lua_pushvalue(L, obj);        /* return obj */
+  return 1;
+}
+
+static int luaB_setup_class (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* cls must be a table */
+  /* Create metatable for cls: { __call = cangjie_call_handler } */
+  lua_newtable(L);
+  lua_pushcfunction(L, cangjie_call_handler);
+  lua_setfield(L, -2, "__call");
+  lua_setmetatable(L, 1);  /* setmetatable(cls, mt) */
   return 0;
 }
 
@@ -526,6 +633,7 @@ static const luaL_Reg base_funcs[] = {
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},
   {"print", luaB_print},
+  {"println", luaB_println},
   {"warn", luaB_warn},
   {"rawequal", luaB_rawequal},
   {"rawlen", luaB_rawlen},
@@ -533,6 +641,7 @@ static const luaL_Reg base_funcs[] = {
   {"rawset", luaB_rawset},
   {"select", luaB_select},
   {"setmetatable", luaB_setmetatable},
+  {"__cangjie_setup_class", luaB_setup_class},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},
