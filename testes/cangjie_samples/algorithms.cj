@@ -7,9 +7,9 @@ assert(sorted_numbers[1] == 1)
 assert(sorted_numbers[5] == 5)
 println("sorted first $(sorted_numbers[1]) last $(sorted_numbers[5])")
 
-let fib1 = 1
-let fib2 = 1
-let fib3 = fib1 + fib2
-let fib4 = fib2 + fib3
-let fib5 = fib3 + fib4
-assert(fib5 == 5)
+let fib_a = 1
+let fib_b = 1
+let fib_c = fib_a + fib_b
+let fib_d = fib_b + fib_c
+let fib_result = fib_c + fib_d
+assert(fib_result == 5)
