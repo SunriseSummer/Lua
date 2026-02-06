@@ -72,7 +72,7 @@ static void save (LexState *ls, int c) {
   b->buffer[luaZ_bufflen(b)++] = cast_char(c);
 }
 
-static int peeknext (LexState *ls) {
+static int peekchar (LexState *ls) {
   if (ls->z->n > 0)
     return cast_uchar(*(ls->z->p));
   else
@@ -262,7 +262,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
     else if (ls->current == '.' &&
-             (peeknext(ls) == '.' || peeknext(ls) == '='))  /* range/concat? */
+             (peekchar(ls) == '.' || peekchar(ls) == '='))  /* range/concat? */
       break;
     else if (lisxdigit(ls->current) || ls->current == '.')  /* '%x|%.' */
       save_and_next(ls);

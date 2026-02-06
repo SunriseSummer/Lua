@@ -1173,21 +1173,23 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   FuncState new_fs;
   BlockCnt bl;
   int usebrace = 0;
+  int selfidx = -1;
   new_fs.f = addprototype(ls);
   new_fs.f->linedefined = line;
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    new_localvarliteral(ls, "self");  /* create 'self' parameter */
+    selfidx = new_localvar(ls, luaX_newstring(ls, "self", 4));
     adjustlocalvars(ls, 1);
   }
   parlist(ls);
   checknext(ls, ')');
   if (ismethod) {
+    int selfreg = getlocalvardesc(ls->fs, selfidx)->vd.ridx;
     new_localvarliteral(ls, "this");
     adjustlocalvars(ls, 1);
     luaK_reserveregs(ls->fs, 1);
-    luaK_codeABC(ls->fs, OP_MOVE, ls->fs->freereg - 1, 0, 0);
+    luaK_codeABC(ls->fs, OP_MOVE, ls->fs->freereg - 1, selfreg, 0);
   }
   if (testnext(ls, ':'))
     skiptype(ls);

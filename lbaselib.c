@@ -124,7 +124,7 @@ static int luaB_cangjie_class (lua_State *L) {
   lua_pushvalue(L, 1);
   lua_pushcclosure(L, luaB_class_call, 1);
   lua_setfield(L, -2, "__call");
-  lua_setmetatable(L, 1);
+  lua_setmetatable(L, -2);
   return 1;
 }
 
