@@ -60,3 +60,69 @@ let nothing: Any = null
 if (nothing != null) {
   error("null handling failed")
 }
+
+interface Greeter {
+  func greet(): String
+}
+
+class Person <: Greeter {
+  var name: String
+
+  init(name: String) {
+    this.name = name
+  }
+
+  func greet(): String {
+    return this.name
+  }
+}
+
+let person: Person = Person("Ada")
+if (person.greet() != "Ada") {
+  error("class method failed")
+}
+
+extend Person {
+  func rename(newName: String) {
+    this.name = newName
+  }
+}
+
+person.rename("Bob")
+if (person.greet() != "Bob") {
+  error("extend method failed")
+}
+
+interface Movable {
+  func move(dx: Int, dy: Int)
+}
+
+struct Point {
+  var x: Int
+  var y: Int
+
+  init(x: Int, y: Int) {
+    this.x = x
+    this.y = y
+  }
+
+  func sum(): Int {
+    return this.x + this.y
+  }
+}
+
+extend Point <: Movable {
+  func move(dx: Int, dy: Int) {
+    this.x = this.x + dx
+    this.y = this.y + dy
+  }
+}
+
+let point: Point = Point(2, 3)
+if (point.sum() != 5) {
+  error("struct method failed")
+}
+point.move(1, 1)
+if (point.sum() != 7) {
+  error("extend interface failed")
+}
