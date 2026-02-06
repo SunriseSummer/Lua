@@ -1209,12 +1209,23 @@ static void funcargs (LexState *ls, expdesc *f) {
 */
 
 
+static void lambdabody (LexState *ls, expdesc *e, int line);
+
 static void primaryexp (LexState *ls, expdesc *v) {
   /* primaryexp -> NAME | '(' expr ')' */
   switch (ls->t.token) {
     case '(': {
       int line = ls->linenumber;
       luaX_next(ls);
+      if (ls->t.token == ')') {
+        /* empty parens () - check for lambda => */
+        luaX_next(ls);
+        if (ls->t.token == TK_ARROW) {
+          lambdabody(ls, v, line);
+          return;
+        }
+        luaX_syntaxerror(ls, "unexpected '()'");
+      }
       expr(ls, v);
       check_match(ls, ')', '(', line);
       luaK_dischargevars(ls->fs, v);
@@ -1265,6 +1276,39 @@ static void suffixedexp (LexState *ls, expdesc *v) {
       default: return;
     }
   }
+}
+
+
+/*
+** Lambda body: => expr or => { block }
+** Creates an anonymous function that returns the expression
+*/
+static void lambdabody (LexState *ls, expdesc *e, int line) {
+  /* lambdabody -> '=>' expr | '=>' '{' block '}' */
+  FuncState new_fs;
+  BlockCnt bl;
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  /* No parameters for () => expr */
+  new_fs.f->numparams = 0;
+  luaX_next(ls);  /* skip '=>' */
+  if (ls->t.token == '{') {
+    /* block lambda: => { statements } */
+    checknext(ls, '{' /*}*/);
+    statlist(ls);
+    new_fs.f->lastlinedefined = ls->linenumber;
+    checknext(ls, /*{*/ '}');
+  }
+  else {
+    /* expression lambda: => expr (auto return) */
+    expdesc ret;
+    expr(ls, &ret);
+    luaK_ret(&new_fs, luaK_exp2anyreg(&new_fs, &ret), 1);
+    new_fs.f->lastlinedefined = ls->linenumber;
+  }
+  codeclosure(ls, e);
+  close_func(ls);
 }
 
 
@@ -1984,6 +2028,254 @@ static void funcstat (LexState *ls, int line) {
 }
 
 
+/*
+** Parse struct/class body members (fields and methods)
+** Generates table construction and method definitions
+*/
+static void skip_type_annotation (LexState *ls) {
+  /* skip optional type annotation after ':' */
+  if (testnext(ls, ':')) {
+    /* skip type name, possibly generic like Array<Int64> */
+    int depth = 0;
+    while (ls->t.token == TK_NAME || ls->t.token == '<' ||
+           ls->t.token == '>' || ls->t.token == ',' ||
+           ls->t.token == '(' || ls->t.token == ')' ||
+           depth > 0) {
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') { if (depth > 0) depth--; else break; }
+      luaX_next(ls);
+    }
+  }
+}
+
+static void skip_generic_params (LexState *ls) {
+  /* skip <T, U, ...> if present */
+  if (ls->t.token == '<') {
+    int depth = 1;
+    luaX_next(ls);
+    while (depth > 0 && ls->t.token != TK_EOS) {
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') depth--;
+      if (depth > 0) luaX_next(ls);
+    }
+    luaX_next(ls);  /* skip final '>' */
+  }
+}
+
+
+static void structstat (LexState *ls, int line) {
+  /*
+  ** struct NAME ['<' typeparams '>'] [':' super] '{' members '}'
+  ** Compiles to:
+  **   NAME = {}; NAME.__index = NAME
+  **   function NAME:method(...) ... end
+  */
+  FuncState *fs = ls->fs;
+  expdesc v, e;
+  TString *sname;
+  int reg;
+
+  luaX_next(ls);  /* skip 'struct' or 'class' */
+  sname = str_checkname(ls);
+
+  /* skip generic type parameters */
+  skip_generic_params(ls);
+
+  /* optional super class ':' NAME */
+  if (testnext(ls, ':')) {
+    /* skip parent type name (for now, just skip it) */
+    while (ls->t.token == TK_NAME) luaX_next(ls);
+  }
+  /* also handle '<:' for interface implementation */
+  if (ls->t.token == TK_LE) {
+    luaX_next(ls);  /* skip '<=' which is our '<:' approximation */
+    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+  }
+
+  /* Create the class table: NAME = {} */
+  buildvar(ls, sname, &v);
+  /* Generate: {} */
+  {
+    int pc = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+    luaK_code(fs, 0);  /* space for extra arg */
+    init_exp(&e, VNONRELOC, fs->freereg);
+    luaK_reserveregs(fs, 1);
+    luaK_settablesize(fs, pc, e.u.info, 0, 0);
+  }
+  luaK_storevar(fs, &v, &e);
+
+  /* Generate: NAME.__index = NAME */
+  {
+    expdesc tab, key, val;
+    buildvar(ls, sname, &tab);
+    luaK_exp2anyregup(fs, &tab);
+    codestring(&key, luaX_newstring(ls, "__index", 7));
+    luaK_indexed(fs, &tab, &key);
+    buildvar(ls, sname, &val);
+    luaK_storevar(fs, &tab, &val);
+  }
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse members */
+  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    if (ls->t.token == TK_FUNC) {
+      /* Method definition: func name(...) { ... } */
+      expdesc mv, mb;
+      TString *mname;
+      luaX_next(ls);  /* skip 'func' */
+      mname = str_checkname(ls);
+      /* skip generic type params on method */
+      skip_generic_params(ls);
+      /* Build NAME.methodname */
+      buildvar(ls, sname, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, mname);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      /* Parse method body (with 'self' parameter) */
+      body(ls, &mb, 1, ls->linenumber);
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+    }
+    else if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
+      /* Field declaration - skip it (fields are dynamic in our impl) */
+      luaX_next(ls);  /* skip let/var */
+      str_checkname(ls);  /* field name */
+      skip_type_annotation(ls);
+      /* optional default value */
+      if (testnext(ls, '=')) {
+        expdesc dummy;
+        expr(ls, &dummy);  /* skip the expression */
+      }
+    }
+    else {
+      luaX_syntaxerror(ls, "expected 'func', 'let', or 'var' in struct/class body");
+    }
+    testnext(ls, ';');  /* optional semicolons */
+  }
+
+  check_match(ls, /*{*/ '}', TK_STRUCT, line);
+  reg = fs->freereg;
+  fs->freereg = cast_byte(reg);
+}
+
+
+static void interfacestat (LexState *ls, int line) {
+  /*
+  ** interface NAME ['<' typeparams '>'] '{' func_decls '}'
+  ** Compiles to: NAME = {} (marker table)
+  */
+  FuncState *fs = ls->fs;
+  expdesc v, e;
+  TString *iname;
+
+  luaX_next(ls);  /* skip 'interface' */
+  iname = str_checkname(ls);
+  skip_generic_params(ls);
+
+  /* Create the interface table: NAME = {} */
+  buildvar(ls, iname, &v);
+  {
+    int pc = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+    luaK_code(fs, 0);
+    init_exp(&e, VNONRELOC, fs->freereg);
+    luaK_reserveregs(fs, 1);
+    luaK_settablesize(fs, pc, e.u.info, 0, 0);
+  }
+  luaK_storevar(fs, &v, &e);
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse interface members (just skip declarations) */
+  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    if (ls->t.token == TK_FUNC) {
+      luaX_next(ls);  /* skip 'func' */
+      str_checkname(ls);  /* method name */
+      skip_generic_params(ls);
+      checknext(ls, '(');
+      /* skip parameter list */
+      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        luaX_next(ls);
+      }
+      checknext(ls, ')');
+      skip_type_annotation(ls);
+      /* If there's a body, parse it */
+      if (ls->t.token == '{') {
+        /* skip the body - it's a default implementation */
+        int depth = 1;
+        luaX_next(ls);
+        while (depth > 0 && ls->t.token != TK_EOS) {
+          if (ls->t.token == '{') depth++;
+          else if (ls->t.token == '}') depth--;
+          if (depth > 0) luaX_next(ls);
+        }
+        luaX_next(ls);  /* skip final '}' */
+      }
+    }
+    else {
+      luaX_next(ls);  /* skip unknown tokens */
+    }
+    testnext(ls, ';');
+  }
+
+  check_match(ls, /*{*/ '}', TK_INTERFACE, line);
+}
+
+
+static void extendstat (LexState *ls, int line) {
+  /*
+  ** extend NAME ['<' typeparams '>'] '{' methods '}'
+  ** Adds methods to an existing type
+  */
+  FuncState *fs = ls->fs;
+  TString *tname;
+
+  luaX_next(ls);  /* skip 'extend' */
+  skip_generic_params(ls);  /* skip possible generic params before name */
+  tname = str_checkname(ls);
+  skip_generic_params(ls);  /* skip possible generic params after name */
+
+  /* skip optional interface implementation '<:' */
+  if (ls->t.token == TK_LE) {
+    luaX_next(ls);
+    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+  }
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse extension methods */
+  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    if (ls->t.token == TK_FUNC) {
+      expdesc mv, mb;
+      TString *mname;
+      luaX_next(ls);  /* skip 'func' */
+      mname = str_checkname(ls);
+      skip_generic_params(ls);
+      /* Build NAME.methodname */
+      buildvar(ls, tname, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, mname);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      body(ls, &mb, 1, ls->linenumber);
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+    }
+    else {
+      luaX_next(ls);
+    }
+    testnext(ls, ';');
+  }
+
+  check_match(ls, /*{*/ '}', TK_EXTEND, line);
+}
+
+
 static void exprstat (LexState *ls) {
   /* stat -> func | assignment */
   FuncState *fs = ls->fs;
@@ -2080,6 +2372,18 @@ static void statement (LexState *ls) {
     }
     case TK_BREAK: {  /* stat -> breakstat */
       breakstat(ls, line);
+      break;
+    }
+    case TK_STRUCT: case TK_CLASS: {  /* stat -> struct/class definition */
+      structstat(ls, line);
+      break;
+    }
+    case TK_INTERFACE: {  /* stat -> interface definition */
+      interfacestat(ls, line);
+      break;
+    }
+    case TK_EXTEND: {  /* stat -> extend type */
+      extendstat(ls, line);
       break;
     }
     case TK_DBCOLON: {  /* stat -> label */
