@@ -22,7 +22,7 @@
 #include "llimits.h"
 
 
-static int luaB_print_impl (lua_State *L, int newline) {
+static int luaB_print_common (lua_State *L, int newline) {
   int n = lua_gettop(L);  /* number of arguments */
   int i;
   for (i = 1; i <= n; i++) {  /* for each argument */
@@ -37,11 +37,11 @@ static int luaB_print_impl (lua_State *L, int newline) {
 }
 
 static int luaB_print (lua_State *L) {
-  return luaB_print_impl(L, 0);
+  return luaB_print_common(L, 0);
 }
 
 static int luaB_println (lua_State *L) {
-  return luaB_print_impl(L, 1);
+  return luaB_print_common(L, 1);
 }
 
 static int luaB_range_iter (lua_State *L) {
