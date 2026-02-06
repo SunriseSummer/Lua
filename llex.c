@@ -47,8 +47,8 @@ static const char *const luaX_tokens [] = {
     "end", "false", "for", "function", "global", "goto", "if",
     "in", "local", "nil", "not", "or", "repeat",
     "return", "then", "true", "until", "while",
-    "let", "var", "func", "null",
-    "//", "..", "...", "==", ">=", "<=", "~=",
+    "let", "var", "func", "null", "class", "struct",
+    "//", "..", "..=", "...", "==", ">=", "<=", "~=",
     "<<", ">>", "::", "<eof>",
     "<number>", "<integer>", "<name>", "<string>"
 };
@@ -70,6 +70,13 @@ static void save (LexState *ls, int c) {
     luaZ_resizebuffer(ls->L, b, newsize);
   }
   b->buffer[luaZ_bufflen(b)++] = cast_char(c);
+}
+
+static int peekchar (LexState *ls) {
+  if (ls->z->n > 0)
+    return cast_uchar(*(ls->z->p));
+  else
+    return EOZ;
 }
 
 
@@ -254,7 +261,13 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   for (;;) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
-    else if (lisxdigit(ls->current) || ls->current == '.')  /* '%x|%.' */
+    else if (ls->current == '.') {
+      int nextc = peekchar(ls);
+      if (nextc == '.' || nextc == '=')  /* range/concat? */
+        break;
+      save_and_next(ls);
+    }
+    else if (lisxdigit(ls->current))  /* '%x|%.' */
       save_and_next(ls);
     else break;
   }
@@ -590,9 +603,11 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       case '.': {  /* '.', '..', '...', or number */
         save_and_next(ls);
         if (check_next1(ls, '.')) {
-          if (check_next1(ls, '.'))
+          if (check_next1(ls, '='))
+            return TK_RANGEI;   /* '..=' */
+          else if (check_next1(ls, '.'))
             return TK_DOTS;   /* '...' */
-          else return TK_CONCAT;   /* '..' */
+          else return TK_CONCAT;   /* '..' (exclusive range) */
         }
         else if (!lisdigit(ls->current)) return '.';
         else return read_numeral(ls, seminfo);

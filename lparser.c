@@ -33,6 +33,8 @@
 /* maximum number of variable declarations per function (must be
    smaller than 250, due to the bytecode format) */
 #define MAXVARS		200
+#define INTERNAL_SELF_NAME	"self"
+#define INTERNAL_SELF_NAME_LEN	(sizeof(INTERNAL_SELF_NAME) - 1)
 
 
 #define hasmultret(k)		((k) == VCALL || (k) == VVARARG)
@@ -63,6 +65,7 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
+static void classstat (LexState *ls, int line, int isstruct);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -1172,16 +1175,25 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   FuncState new_fs;
   BlockCnt bl;
   int usebrace = 0;
+  int selfreg = -1;
   new_fs.f = addprototype(ls);
   new_fs.f->linedefined = line;
   open_func(ls, &new_fs, &bl);
   checknext(ls, '(');
   if (ismethod) {
-    new_localvarliteral(ls, "self");  /* create 'self' parameter */
+    new_localvar(ls, luaX_newstring(ls, INTERNAL_SELF_NAME,
+                                    INTERNAL_SELF_NAME_LEN));
     adjustlocalvars(ls, 1);
+    selfreg = luaY_nvarstack(ls->fs) - 1;
   }
   parlist(ls);
   checknext(ls, ')');
+  if (ismethod) {
+    new_localvarliteral(ls, "this");
+    adjustlocalvars(ls, 1);
+    luaK_reserveregs(ls->fs, 1);
+    luaK_codeABC(ls->fs, OP_MOVE, ls->fs->freereg - 1, selfreg, 0);
+  }
   if (testnext(ls, ':'))
     skiptype(ls);
   if (testnext(ls, '{'))
@@ -1421,7 +1433,6 @@ static BinOpr getbinopr (int op) {
     case '~': return OPR_BXOR;
     case TK_SHL: return OPR_SHL;
     case TK_SHR: return OPR_SHR;
-    case TK_CONCAT: return OPR_CONCAT;
     case TK_NE: return OPR_NE;
     case TK_EQ: return OPR_EQ;
     case '<': return OPR_LT;
@@ -1491,8 +1502,39 @@ static BinOpr subexpr (LexState *ls, expdesc *v, int limit) {
 }
 
 
+static void coderange (LexState *ls, expdesc *start, expdesc *stop,
+                       int inclusive) {
+  FuncState *fs = ls->fs;
+  expdesc func;
+  expdesc arg;
+  int base;
+  TString *name = luaX_newstring(ls, "__cangjie_range",
+                                 sizeof("__cangjie_range") - 1);
+  buildglobal(ls, name, &func);
+  luaK_exp2nextreg(fs, &func);
+  base = func.u.info;  /* base register for call */
+  arg = *start;
+  luaK_exp2nextreg(fs, &arg);
+  arg = *stop;
+  luaK_exp2nextreg(fs, &arg);
+  init_exp(&arg, inclusive ? VTRUE : VFALSE, 0);
+  luaK_exp2nextreg(fs, &arg);
+  init_exp(start, VCALL, luaK_codeABC(fs, OP_CALL, base, 4, 2));
+  luaK_fixline(fs, ls->linenumber);
+  fs->freereg = cast_byte(base + 1);
+}
+
+
 static void expr (LexState *ls, expdesc *v) {
   subexpr(ls, v, 0);
+  /* ".." (TK_CONCAT) and "..=" form range expressions in Cangjie mode. */
+  if (ls->t.token == TK_CONCAT || ls->t.token == TK_RANGEI) {
+    int inclusive = (ls->t.token == TK_RANGEI);
+    expdesc v2;
+    luaX_next(ls);
+    subexpr(ls, &v2, 0);
+    coderange(ls, v, &v2, inclusive);
+  }
 }
 
 /* }==================================================================== */
@@ -2162,6 +2204,121 @@ static void funcstat (LexState *ls, int line) {
   luaK_fixline(ls->fs, line);  /* definition "happens" in the first line */
 }
 
+static void classfield (LexState *ls, expdesc *classvar) {
+  FuncState *fs = ls->fs;
+  int reg = fs->freereg;
+  do {
+    TString *name = str_checkname(ls);
+    expdesc tab = *classvar;
+    expdesc key;
+    expdesc val;
+    if (testnext(ls, ':'))
+      skiptype(ls);
+    if (testnext(ls, '='))
+      expr(ls, &val);
+    else
+      init_exp(&val, VNIL, 0);
+    codestring(&key, name);
+    luaK_exp2anyregup(fs, &tab);
+    luaK_indexed(fs, &tab, &key);
+    luaK_storevar(fs, &tab, &val);
+    fs->freereg = cast_byte(reg);
+  } while (testnext(ls, ','));
+}
+
+static void classmethod (LexState *ls, expdesc *classvar, TString *name) {
+  FuncState *fs = ls->fs;
+  expdesc tab = *classvar;
+  expdesc key;
+  expdesc func;
+  int reg = fs->freereg;
+  luaK_exp2anyregup(fs, &tab);
+  codestring(&key, name);
+  luaK_indexed(fs, &tab, &key);
+  body(ls, &func, 1, ls->linenumber);
+  luaK_storevar(fs, &tab, &func);
+  fs->freereg = cast_byte(reg);
+}
+
+static void classbody (LexState *ls, expdesc *classvar, int line) {
+  TString *initname = luaX_newstring(ls, "init", sizeof("init") - 1);
+  checknext(ls, '{');
+  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    switch (ls->t.token) {
+      case ';': {
+        luaX_next(ls);
+        break;
+      }
+      case TK_LET:
+      case TK_VAR: {
+        luaX_next(ls);  /* skip let/var */
+        classfield(ls, classvar);
+        break;
+      }
+      case TK_FUNCTION:
+      case TK_FUNC: {
+        luaX_next(ls);  /* skip func */
+        classmethod(ls, classvar, str_checkname(ls));
+        break;
+      }
+      case TK_NAME: {
+        if (eqstr(ls->t.seminfo.ts, initname) &&
+            luaX_lookahead(ls) == '(') {
+          luaX_next(ls);  /* skip init */
+          classmethod(ls, classvar, initname);
+        }
+        else
+          luaX_syntaxerror(ls, "class member expected");
+        break;
+      }
+      default: {
+        luaX_syntaxerror(ls, "class member expected");
+      }
+    }
+  }
+  check_match(ls, /*{*/ '}', '{' /*}*/, line);
+}
+
+static void callcangjieclass (LexState *ls, expdesc *classvar, int isstruct) {
+  FuncState *fs = ls->fs;
+  expdesc func;
+  expdesc arg;
+  int base;
+  const char *name = isstruct ? "__cangjie_struct" : "__cangjie_class";
+  TString *tname = luaX_newstring(ls, name, strlen(name));
+  buildglobal(ls, tname, &func);
+  luaK_exp2nextreg(fs, &func);
+  base = func.u.info;
+  arg = *classvar;
+  luaK_exp2nextreg(fs, &arg);
+  luaK_codeABC(fs, OP_CALL, base, 2, 1);
+  luaK_fixline(fs, ls->linenumber);
+  fs->freereg = luaY_nvarstack(fs);
+}
+
+static void classstat (LexState *ls, int line, int isstruct) {
+  FuncState *fs = ls->fs;
+  TString *name;
+  expdesc classvar;
+  expdesc table;
+  int vidx;
+  int reg;
+  luaX_next(ls);  /* skip class/struct */
+  name = str_checkname(ls);
+  vidx = new_localvar(ls, name);
+  adjustlocalvars(ls, 1);
+  init_var(fs, &classvar, vidx);
+  reg = fs->freereg;
+  luaK_reserveregs(fs, 1);
+  luaK_codevABCk(fs, OP_NEWTABLE, reg, 0, 0, 0);
+  luaK_code(fs, 0);  /* space for extra arg */
+  init_exp(&table, VNONRELOC, reg);
+  luaK_storevar(fs, &classvar, &table);
+  fs->freereg = luaY_nvarstack(fs);
+  classbody(ls, &classvar, line);
+  callcangjieclass(ls, &classvar, isstruct);
+}
+
 
 static void exprstat (LexState *ls) {
   /* stat -> func | assignment */
@@ -2255,6 +2412,14 @@ static void statement (LexState *ls) {
     }
     case TK_FUNC: {  /* stat -> funcstat */
       funcstat(ls, line);
+      break;
+    }
+    case TK_CLASS: {  /* stat -> classstat */
+      classstat(ls, line, 0);
+      break;
+    }
+    case TK_STRUCT: {  /* stat -> structstat */
+      classstat(ls, line, 1);
       break;
     }
     case TK_LOCAL: {  /* stat -> localstat */

@@ -22,19 +22,115 @@
 #include "llimits.h"
 
 
-static int luaB_print (lua_State *L) {
+static int luaB_print_common (lua_State *L, int newline) {
   int n = lua_gettop(L);  /* number of arguments */
   int i;
   for (i = 1; i <= n; i++) {  /* for each argument */
     size_t l;
     const char *s = luaL_tolstring(L, i, &l);  /* convert it to string */
-    if (i > 1)  /* not the first element? */
-      lua_writestring("\t", 1);  /* add a tab before it */
     lua_writestring(s, l);  /* print it */
     lua_pop(L, 1);  /* pop result */
   }
-  lua_writeline();
+  if (newline)
+    lua_writeline();
   return 0;
+}
+
+static int luaB_print (lua_State *L) {
+  return luaB_print_common(L, 0);
+}
+
+static int luaB_println (lua_State *L) {
+  return luaB_print_common(L, 1);
+}
+
+static int luaB_range_iter (lua_State *L) {
+  lua_Integer start = lua_tointeger(L, lua_upvalueindex(1));
+  lua_Integer stop = lua_tointeger(L, lua_upvalueindex(2));
+  int inclusive = lua_toboolean(L, lua_upvalueindex(3));
+  lua_Integer step = lua_tointeger(L, lua_upvalueindex(4));
+  lua_Integer current;
+  if (lua_isnoneornil(L, 2))
+    current = start - step;
+  else
+    current = luaL_checkinteger(L, 2);
+  current += step;
+  if ((step > 0 && (inclusive ? current <= stop : current < stop)) ||
+      (step < 0 && (inclusive ? current >= stop : current > stop))) {
+    lua_pushinteger(L, current);
+    return 1;
+  }
+  return 0;
+}
+
+static int luaB_cangjie_range (lua_State *L) {
+  lua_Integer start = luaL_checkinteger(L, 1);
+  lua_Integer stop = luaL_checkinteger(L, 2);
+  int inclusive = lua_toboolean(L, 3);
+  lua_Integer step = (start <= stop) ? 1 : -1;
+  lua_pushinteger(L, start);
+  lua_pushinteger(L, stop);
+  lua_pushboolean(L, inclusive);
+  lua_pushinteger(L, step);
+  lua_pushcclosure(L, luaB_range_iter, 4);
+  return 1;
+}
+
+static int luaB_bound_method (lua_State *L) {
+  int n = lua_gettop(L);
+  lua_pushvalue(L, lua_upvalueindex(1));  /* function */
+  lua_insert(L, 1);
+  lua_pushvalue(L, lua_upvalueindex(2));  /* self */
+  lua_insert(L, 2);
+  lua_call(L, n + 1, LUA_MULTRET);
+  return lua_gettop(L);
+}
+
+static int luaB_class_index (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_pushvalue(L, 2);
+  lua_gettable(L, lua_upvalueindex(1));
+  if (lua_type(L, -1) == LUA_TFUNCTION) {
+    lua_pushvalue(L, 1);
+    lua_pushcclosure(L, luaB_bound_method, 2);
+  }
+  return 1;
+}
+
+static int luaB_class_call (lua_State *L) {
+  int nargs = lua_gettop(L);
+  lua_newtable(L);  /* instance */
+  lua_newtable(L);  /* metatable */
+  lua_pushvalue(L, lua_upvalueindex(1));
+  lua_pushcclosure(L, luaB_class_index, 1);
+  lua_setfield(L, -2, "__index");
+  lua_setmetatable(L, -2);
+  lua_getfield(L, lua_upvalueindex(1), "init");
+  if (lua_isfunction(L, -1)) {
+    int i;
+    lua_pushvalue(L, -2);  /* self */
+    for (i = 2; i <= nargs; i++)
+      lua_pushvalue(L, i);
+    lua_call(L, nargs, 0);
+  }
+  else
+    lua_pop(L, 1);
+  return 1;
+}
+
+static int luaB_cangjie_class (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_newtable(L);
+  lua_pushvalue(L, 1);
+  lua_pushcclosure(L, luaB_class_call, 1);
+  lua_setfield(L, -2, "__call");
+  lua_setmetatable(L, -2);
+  return 1;
+}
+
+static int luaB_cangjie_struct (lua_State *L) {
+  /* structs share the same runtime construction semantics as classes */
+  return luaB_cangjie_class(L);
 }
 
 
@@ -526,6 +622,7 @@ static const luaL_Reg base_funcs[] = {
   {"pairs", luaB_pairs},
   {"pcall", luaB_pcall},
   {"print", luaB_print},
+  {"println", luaB_println},
   {"warn", luaB_warn},
   {"rawequal", luaB_rawequal},
   {"rawlen", luaB_rawlen},
@@ -536,6 +633,9 @@ static const luaL_Reg base_funcs[] = {
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},
+  {"__cangjie_range", luaB_cangjie_range},
+  {"__cangjie_class", luaB_cangjie_class},
+  {"__cangjie_struct", luaB_cangjie_struct},
   {"xpcall", luaB_xpcall},
   /* placeholders */
   {LUA_GNAME, NULL},
@@ -556,4 +656,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   return 1;
 }
-
