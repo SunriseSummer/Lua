@@ -146,6 +146,136 @@ static int luaB_setup_class (lua_State *L) {
 
 
 /*
+** __cangjie_extend_type(typename, methods_table) - Set up a type extension
+** so that built-in type values (numbers, strings, booleans) can call
+** methods defined in the extension. Uses debug.setmetatable to set up
+** a shared metatable with __index pointing to the methods table.
+**
+** The __index handler wraps method lookups to auto-bind the value as
+** the first argument (self), matching Cangjie's method call semantics.
+*/
+static int cangjie_type_bound_method (lua_State *L) {
+  /* upvalue 1 = the original function, upvalue 2 = the bound value */
+  int nargs = lua_gettop(L);
+  int i;
+  int top_before;
+  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
+  lua_pushvalue(L, lua_upvalueindex(2));  /* push self (the value) */
+  for (i = 1; i <= nargs; i++) {
+    lua_pushvalue(L, i);  /* push original args */
+  }
+  top_before = nargs;
+  lua_call(L, nargs + 1, LUA_MULTRET);
+  return lua_gettop(L) - top_before;
+}
+
+static int cangjie_type_index_handler (lua_State *L) {
+  /* Arguments: value, key */
+  /* upvalue 1 = the extension methods table */
+  /* upvalue 2 = the original __index (table or function or nil) */
+
+  /* First, check extension methods table */
+  lua_pushvalue(L, 2);  /* push key */
+  lua_gettable(L, lua_upvalueindex(1));  /* get methods[key] */
+  if (!lua_isnil(L, -1)) {
+    if (lua_isfunction(L, -1)) {
+      /* Wrap function to auto-bind the value as self */
+      lua_pushvalue(L, -1);  /* function */
+      lua_pushvalue(L, 1);   /* the value (self) */
+      lua_pushcclosure(L, cangjie_type_bound_method, 2);
+      return 1;
+    }
+    return 1;  /* return non-nil value as-is */
+  }
+  lua_pop(L, 1);  /* pop nil */
+
+  /* Fall back to original __index */
+  if (lua_isnil(L, lua_upvalueindex(2))) {
+    lua_pushnil(L);
+    return 1;
+  }
+  if (lua_istable(L, lua_upvalueindex(2))) {
+    lua_pushvalue(L, 2);  /* push key */
+    lua_gettable(L, lua_upvalueindex(2));  /* get original[key] */
+    return 1;
+  }
+  if (lua_isfunction(L, lua_upvalueindex(2))) {
+    lua_pushvalue(L, lua_upvalueindex(2));  /* push original __index func */
+    lua_pushvalue(L, 1);  /* value */
+    lua_pushvalue(L, 2);  /* key */
+    lua_call(L, 2, 1);
+    return 1;
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+static int luaB_extend_type (lua_State *L) {
+  const char *tname = luaL_checkstring(L, 1);
+  int val_idx;
+  luaL_checktype(L, 2, LUA_TTABLE);  /* methods table */
+
+  /* Create a representative value to get/set its metatable */
+  if (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0) {
+    lua_pushinteger(L, 0);  /* representative number */
+  }
+  else if (strcmp(tname, "String") == 0) {
+    lua_pushliteral(L, "");  /* representative string */
+  }
+  else if (strcmp(tname, "Bool") == 0) {
+    lua_pushboolean(L, 0);  /* representative boolean */
+  }
+  else {
+    return luaL_error(L, "cannot extend built-in type '%s'", tname);
+  }
+  /* stack: [tname, methods, representative_value] */
+  val_idx = lua_gettop(L);
+
+  /* Check if value already has a metatable */
+  if (lua_getmetatable(L, val_idx)) {
+    /* Metatable exists - get current __index, set up wrapped __index */
+    /* stack: [tname, methods, val, metatable] */
+    lua_getfield(L, -1, "__index");
+    /* stack: [tname, methods, val, metatable, old_index] */
+    lua_pushvalue(L, 2);   /* push methods table */
+    lua_pushvalue(L, -2);  /* push old __index */
+    lua_pushcclosure(L, cangjie_type_index_handler, 2);
+    lua_setfield(L, -3, "__index");  /* metatable.__index = new handler */
+    lua_pop(L, 2);  /* pop old_index and metatable */
+  }
+  else {
+    /* No metatable, create one */
+    lua_newtable(L);  /* new metatable */
+    lua_pushvalue(L, 2);  /* push methods table */
+    lua_pushnil(L);  /* no original __index */
+    lua_pushcclosure(L, cangjie_type_index_handler, 2);
+    lua_setfield(L, -2, "__index");
+    lua_setmetatable(L, val_idx);
+  }
+  return 0;
+}
+
+
+/*
+** __cangjie_copy_to_type(target_table, source_table) - Copy all entries
+** from source_table into target_table. Used to populate type proxy tables.
+*/
+static int luaB_copy_to_type (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  luaL_checktype(L, 2, LUA_TTABLE);
+  lua_pushnil(L);  /* first key */
+  while (lua_next(L, 2) != 0) {
+    /* stack: target, source, key, value */
+    lua_pushvalue(L, -2);  /* push key */
+    lua_pushvalue(L, -2);  /* push value */
+    lua_settable(L, 1);    /* target[key] = value */
+    lua_pop(L, 1);  /* pop value, keep key for next iteration */
+  }
+  return 0;
+}
+
+
+/*
 ** Creates a warning with all given arguments.
 ** Check first for errors; otherwise an error may interrupt
 ** the composition of a warning, leaving it unfinished.
@@ -642,6 +772,8 @@ static const luaL_Reg base_funcs[] = {
   {"select", luaB_select},
   {"setmetatable", luaB_setmetatable},
   {"__cangjie_setup_class", luaB_setup_class},
+  {"__cangjie_extend_type", luaB_extend_type},
+  {"__cangjie_copy_to_type", luaB_copy_to_type},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},

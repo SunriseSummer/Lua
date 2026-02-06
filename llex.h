@@ -78,6 +78,10 @@ typedef struct LexState {
   TString *brkn;  /* "break" name (used as a label) */
   TString *glbn;  /* "global" name (when not a reserved word) */
   int interp_depth;  /* depth of string interpolation nesting */
+  /* Cangjie struct/class field tracking for implicit 'this' */
+  TString *struct_fields[64];  /* field names of current struct/class */
+  int nfields;  /* number of fields in current struct/class */
+  int in_struct_method;  /* nonzero if parsing inside a struct/class method */
 } LexState;
 
 
