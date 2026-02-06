@@ -253,8 +253,14 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   for (;;) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
-    else if (lisxdigit(ls->current) || ls->current == '.')  /* '%x|%.' */
+    else if (lisxdigit(ls->current))  /* hex digit */
       save_and_next(ls);
+    else if (ls->current == '.') {
+      /* Don't consume '.' if next char is also '.' (range operator) */
+      if (ls->z->n > 0 && *(ls->z->p) == '.')
+        break;  /* stop: this is '..' range operator */
+      save_and_next(ls);
+    }
     else break;
   }
   if (lislalpha(ls->current))  /* is numeral touching a letter? */

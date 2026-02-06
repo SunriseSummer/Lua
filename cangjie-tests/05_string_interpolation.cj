@@ -18,9 +18,9 @@ println("${x} + ${y} = ${x + y}")  // 10 + 20 = 30
 let greeting = "Welcome to ${name}!"
 println(greeting)  // Welcome to Cangjie!
 
-// Interpolation with method calls
-let arr = {1, 2, 3}
-println("length = ${#arr}")  // length = 3
+// Interpolation with property access
+let arr = [1, 2, 3]
+println("length = ${arr.size}")  // length = 3
 
 // Empty interpolation parts
 println("start${1}end")  // start1end

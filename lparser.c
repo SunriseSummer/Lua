@@ -1245,6 +1245,13 @@ static void primaryexp (LexState *ls, expdesc *v) {
       singlevar(ls, v);
       return;
     }
+    case TK_THIS: {
+      /* 'this' is syntactic sugar for 'self' */
+      TString *ts = luaS_new(ls->L, "self");
+      luaX_next(ls);  /* skip 'this' */
+      singlevaraux(ls->fs, ts, v, 1);
+      return;
+    }
     default: {
       luaX_syntaxerror(ls, "unexpected symbol");
     }
@@ -1260,6 +1267,18 @@ static void suffixedexp (LexState *ls, expdesc *v) {
   for (;;) {
     switch (ls->t.token) {
       case '.': {  /* fieldsel */
+        /* Check for .size -> # (length operator) */
+        if (luaX_lookahead(ls) == TK_NAME) {
+          /* peek at the name after '.' */
+          TString *fname = ls->lookahead.seminfo.ts;
+          if (fname != NULL && strcmp(getstr(fname), "size") == 0) {
+            /* .size -> generate length operation */
+            luaX_next(ls);  /* skip '.' */
+            luaX_next(ls);  /* skip 'size' */
+            luaK_prefix(fs, OPR_LEN, v, ls->linenumber);
+            break;
+          }
+        }
         fieldsel(ls, v);
         break;
       }
@@ -1415,6 +1434,34 @@ static void simpleexp (LexState *ls, expdesc *v) {
     }
     case '{' /*}*/: {  /* constructor */
       constructor(ls, v);
+      return;
+    }
+    case '[': {  /* array constructor -> '[' [explist] ']' */
+      /* Reuse the table constructor logic for arrays */
+      FuncState *fs2 = ls->fs;
+      int line2 = ls->linenumber;
+      int pc2 = luaK_codevABCk(fs2, OP_NEWTABLE, 0, 0, 0, 0);
+      ConsControl cc;
+      luaK_code(fs2, 0);
+      cc.na = cc.nh = cc.tostore = 0;
+      cc.t = v;
+      init_exp(v, VNONRELOC, fs2->freereg);
+      luaK_reserveregs(fs2, 1);
+      init_exp(&cc.v, VVOID, 0);
+      luaX_next(ls);  /* skip '[' */
+      cc.maxtostore = maxtostore(fs2);
+      while (ls->t.token != ']' && ls->t.token != TK_EOS) {
+        if (cc.v.k != VVOID)
+          closelistfield(fs2, &cc);
+        /* Only list fields in array constructors (no key=val) */
+        expr(ls, &cc.v);
+        cc.tostore++;
+        if (!testnext(ls, ','))
+          break;
+      }
+      check_match(ls, ']', '[', line2);
+      lastlistfield(fs2, &cc);
+      luaK_settablesize(fs2, pc2, v->u.info, cc.na, 0);
       return;
     }
     case TK_FUNC: {
@@ -1706,21 +1753,17 @@ static void labelstat (LexState *ls, TString *name, int line) {
 
 
 static void whilestat (LexState *ls, int line) {
-  /* whilestat -> WHILE cond '{' block '}' */
+  /* whilestat -> WHILE '(' cond ')' '{' block '}' */
   FuncState *fs = ls->fs;
   int whileinit;
   int condexit;
   BlockCnt bl;
   luaX_next(ls);  /* skip WHILE */
   whileinit = luaK_getlabel(fs);
-  /* In Cangjie, condition may optionally be in parentheses */
-  if (testnext(ls, '(')) {
-    condexit = cond(ls);
-    checknext(ls, ')');
-  }
-  else {
-    condexit = cond(ls);
-  }
+  /* Cangjie requires parentheses around condition */
+  checknext(ls, '(');
+  condexit = cond(ls);
+  checknext(ls, ')');
   enterblock(fs, &bl, 1);
   checknext(ls, '{' /*}*/);
   block(ls);
@@ -1852,41 +1895,133 @@ static void forlist (LexState *ls, TString *indexname) {
 
 
 static void forstat (LexState *ls, int line) {
-  /* forstat -> FOR '(' fornum | forlist ')' forbody */
+  /* forstat -> FOR '(' NAME IN range_or_iter ')' '{' block '}'
+  ** Cangjie for-in with ranges: for (i in 1..=100) or for (i in 0..10:2)
+  ** Also supports generic for: for (k, v in pairs(t))
+  ** or simple iteration: for (v in expr)
+  */
   FuncState *fs = ls->fs;
   TString *varname;
   BlockCnt bl;
-  int hasparen = 0;
   enterblock(fs, &bl, 1);  /* scope for loop and control variables */
   luaX_next(ls);  /* skip 'for' */
-  if (testnext(ls, '('))
-    hasparen = 1;
+  checknext(ls, '(');
   varname = str_checkname(ls);  /* first variable name */
-  switch (ls->t.token) {
-    case '=': fornum(ls, varname, line); break;
-    case ',': case TK_IN: forlist(ls, varname); break;
-    default: luaX_syntaxerror(ls, "'=' or 'in' expected");
+  if (ls->t.token == ',') {
+    /* Multiple variables: for (k, v in pairs(t)) */
+    /* Parse like forlist but with ')' before body */
+    FuncState *fs2 = ls->fs;
+    expdesc e;
+    int nvars = 4;
+    int fline;
+    int base2 = fs->freereg;
+    new_localvarliteral(ls, "(for state)");
+    new_localvarliteral(ls, "(for state)");
+    new_localvarliteral(ls, "(for state)");
+    new_varkind(ls, varname, LOOPVARKIND);
+    while (testnext(ls, ',')) {
+      new_localvar(ls, str_checkname(ls));
+      nvars++;
+    }
+    checknext(ls, TK_IN);
+    fline = ls->linenumber;
+    adjust_assign(ls, 4, explist(ls, &e), &e);
+    adjustlocalvars(ls, 3);
+    marktobeclosed(fs2);
+    luaK_checkstack(fs2, 2);
+    checknext(ls, ')');
+    forbody(ls, base2, fline, nvars - 3, 1);
   }
-  if (hasparen)
-    ; /* ')' already consumed by forbody or we handle it */
-  leaveblock(fs);  /* loop scope ('break' jumps to this point) */
+  else if (ls->t.token == TK_IN) {
+    luaX_next(ls);  /* skip 'in' */
+    /* Peek ahead to determine if this is a range expression.
+    ** Parse the first expression without consuming '..' */
+    {
+      expdesc start_e;
+      int base0 = fs->freereg;  /* save base BEFORE parsing expression */
+      subexpr(ls, &start_e, 9);  /* stop before '..' (priority 9) */
+      if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ) {
+        /* Range expression: start..end or start..=end */
+        int inclusive = (ls->t.token == TK_DOTDOTEQ);
+        int base = fs->freereg;
+        new_localvarliteral(ls, "(for state)");
+        new_localvarliteral(ls, "(for state)");
+        new_varkind(ls, varname, LOOPVARKIND);
+        /* emit start value */
+        luaK_exp2nextreg(fs, &start_e);
+        luaX_next(ls);  /* skip '..' or '..=' */
+        {
+          /* Parse limit, stopping before ':' (step separator) */
+          expdesc limit_e;
+          subexpr(ls, &limit_e, 9);
+          luaK_exp2nextreg(fs, &limit_e);
+        }
+        if (!inclusive) {
+          /* exclusive range: adjust limit by -1 */
+          luaK_int(fs, fs->freereg, 1);
+          luaK_reserveregs(fs, 1);
+          luaK_codeABC(fs, OP_SUB, fs->freereg - 2, fs->freereg - 2, fs->freereg - 1);
+          fs->freereg--;
+        }
+        if (testnext(ls, ':')) {
+          exp1(ls);  /* step */
+        }
+        else {
+          luaK_int(fs, fs->freereg, 1);
+          luaK_reserveregs(fs, 1);
+        }
+        adjustlocalvars(ls, 2);
+        checknext(ls, ')');
+        forbody(ls, base, line, 1, 0);
+      }
+      else {
+        /* Generic for: for (v in iterator_expr) */
+        int nvars = 4;
+        int base2 = base0;  /* use saved base from before expression */
+        /* Reset freereg to base to properly allocate for-loop registers */
+        fs->freereg = cast_byte(base0);
+        new_localvarliteral(ls, "(for state)");
+        new_localvarliteral(ls, "(for state)");
+        new_localvarliteral(ls, "(for state)");
+        new_varkind(ls, varname, LOOPVARKIND);
+        /* Now evaluate the expression and assign to the 4 registers */
+        {
+          int nexps;
+          if (hasmultret(start_e.k)) {
+            luaK_setmultret(fs, &start_e);
+            nexps = LUA_MULTRET;
+          }
+          else {
+            if (start_e.k != VVOID)
+              luaK_exp2nextreg(fs, &start_e);
+            nexps = 1;
+          }
+          adjust_assign(ls, 4, nexps, &start_e);
+        }
+        adjustlocalvars(ls, 3);
+        marktobeclosed(fs);
+        luaK_checkstack(fs, 2);
+        checknext(ls, ')');
+        forbody(ls, base2, line, nvars - 3, 1);
+      }
+    }
+  }
+  else {
+    luaX_syntaxerror(ls, "'in' expected");
+  }
+  leaveblock(fs);
 }
 
 
 static void test_then_block (LexState *ls, int *escapelist) {
-  /* test_then_block -> [IF | ELSE IF] cond '{' block '}' */
+  /* test_then_block -> [IF | ELSE IF] '(' cond ')' '{' block '}' */
   FuncState *fs = ls->fs;
   int condtrue;
   luaX_next(ls);  /* skip IF */
-  /* In Cangjie, condition may optionally be in parentheses */
-  if (ls->t.token == '(') {
-    luaX_next(ls);
-    condtrue = cond(ls);
-    checknext(ls, ')');
-  }
-  else {
-    condtrue = cond(ls);
-  }
+  /* Cangjie requires parentheses around condition */
+  checknext(ls, '(');
+  condtrue = cond(ls);
+  checknext(ls, ')');
   checknext(ls, '{' /*}*/);
   block(ls);  /* 'then' part */
   checknext(ls, /*{*/ '}');
@@ -2156,6 +2291,26 @@ static void structstat (LexState *ls, int line) {
       luaK_storevar(fs, &mv, &mb);
       luaK_fixline(fs, line);
     }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "init")) {
+      /* Constructor: init(...) { ... } -- no 'func' keyword needed */
+      expdesc mv, mb;
+      TString *mname;
+      luaX_next(ls);  /* skip 'init' */
+      mname = luaS_new(ls->L, "init");
+      /* Build NAME.init */
+      buildvar(ls, sname, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, mname);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      /* Parse constructor body (with 'self' parameter) */
+      body(ls, &mb, 1, ls->linenumber);
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+    }
     else if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
       /* Field declaration - skip it (fields are dynamic in our impl) */
       luaX_next(ls);  /* skip let/var */
@@ -2168,7 +2323,7 @@ static void structstat (LexState *ls, int line) {
       }
     }
     else {
-      luaX_syntaxerror(ls, "expected 'func', 'let', or 'var' in struct/class body");
+      luaX_syntaxerror(ls, "expected 'func', 'init', 'let', or 'var' in struct/class body");
     }
     testnext(ls, ';');  /* optional semicolons */
   }

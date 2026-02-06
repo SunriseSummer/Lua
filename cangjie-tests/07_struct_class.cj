@@ -1,26 +1,26 @@
 // Test: Struct and Class
 
-// Basic struct
+// Basic struct with init constructor and this
 struct Point {
-  func new(x, y) {
-    self.x = x
-    self.y = y
-    return self
+  init(x: Int64, y: Int64) {
+    this.x = x
+    this.y = y
+    return this
   }
-  func toString() {
-    return "(${self.x}, ${self.y})"
+  func toString(): String {
+    return "(${this.x}, ${this.y})"
   }
   func distance(other) {
-    let dx = self.x - other.x
-    let dy = self.y - other.y
+    let dx = this.x - other.x
+    let dy = this.y - other.y
     return (dx * dx + dy * dy) ^ 0.5
   }
 }
 
 // Helper to create instances
-func newPoint(x, y) {
+func newPoint(x: Int64, y: Int64) {
   let p = setmetatable({}, Point)
-  p:new(x, y)
+  p:init(x, y)
   return p
 }
 
@@ -30,21 +30,21 @@ println("p1 = ${p1:toString()}")        // (3, 4)
 println("p2 = ${p2:toString()}")        // (0, 0)
 println("distance = ${p1:distance(p2)}") // 5.0
 
-// Class with more features
+// Class with init and this
 class Animal {
-  func new(name, sound) {
-    self.name = name
-    self.sound = sound
-    return self
+  init(name: String, sound: String) {
+    this.name = name
+    this.sound = sound
+    return this
   }
-  func speak() {
-    return "${self.name} says ${self.sound}!"
+  func speak(): String {
+    return "${this.name} says ${this.sound}!"
   }
 }
 
-func newAnimal(name, sound) {
+func newAnimal(name: String, sound: String) {
   let a = setmetatable({}, Animal)
-  a:new(name, sound)
+  a:init(name, sound)
   return a
 }
 
@@ -60,8 +60,8 @@ interface Printable {
 
 // Extend - add methods to existing types
 extend Point {
-  func translate(dx, dy) {
-    return newPoint(self.x + dx, self.y + dy)
+  func translate(dx: Int64, dy: Int64) {
+    return newPoint(this.x + dx, this.y + dy)
   }
 }
 
@@ -69,21 +69,21 @@ let p3 = newPoint(1, 1)
 let p4 = p3:translate(5, 10)
 println("translated: ${p4:toString()}")  // (6, 11)
 
-// Struct with generic-like pattern (using type name in <>)
-struct Pair {
-  func new(first, second) {
-    self.first = first
-    self.second = second
-    return self
+// Struct with generic type parameter
+struct Pair<T, U> {
+  init(first, second) {
+    this.first = first
+    this.second = second
+    return this
   }
-  func toString() {
-    return "(${tostring(self.first)}, ${tostring(self.second)})"
+  func toString(): String {
+    return "(${tostring(this.first)}, ${tostring(this.second)})"
   }
 }
 
 func newPair(a, b) {
   let p = setmetatable({}, Pair)
-  p:new(a, b)
+  p:init(a, b)
   return p
 }
 

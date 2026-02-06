@@ -2,58 +2,58 @@
 // A dynamic array with automatic resizing
 
 struct ArrayList<T> {
-  func new() {
-    self.data = {}
-    self.length = 0
-    return self
+  init() {
+    this.data = {}
+    this.length = 0
+    return this
   }
 
-  func size() {
-    return self.length
+  func size(): Int64 {
+    return this.length
   }
 
-  func isEmpty() {
-    return self.length == 0
+  func isEmpty(): Bool {
+    return this.length == 0
   }
 
-  func add(item) {
-    self.length = self.length + 1
-    self.data[self.length] = item
+  func add(item: T) {
+    this.length = this.length + 1
+    this.data[this.length] = item
   }
 
-  func get(index) {
-    if index < 1 or index > self.length {
+  func get(index: Int64): T {
+    if (index < 1 or index > this.length) {
       return nil
     }
-    return self.data[index]
+    return this.data[index]
   }
 
-  func set(index, value) {
-    if index >= 1 and index <= self.length {
-      self.data[index] = value
+  func set(index: Int64, value: T) {
+    if (index >= 1 and index <= this.length) {
+      this.data[index] = value
     }
   }
 
-  func removeAt(index) {
-    if index < 1 or index > self.length {
+  func removeAt(index: Int64): T {
+    if (index < 1 or index > this.length) {
       return nil
     }
-    let removed = self.data[index]
+    let removed = this.data[index]
     // shift elements left
     var i = index
-    while i < self.length {
-      self.data[i] = self.data[i + 1]
+    while (i < this.length) {
+      this.data[i] = this.data[i + 1]
       i = i + 1
     }
-    self.data[self.length] = nil
-    self.length = self.length - 1
+    this.data[this.length] = nil
+    this.length = this.length - 1
     return removed
   }
 
-  func indexOf(item) {
+  func indexOf(item: T): Int64 {
     var i = 1
-    while i <= self.length {
-      if self.data[i] == item {
+    while (i <= this.length) {
+      if (this.data[i] == item) {
         return i
       }
       i = i + 1
@@ -61,23 +61,23 @@ struct ArrayList<T> {
     return -1
   }
 
-  func contains(item) {
-    return self:indexOf(item) != -1
+  func contains(item: T): Bool {
+    return this:indexOf(item) != -1
   }
 
   func clear() {
-    self.data = {}
-    self.length = 0
+    this.data = {}
+    this.length = 0
   }
 
-  func toString() {
+  func toString(): String {
     var result = "["
     var i = 1
-    while i <= self.length {
-      if i > 1 {
+    while (i <= this.length) {
+      if (i > 1) {
         result = result .. ", "
       }
-      result = result .. tostring(self.data[i])
+      result = result .. tostring(this.data[i])
       i = i + 1
     }
     return result .. "]"
@@ -85,8 +85,8 @@ struct ArrayList<T> {
 
   func forEach(fn) {
     var i = 1
-    while i <= self.length {
-      fn(self.data[i], i)
+    while (i <= this.length) {
+      fn(this.data[i], i)
       i = i + 1
     }
   }
@@ -94,8 +94,8 @@ struct ArrayList<T> {
   func map(fn) {
     let result = newArrayList()
     var i = 1
-    while i <= self.length {
-      result:add(fn(self.data[i]))
+    while (i <= this.length) {
+      result:add(fn(this.data[i]))
       i = i + 1
     }
     return result
@@ -104,9 +104,9 @@ struct ArrayList<T> {
   func filter(fn) {
     let result = newArrayList()
     var i = 1
-    while i <= self.length {
-      if fn(self.data[i]) {
-        result:add(self.data[i])
+    while (i <= this.length) {
+      if (fn(this.data[i])) {
+        result:add(this.data[i])
       }
       i = i + 1
     }
@@ -116,7 +116,7 @@ struct ArrayList<T> {
 
 func newArrayList() {
   let list = setmetatable({}, ArrayList)
-  list:new()
+  list:init()
   return list
 }
 

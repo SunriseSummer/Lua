@@ -1,39 +1,39 @@
 // Test: HashMap implementation
 
 struct HashMap<K, V> {
-  func new() {
-    self.data = {}
-    self.count = 0
-    self.keys_list = {}
-    return self
+  init() {
+    this.data = {}
+    this.count = 0
+    this.keys_list = {}
+    return this
   }
-  func size() {
-    return self.count
+  func size(): Int64 {
+    return this.count
   }
-  func isEmpty() {
-    return self.count == 0
+  func isEmpty(): Bool {
+    return this.count == 0
   }
-  func put(key, value) {
-    if self.data[key] == nil {
-      self.count = self.count + 1
-      self.keys_list[self.count] = key
+  func put(key: K, value: V) {
+    if (this.data[key] == nil) {
+      this.count = this.count + 1
+      this.keys_list[this.count] = key
     }
-    self.data[key] = value
+    this.data[key] = value
   }
-  func get(key) {
-    return self.data[key]
+  func get(key: K): V {
+    return this.data[key]
   }
-  func containsKey(key) {
-    return self.data[key] != nil
+  func containsKey(key: K): Bool {
+    return this.data[key] != nil
   }
-  func remove(key) {
-    if self.data[key] != nil {
-      self.data[key] = nil
-      self.count = self.count - 1
+  func remove(key: K): Bool {
+    if (this.data[key] != nil) {
+      this.data[key] = nil
+      this.count = this.count - 1
       var i = 1
-      while i <= #self.keys_list {
-        if self.keys_list[i] == key {
-          table.remove(self.keys_list, i)
+      while (i <= #this.keys_list) {
+        if (this.keys_list[i] == key) {
+          table.remove(this.keys_list, i)
           break
         }
         i = i + 1
@@ -44,25 +44,25 @@ struct HashMap<K, V> {
   }
   func forEach(fn) {
     var i = 1
-    while i <= #self.keys_list {
-      let k = self.keys_list[i]
-      if self.data[k] != nil {
-        fn(k, self.data[k])
+    while (i <= #this.keys_list) {
+      let k = this.keys_list[i]
+      if (this.data[k] != nil) {
+        fn(k, this.data[k])
       }
       i = i + 1
     }
   }
-  func toString() {
+  func toString(): String {
     var result = "{"
     var first = true
     var i = 1
-    while i <= #self.keys_list {
-      let k = self.keys_list[i]
-      if self.data[k] != nil {
-        if not first {
+    while (i <= #this.keys_list) {
+      let k = this.keys_list[i]
+      if (this.data[k] != nil) {
+        if (not first) {
           result = result .. ", "
         }
-        result = result .. tostring(k) .. ": " .. tostring(self.data[k])
+        result = result .. tostring(k) .. ": " .. tostring(this.data[k])
         first = false
       }
       i = i + 1
@@ -73,7 +73,7 @@ struct HashMap<K, V> {
 
 func newHashMap() {
   let m = setmetatable({}, HashMap)
-  m:new()
+  m:init()
   return m
 }
 

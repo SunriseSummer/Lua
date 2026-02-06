@@ -1,30 +1,30 @@
 // Test: Generics
 
 // Generic function with type parameter annotation
-func identity<T>(x) {
+func identity<T>(x: T): T {
   return x
 }
 println("identity(42) = ${identity(42)}")
 let hw = identity("hello")
 println("identity(hello) = ${hw}")
 
-// Generic struct
+// Generic struct with init/this
 struct Box<T> {
-  func new(value) {
-    self.value = value
-    return self
+  init(value: T) {
+    this.value = value
+    return this
   }
-  func get() {
-    return self.value
+  func get(): T {
+    return this.value
   }
-  func toString() {
-    return "Box(" .. tostring(self.value) .. ")"
+  func toString(): String {
+    return "Box(" .. tostring(this.value) .. ")"
   }
 }
 
 func newBox(value) {
   let b = setmetatable({}, Box)
-  b:new(value)
+  b:init(value)
   return b
 }
 
@@ -35,7 +35,7 @@ println(strBox:toString())
 println("intBox.get() = ${intBox:get()}")
 
 // Generic function: swap
-func swap<T>(a, b) {
+func swap<T>(a: T, b: T) {
   return b, a
 }
 let x, y = swap(1, 2)
@@ -43,35 +43,35 @@ println("swap(1, 2) = ${x}, ${y}")
 
 // Generic Stack
 struct Stack<T> {
-  func new() {
-    self.items = {}
-    self.size = 0
-    return self
+  init() {
+    this.items = {}
+    this.count = 0
+    return this
   }
-  func push(item) {
-    self.size = self.size + 1
-    self.items[self.size] = item
+  func push(item: T) {
+    this.count = this.count + 1
+    this.items[this.count] = item
   }
-  func pop() {
-    if self.size == 0 {
+  func pop(): T {
+    if (this.count == 0) {
       return nil
     }
-    let item = self.items[self.size]
-    self.items[self.size] = nil
-    self.size = self.size - 1
+    let item = this.items[this.count]
+    this.items[this.count] = nil
+    this.count = this.count - 1
     return item
   }
-  func peek() {
-    return self.items[self.size]
+  func peek(): T {
+    return this.items[this.count]
   }
-  func isEmpty() {
-    return self.size == 0
+  func isEmpty(): Bool {
+    return this.count == 0
   }
 }
 
 func newStack() {
   let s = setmetatable({}, Stack)
-  s:new()
+  s:init()
   return s
 }
 

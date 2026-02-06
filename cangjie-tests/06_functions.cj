@@ -1,7 +1,7 @@
 // Test: Functions
 
 // Basic function definition
-func add(a, b) {
+func add(a: Int64, b: Int64): Int64 {
   return a + b
 }
 println("add(3, 4) = ${add(3, 4)}")
@@ -33,8 +33,8 @@ func outer() {
 println("outer() = ${outer()}")
 
 // Closures
-func makeAdder(n) {
-  return func(x) {
+func makeAdder(n: Int64) {
+  return func(x: Int64): Int64 {
     return x + n
   }
 }
@@ -45,8 +45,8 @@ println("add10(3) = ${add10(3)}")
 
 // Counter closure
 func makeCounter() {
-  var count = 0
-  return func() {
+  var count: Int64 = 0
+  return func(): Int64 {
     count = count + 1
     return count
   }
@@ -61,12 +61,12 @@ let square = () => 42
 println("lambda = ${square()}")
 
 // Anonymous function
-let double = func(x) { return x * 2 }
+let double = func(x: Int64): Int64 { return x * 2 }
 println("double(7) = ${double(7)}")
 
 // Recursive function
-func factorial(n) {
-  if n <= 1 {
+func factorial(n: Int64): Int64 {
+  if (n <= 1) {
     return 1
   }
   return n * factorial(n - 1)
@@ -74,7 +74,7 @@ func factorial(n) {
 println("factorial(10) = ${factorial(10)}")
 
 // Multiple return values
-func divmod(a, b) {
+func divmod(a: Int64, b: Int64) {
   return a / b, a % b
 }
 let q, r = divmod(17, 5)
