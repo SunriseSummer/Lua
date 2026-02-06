@@ -1,6 +1,6 @@
 // Test: Pattern Matching with match expression
 
-// === Enum pattern matching ===
+// === Enum pattern matching (no braces after =>) ===
 enum Color {
   | Red
   | Green
@@ -9,15 +9,12 @@ enum Color {
 
 func describeColor(c) {
   match (c) {
-    case Red => {
+    case Red =>
       println("It is red")
-    }
-    case Green => {
+    case Green =>
       println("It is green")
-    }
-    case Blue(val) => {
+    case Blue(val) =>
       println("It is blue with value " .. tostring(val))
-    }
   }
 }
 
@@ -28,10 +25,14 @@ describeColor(Color.Blue(200))
 // === Constant pattern matching ===
 func describeNumber(n) {
   match (n) {
-    case 0 => { println("zero") }
-    case 1 => { println("one") }
-    case 42 => { println("the answer") }
-    case _ => { println("some number: " .. tostring(n)) }
+    case 0 =>
+      println("zero")
+    case 1 =>
+      println("one")
+    case 42 =>
+      println("the answer")
+    case _ =>
+      println("some number: " .. tostring(n))
   }
 }
 
@@ -40,7 +41,7 @@ describeNumber(1)
 describeNumber(42)
 describeNumber(99)
 
-// === Wildcard pattern ===
+// === Wildcard pattern with multi-line body ===
 enum Shape {
   | Circle(Float64)
   | Rectangle(Float64, Float64)
@@ -49,15 +50,12 @@ enum Shape {
 
 func getArea(s) {
   match (s) {
-    case Circle(r) => {
+    case Circle(r) =>
       return 3.14159 * r * r
-    }
-    case Rectangle(w, h) => {
+    case Rectangle(w, h) =>
       return w * h
-    }
-    case _ => {
+    case _ =>
       return 0.0
-    }
   }
   return 0.0
 }
@@ -76,18 +74,14 @@ enum Expr {
 
 func eval(e) {
   match (e) {
-    case Num(n) => {
+    case Num(n) =>
       return n
-    }
-    case Add(a, b) => {
+    case Add(a, b) =>
       return eval(a) + eval(b)
-    }
-    case Sub(a, b) => {
+    case Sub(a, b) =>
       return eval(a) - eval(b)
-    }
-    case Mul(a, b) => {
+    case Mul(a, b) =>
       return eval(a) * eval(b)
-    }
   }
   return 0
 }
@@ -107,17 +101,77 @@ enum Option {
 
 func getOrDefault(opt, default_val) {
   match (opt) {
-    case Some(v) => {
+    case Some(v) =>
       return v
-    }
-    case None => {
+    case None =>
       return default_val
-    }
   }
   return default_val
 }
 
 println("Some(42): " .. tostring(getOrDefault(Option.Some(42), 0)))
 println("None: " .. tostring(getOrDefault(Option.None, -1)))
+
+// === Type pattern matching ===
+class Animal {
+  var name: String
+  init(name: String) {
+    this.name = name
+  }
+}
+
+class Dog <: Animal {
+  init(name: String) {
+    this.name = name
+  }
+  func bark(): String {
+    return this.name .. " barks!"
+  }
+}
+
+class Cat <: Animal {
+  init(name: String) {
+    this.name = name
+  }
+}
+
+func describeAnimal(a) {
+  match (a) {
+    case d: Dog =>
+      println(d.bark())
+    case c: Cat =>
+      println(c.name .. " meows!")
+    case a: Animal =>
+      println(a.name .. " is generic")
+    case _ =>
+      println("not an animal")
+  }
+}
+
+describeAnimal(Dog("Rex"))
+describeAnimal(Cat("Whiskers"))
+describeAnimal(Animal("Parrot"))
+
+// === Tuple pattern matching ===
+func processPair(p) {
+  match (p) {
+    case (x, y) =>
+      println("pair: " .. tostring(x) .. ", " .. tostring(y))
+  }
+}
+
+processPair((10, 20))
+processPair(("hello", "world"))
+
+// Tuple pattern with wildcard
+func getFirst(t) {
+  match (t) {
+    case (x, _) =>
+      return x
+  }
+  return nil
+}
+
+println("first of (42, 99) = " .. tostring(getFirst((42, 99))))
 
 println("PASS: 13_match")

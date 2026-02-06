@@ -8,7 +8,7 @@ interface Describable {
   func describe(): String
 }
 
-// Enum for expression types
+// Enum for expression types with member functions
 enum Expr {
   | Num(Int64)
   | Add(Expr, Expr)
@@ -45,10 +45,9 @@ class DetailedResult <: Result {
 // Evaluator using pattern matching on recursive enums
 func eval(e) {
   match (e) {
-    case Num(n) => {
+    case Num(n) =>
       return DetailedResult(n, 1, tostring(n))
-    }
-    case Add(a, b) => {
+    case Add(a, b) =>
       let ra = eval(a)
       let rb = eval(b)
       return DetailedResult(
@@ -56,8 +55,7 @@ func eval(e) {
         ra.steps + rb.steps + 1,
         "(" .. ra.expr_str .. "+" .. rb.expr_str .. ")"
       )
-    }
-    case Sub(a, b) => {
+    case Sub(a, b) =>
       let ra = eval(a)
       let rb = eval(b)
       return DetailedResult(
@@ -65,8 +63,7 @@ func eval(e) {
         ra.steps + rb.steps + 1,
         "(" .. ra.expr_str .. "-" .. rb.expr_str .. ")"
       )
-    }
-    case Mul(a, b) => {
+    case Mul(a, b) =>
       let ra = eval(a)
       let rb = eval(b)
       return DetailedResult(
@@ -74,15 +71,13 @@ func eval(e) {
         ra.steps + rb.steps + 1,
         "(" .. ra.expr_str .. "*" .. rb.expr_str .. ")"
       )
-    }
-    case Neg(a) => {
+    case Neg(a) =>
       let ra = eval(a)
       return DetailedResult(
         0 - ra.value,
         ra.steps + 1,
         "(-" .. ra.expr_str .. ")"
       )
-    }
   }
   return Result(0, 0)
 }
@@ -117,5 +112,18 @@ func printResult(r) {
 
 printResult(r1)
 printResult(r2)
+
+// === Type pattern matching with class hierarchy ===
+func classifyResult(r) {
+  match (r) {
+    case d: DetailedResult =>
+      println("detailed: " .. d.expr_str)
+    case r: Result =>
+      println("basic result: " .. tostring(r.value))
+  }
+}
+
+classifyResult(r1)
+classifyResult(Result(100, 1))
 
 println("PASS: usages/oop_enum_match")

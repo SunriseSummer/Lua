@@ -1,25 +1,54 @@
-// Extended features: Dynamic dispatch and runtime type flexibility
+// Extended features: Dynamic dispatch, enum internals, and generic enums
 // These leverage Lua's dynamic nature combined with Cangjie's new features
 
-// === Dynamic enum extension: adding methods at runtime ===
-enum Option {
-  | Some(Int64)
+// === Dynamic enum: accessing internal representation (Lua extension) ===
+// In standard Cangjie, enum values don't expose [1], [2] indexing.
+// Here we can access the internal representation directly.
+enum Color {
+  | Red
+  | Green
+  | Blue(Int64)
+  | RGB(Int64, Int64, Int64)
+}
+
+let r = Color.Red
+let b = Color.Blue(128)
+let rgb = Color.RGB(255, 128, 0)
+
+// Direct access to __tag (Lua extension)
+println(r.__tag)     // Red
+println(b.__tag)     // Blue
+println(rgb.__tag)   // RGB
+
+// Index-based access to enum constructor args (Lua extension)
+println(b[1])        // 128
+println(rgb[1])      // 255
+println(rgb[2])      // 128
+println(rgb[3])      // 0
+
+// === Generic enum (type params erased, work via dynamic typing) ===
+enum Option<T> {
+  | Some(T)
   | None
 }
 
 // Lua-style dynamic function to work with enum values
 func unwrap_or(opt, default_val) {
   match (opt) {
-    case Some(v) => { return v }
-    case None => { return default_val }
+    case Some(v) =>
+      return v
+    case None =>
+      return default_val
   }
   return default_val
 }
 
 func map_option(opt, fn) {
   match (opt) {
-    case Some(v) => { return Option.Some(fn(v)) }
-    case None => { return Option.None }
+    case Some(v) =>
+      return Option.Some(fn(v))
+    case None =>
+      return Option.None
   }
   return Option.None
 }
@@ -32,6 +61,10 @@ println("unwrap None: " .. tostring(unwrap_or(y, -1)))
 
 let doubled = map_option(x, func(v) { return v * 2 })
 println("mapped: " .. tostring(unwrap_or(doubled, 0)))
+
+// Generic enum with different types (dynamic)
+let str_opt = Option.Some("hello")
+println("string option: " .. tostring(unwrap_or(str_opt, "default")))
 
 // === Dynamic class construction with inheritance ===
 class Base {
@@ -72,24 +105,17 @@ let swapped = swap(pair)
 println("original: " .. tostring(pair[0]) .. "," .. tostring(pair[1]))
 println("swapped: " .. tostring(swapped[0]) .. "," .. tostring(swapped[1]))
 
-// === Using pcall with match for error handling ===
-func safeDivide(a, b) {
-  if (b == 0) {
-    return Option.None
-  }
-  return Option.Some(a / b)
-}
-
-let r1 = safeDivide(10, 3)
-let r2 = safeDivide(10, 0)
+// === Match with braces (extended syntax for Lua compatibility) ===
+let r1 = Option.Some(10)
+let r2 = Option.None
 
 match (r1) {
-  case Some(v) => { println("10/3 = " .. tostring(v)) }
-  case None => { println("division by zero") }
+  case Some(v) => { println("10: " .. tostring(v)) }
+  case None => { println("none") }
 }
 
 match (r2) {
-  case Some(v) => { println("10/0 = " .. tostring(v)) }
+  case Some(v) => { println("value: " .. tostring(v)) }
   case None => { println("division by zero") }
 }
 
