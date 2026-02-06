@@ -62,6 +62,14 @@ static int luaB_println (lua_State *L) {
 ** function values with a closure that passes self as first arg).
 */
 
+/*
+** ============================================================
+** Cangjie OOP runtime support
+** Functions for class/struct instantiation, method binding,
+** inheritance chain walking, and type checking.
+** ============================================================
+*/
+
 /* Upvalue-based bound method: when called, prepend the bound object */
 static int cangjie_bound_method (lua_State *L) {
   int nargs = lua_gettop(L);
@@ -231,6 +239,12 @@ static int cangjie_type_index_handler (lua_State *L) {
   return 1;
 }
 
+/*
+** __cangjie_extend_type(typename, methods_table)
+** Set up type extension for built-in types (Int64, Float64, String, Bool).
+** Creates/updates metatables so that values of these types can call
+** extension methods using dot syntax (e.g., 42.double()).
+*/
 static int luaB_extend_type (lua_State *L) {
   const char *tname = luaL_checkstring(L, 1);
   int val_idx;
@@ -363,6 +377,12 @@ static int luaB_is_instance (lua_State *L) {
 
 
 /*
+** ============================================================
+** Cangjie pattern matching runtime support
+** ============================================================
+*/
+
+/*
 ** __cangjie_match_tag(value, tag) - Check if a value's __tag matches tag.
 ** Used by the pattern matching compiler to dispatch match cases.
 */
@@ -465,6 +485,11 @@ static int cangjie_enum_index_handler (lua_State *L) {
   return 1;
 }
 
+/*
+** __cangjie_setup_enum(enum_table)
+** Set up enum table metatables so enum values can call member functions.
+** Wraps parameterized constructors to auto-set metatables on results.
+*/
 static int luaB_setup_enum (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);  /* enum table */
   /* Create a metatable for enum values:
