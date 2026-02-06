@@ -514,8 +514,23 @@ static void buildglobal (LexState *ls, TString *varname, expdesc *var) {
 
 
 /*
+** Check if a name is a struct/class field (for implicit 'this' support)
+*/
+static int is_struct_field (LexState *ls, TString *name) {
+  int i;
+  if (!ls->in_struct_method) return 0;
+  for (i = 0; i < ls->nfields; i++) {
+    if (eqstr(ls->struct_fields[i], name))
+      return 1;
+  }
+  return 0;
+}
+
+
+/*
 ** Find a variable with the given name 'n', handling global variables
-** too.
+** too. If we're inside a struct/class method and the name matches
+** a struct field, resolve it as self.name (implicit 'this').
 */
 static void buildvar (LexState *ls, TString *varname, expdesc *var) {
   FuncState *fs = ls->fs;
@@ -523,6 +538,23 @@ static void buildvar (LexState *ls, TString *varname, expdesc *var) {
   singlevaraux(fs, varname, var, 1);
   if (var->k == VGLOBAL) {  /* global name? */
     int info = var->u.info;
+    /* Check if this is a struct field that should be resolved as self.name */
+    if (is_struct_field(ls, varname)) {
+      /* Resolve as self.fieldname */
+      TString *selfname = luaS_new(ls->L, "self");
+      expdesc key;
+      init_exp(var, VGLOBAL, -1);
+      singlevaraux(fs, selfname, var, 1);
+      if (var->k != VGLOBAL) {  /* 'self' found? */
+        luaK_exp2anyregup(fs, var);
+        codestring(&key, varname);
+        luaK_indexed(fs, var, &key);
+        return;
+      }
+      /* if 'self' not found, fall through to normal global handling */
+      init_exp(var, VGLOBAL, -1);
+      singlevaraux(fs, varname, var, 1);
+    }
     /* global by default in the scope of a global declaration? */
     if (info == -2)
       luaK_semerror(ls, "variable '%s' not declared", getstr(varname));
@@ -2316,6 +2348,12 @@ static void structstat (LexState *ls, int line) {
   expdesc v, e;
   TString *sname;
   int reg;
+  int saved_nfields = ls->nfields;
+  int saved_in_struct = ls->in_struct_method;
+
+  /* Reset field tracking for this struct */
+  ls->nfields = 0;
+  ls->in_struct_method = 0;
 
   luaX_next(ls);  /* skip 'struct' or 'class' */
   sname = str_checkname(ls);
@@ -2328,8 +2366,14 @@ static void structstat (LexState *ls, int line) {
     /* skip parent type name (for now, just skip it) */
     while (ls->t.token == TK_NAME) luaX_next(ls);
   }
-  /* also handle '<:' for interface implementation */
-  if (ls->t.token == TK_LE) {
+  /* also handle '<:' for interface implementation: '<' ':' */
+  if (ls->t.token == '<' && luaX_lookahead(ls) == ':') {
+    luaX_next(ls);  /* skip '<' */
+    luaX_next(ls);  /* skip ':' */
+    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+  }
+  /* also handle '<=' for backward compatibility */
+  else if (ls->t.token == TK_LE) {
     luaX_next(ls);  /* skip '<=' which is our '<:' approximation */
     while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
   }
@@ -2377,8 +2421,10 @@ static void structstat (LexState *ls, int line) {
         codestring(&mkey, mname);
         luaK_indexed(fs, &mv, &mkey);
       }
-      /* Parse method body (with 'self' parameter) */
+      /* Parse method body (with 'self' parameter and implicit this) */
+      ls->in_struct_method = 1;
       body(ls, &mb, 1, ls->linenumber);
+      ls->in_struct_method = 0;
       luaK_storevar(fs, &mv, &mb);
       luaK_fixline(fs, line);
     }
@@ -2397,15 +2443,22 @@ static void structstat (LexState *ls, int line) {
         codestring(&mkey, mname);
         luaK_indexed(fs, &mv, &mkey);
       }
-      /* Parse constructor body (auto-returns self) */
+      /* Parse constructor body (auto-returns self, with implicit this) */
+      ls->in_struct_method = 1;
       body_init(ls, &mb, ls->linenumber);
+      ls->in_struct_method = 0;
       luaK_storevar(fs, &mv, &mb);
       luaK_fixline(fs, line);
     }
     else if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
-      /* Field declaration - skip it (fields are dynamic in our impl) */
+      /* Field declaration - record field name for implicit this */
+      TString *fname;
       luaX_next(ls);  /* skip let/var */
-      str_checkname(ls);  /* field name */
+      fname = str_checkname(ls);  /* field name */
+      /* Track field name for implicit 'this' */
+      if (ls->nfields < 64) {
+        ls->struct_fields[ls->nfields++] = fname;
+      }
       skip_type_annotation(ls);
       /* optional default value */
       if (testnext(ls, '=')) {
@@ -2437,6 +2490,10 @@ static void structstat (LexState *ls, int line) {
 
   reg = fs->freereg;
   fs->freereg = cast_byte(reg);
+
+  /* Restore previous struct field context */
+  ls->nfields = saved_nfields;
+  ls->in_struct_method = saved_in_struct;
 }
 
 
@@ -2502,54 +2559,175 @@ static void interfacestat (LexState *ls, int line) {
 }
 
 
+static int is_builtin_type (LexState *ls, TString *name) {
+  const char *s = getstr(name);
+  UNUSED(ls);
+  return (strcmp(s, "Int64") == 0 ||
+          strcmp(s, "Float64") == 0 ||
+          strcmp(s, "String") == 0 ||
+          strcmp(s, "Bool") == 0);
+}
+
+
 static void extendstat (LexState *ls, int line) {
   /*
-  ** extend NAME ['<' typeparams '>'] '{' methods '}'
-  ** Adds methods to an existing type
+  ** extend NAME ['<' typeparams '>'] ['<:' INTERFACE ['&' INTERFACE]*] '{' methods '}'
+  ** Adds methods to an existing type.
+  ** For user-defined types (struct/class), methods are added directly to the type table.
+  ** For built-in types (Int64, Float64, String, Bool), a proxy table is created
+  ** and __cangjie_extend_type is called to set up type metatables.
   */
   FuncState *fs = ls->fs;
   TString *tname;
+  int builtin;
 
   luaX_next(ls);  /* skip 'extend' */
   skip_generic_params(ls);  /* skip possible generic params before name */
   tname = str_checkname(ls);
-  skip_generic_params(ls);  /* skip possible generic params after name */
 
-  /* skip optional interface implementation '<:' */
+  /* Distinguish between generic params '<T>' and interface impl '<:' */
+  if (ls->t.token == '<') {
+    /* Peek ahead to see if this is '<:' (interface impl) or '<...>' (generics) */
+    int la = luaX_lookahead(ls);
+    if (la == ':') {
+      /* This is '<:' interface implementation */
+      luaX_next(ls);  /* skip '<' (consumes lookahead ':') */
+      luaX_next(ls);  /* skip ':' */
+      while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+    }
+    else {
+      /* This is generic params '<T, U, ...>' */
+      /* lookahead was consumed by luaX_lookahead, need to handle it */
+      skip_generic_params(ls);  /* skip generic params after name */
+      /* After generics, check for '<:' again */
+      if (ls->t.token == '<') {
+        la = luaX_lookahead(ls);
+        if (la == ':') {
+          luaX_next(ls);  /* skip '<' */
+          luaX_next(ls);  /* skip ':' */
+          while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+        }
+      }
+    }
+  }
+  /* also handle '<=' for backward compatibility */
   if (ls->t.token == TK_LE) {
     luaX_next(ls);
     while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
   }
 
-  checknext(ls, '{' /*}*/);
+  builtin = is_builtin_type(ls, tname);
 
-  /* Parse extension methods */
-  while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
-    if (ls->t.token == TK_FUNC) {
-      expdesc mv, mb;
-      TString *mname;
-      luaX_next(ls);  /* skip 'func' */
-      mname = str_checkname(ls);
-      skip_generic_params(ls);
-      /* Build NAME.methodname */
-      buildvar(ls, tname, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, mname);
-        luaK_indexed(fs, &mv, &mkey);
+  if (builtin) {
+    /* For built-in types: ensure type proxy table exists, add methods to it,
+    ** then call __cangjie_extend_type to set up type metatables */
+
+    /* First, create the type proxy table if it doesn't exist:
+    ** TypeName = TypeName or {} (handled as: TypeName = {}) */
+    {
+      expdesc gv, ge;
+      int pc;
+      buildvar(ls, tname, &gv);
+      pc = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+      luaK_code(fs, 0);
+      init_exp(&ge, VNONRELOC, fs->freereg);
+      luaK_reserveregs(fs, 1);
+      luaK_settablesize(fs, pc, ge.u.info, 0, 0);
+      luaK_storevar(fs, &gv, &ge);
+    }
+
+    /* Set TypeName.__index = TypeName */
+    {
+      expdesc tab, key, val;
+      buildvar(ls, tname, &tab);
+      luaK_exp2anyregup(fs, &tab);
+      codestring(&key, luaX_newstring(ls, "__index", 7));
+      luaK_indexed(fs, &tab, &key);
+      buildvar(ls, tname, &val);
+      luaK_storevar(fs, &tab, &val);
+    }
+
+    checknext(ls, '{' /*}*/);
+
+    /* Parse extension methods - add them directly to type proxy table
+    ** (same as user-defined type extend) */
+    while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+      if (ls->t.token == TK_FUNC) {
+        expdesc mv, mb;
+        TString *mname;
+        luaX_next(ls);  /* skip 'func' */
+        mname = str_checkname(ls);
+        skip_generic_params(ls);
+        /* Build TypeName.methodname */
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, mname);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
       }
-      body(ls, &mb, 1, ls->linenumber);
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      else {
+        luaX_next(ls);
+      }
+      testnext(ls, ';');
     }
-    else {
-      luaX_next(ls);
-    }
-    testnext(ls, ';');
-  }
 
-  check_match(ls, /*{*/ '}', TK_EXTEND, line);
+    check_match(ls, /*{*/ '}', TK_EXTEND, line);
+
+    /* Generate: __cangjie_extend_type("TypeName", TypeName_table) */
+    {
+      expdesc fn, arg1, arg2;
+      int base2;
+      buildvar(ls, luaX_newstring(ls, "__cangjie_extend_type", 21), &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base2 = fn.u.info;
+      /* push type name as string constant */
+      codestring(&arg1, tname);
+      luaK_exp2nextreg(fs, &arg1);
+      /* push the type proxy table */
+      buildvar(ls, tname, &arg2);
+      luaK_exp2nextreg(fs, &arg2);
+      init_exp(&fn, VCALL,
+               luaK_codeABC(fs, OP_CALL, base2, 3, 1));
+      fs->freereg = cast_byte(base2);
+    }
+  }
+  else {
+    /* For user-defined types: add methods directly to the type table */
+    checknext(ls, '{' /*}*/);
+
+    /* Parse extension methods */
+    while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+      if (ls->t.token == TK_FUNC) {
+        expdesc mv, mb;
+        TString *mname;
+        luaX_next(ls);  /* skip 'func' */
+        mname = str_checkname(ls);
+        skip_generic_params(ls);
+        /* Build NAME.methodname */
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, mname);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
+      }
+      else {
+        luaX_next(ls);
+      }
+      testnext(ls, ';');
+    }
+
+    check_match(ls, /*{*/ '}', TK_EXTEND, line);
+  }
 }
 
 
