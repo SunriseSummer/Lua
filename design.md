@@ -17,7 +17,7 @@
   - `while (cond) { ... }` → `while (cond) do ... end`
   - `for (i in 1..=n) { ... }` → `for i = 1, n do ... end`
   - `for (item in list) { ... }` → `for _, item in ipairs(list) do ... end`
-- **集合类型**：`[1, 2, 3]` → `{1, 2, 3}`（Lua 表）
+- **集合类型**：`[1, 2, 3]` → `{1, 2, 3}`（Lua 表，索引沿用 Lua 的 1-based 语义）
 - **基础字面量**：`null` → `nil`
 - **逻辑与比较**：`&&`/`||`/`!`/`!=` → `and`/`or`/`not`/`~=`
 - **注释**：`//`、`/* */` → Lua 注释

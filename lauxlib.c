@@ -751,7 +751,7 @@ typedef enum {
   CJ_BLOCK_FUNCTION
 } CJBlock;
 
-#define CJ_STACK_MAX 256
+#define CJ_STACK_MAX 256  /* maximum nesting tracked by the translator */
 
 
 static int cj_is_ident_start (int c) {
@@ -1243,8 +1243,12 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
         luaL_addstring(&b, " do");
         block = CJ_BLOCK_GENERIC;
       }
-      if (block_top < CJ_STACK_MAX)
+      if (block_top >= CJ_STACK_MAX) {
+        luaL_error(L, "Cangjie syntax nesting too deep");
+      }
+      else {
         block_stack[block_top++] = block;
+      }
       last_keyword = CJ_LAST_NONE;
       in_var_decl = 0;
       if (block == CJ_BLOCK_FUNCTION) {
@@ -1275,8 +1279,12 @@ static const char *cj_translate (lua_State *L, const char *src, size_t len,
     }
     if (c == '[') {
       int is_literal = !prev_allows_index;
-      if (bracket_top < CJ_STACK_MAX)
+      if (bracket_top >= CJ_STACK_MAX) {
+        luaL_error(L, "Cangjie syntax nesting too deep");
+      }
+      else {
         bracket_stack[bracket_top++] = is_literal;
+      }
       luaL_addchar(&b, is_literal ? '{' : '[');
       i++;
       prev_allows_index = 0;

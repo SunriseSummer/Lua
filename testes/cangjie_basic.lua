@@ -11,7 +11,7 @@ if (total != 5) {
 
 /* collection literal */
 let nums: Array<Int> = [1, 2, 3]
-if (nums[2] != 2) {
+if (nums[1] != 1 || nums[2] != 2) {
   error("array literal failed")
 }
 
