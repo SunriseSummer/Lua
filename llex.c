@@ -43,12 +43,12 @@
 
 /* ORDER RESERVED */
 static const char *const luaX_tokens [] = {
-    "and", "break", "do", "else", "elseif",
-    "end", "false", "for", "function", "global", "goto", "if",
-    "in", "local", "nil", "not", "or", "repeat",
-    "return", "then", "true", "until", "while",
-    "//", "..", "...", "==", ">=", "<=", "~=",
-    "<<", ">>", "::", "<eof>",
+    "and", "break",
+    "class", "continue", "else", "extend", "false", "for", "func",
+    "if", "in", "interface", "let", "nil", "not", "or",
+    "return", "struct", "super", "this", "true", "var", "while",
+    "//", "..", "...", "==", ">=", "<=", "!=",
+    "<<", ">>", "::", "=>", "..=", "<eof>",
     "<number>", "<integer>", "<name>", "<string>"
 };
 
@@ -184,7 +184,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
   ls->linenumber = 1;
   ls->lastline = 1;
   ls->source = source;
-  /* all three strings here ("_ENV", "break", "global") were fixed,
+  /* all strings here ("_ENV", "break") were fixed,
      so they cannot be collected */
   ls->envn = luaS_newliteral(L, LUA_ENV);  /* get env string */
   ls->brkn = luaS_newliteral(L, "break");  /* get "break" string */
@@ -476,38 +476,55 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         next(ls);
         break;
       }
-      case '-': {  /* '-' or '--' (comment) */
+      case '-': {  /* '-' (no comment with -- in Cangjie) */
         next(ls);
-        if (ls->current != '-') return '-';
-        /* else is a comment */
-        next(ls);
-        if (ls->current == '[') {  /* long comment? */
-          size_t sep = skip_sep(ls);
-          luaZ_resetbuffer(ls->buff);  /* 'skip_sep' may dirty the buffer */
-          if (sep >= 2) {
-            read_long_string(ls, NULL, sep);  /* skip long comment */
-            luaZ_resetbuffer(ls->buff);  /* previous call may dirty the buff. */
-            break;
-          }
-        }
-        /* else short comment */
-        while (!currIsNewline(ls) && ls->current != EOZ)
-          next(ls);  /* skip until end of line (or end of file) */
-        break;
+        return '-';
       }
-      case '[': {  /* long string or simply '[' */
-        size_t sep = skip_sep(ls);
-        if (sep >= 2) {
-          read_long_string(ls, seminfo, sep);
-          return TK_STRING;
+      case '/': {  /* '/', '//' line comment, or block comment */
+        next(ls);
+        if (ls->current == '/') {
+          /* single-line comment (Cangjie style) */
+          while (!currIsNewline(ls) && ls->current != EOZ)
+            next(ls);  /* skip until end of line (or end of file) */
+          break;
         }
-        else if (sep == 0)  /* '[=...' missing second bracket? */
-          lexerror(ls, "invalid long string delimiter", TK_STRING);
+        else if (ls->current == '*') {
+          /* block comment (Cangjie style) */
+          int line = ls->linenumber;
+          int depth = 1;
+          next(ls);  /* skip '*' */
+          while (depth > 0) {
+            if (ls->current == EOZ) {
+              const char *msg = luaO_pushfstring(ls->L,
+                   "unfinished block comment (starting at line %d)", line);
+              lexerror(ls, msg, TK_EOS);
+            }
+            else if (ls->current == '/' && (next(ls), ls->current == '*')) {
+              next(ls);
+              depth++;
+            }
+            else if (ls->current == '*' && (next(ls), ls->current == '/')) {
+              next(ls);
+              depth--;
+            }
+            else if (currIsNewline(ls)) {
+              inclinenumber(ls);
+            }
+            else {
+              next(ls);
+            }
+          }
+          break;
+        }
+        else return '/';
+      }
+      case '[': {  /* simply '[' in Cangjie (used for arrays) */
         return '[';
       }
       case '=': {
         next(ls);
         if (check_next1(ls, '=')) return TK_EQ;  /* '==' */
+        else if (check_next1(ls, '>')) return TK_ARROW;  /* '=>' */
         else return '=';
       }
       case '<': {
@@ -522,31 +539,36 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         else if (check_next1(ls, '>')) return TK_SHR;  /* '>>' */
         else return '>';
       }
-      case '/': {
+      case '!': {  /* '!=' (Cangjie not-equal) or '!' (logical not) */
         next(ls);
-        if (check_next1(ls, '/')) return TK_IDIV;  /* '//' */
-        else return '/';
+        if (check_next1(ls, '=')) return TK_NE;  /* '!=' */
+        else return TK_NOT;  /* '!' as unary not */
       }
-      case '~': {
+      case '~': {  /* '~' bitwise not */
         next(ls);
-        if (check_next1(ls, '=')) return TK_NE;  /* '~=' */
-        else return '~';
+        return '~';
       }
       case ':': {
         next(ls);
         if (check_next1(ls, ':')) return TK_DBCOLON;  /* '::' */
         else return ':';
       }
-      case '"': case '\'': {  /* short literal strings */
+      case '"': {  /* strings with interpolation support */
         read_string(ls, ls->current, seminfo);
         return TK_STRING;
       }
-      case '.': {  /* '.', '..', '...', or number */
+      case '\'': {  /* single-char literal r'x' handled elsewhere, or string */
+        read_string(ls, ls->current, seminfo);
+        return TK_STRING;
+      }
+      case '.': {  /* '.', '..', '..=', '...', or number */
         save_and_next(ls);
         if (check_next1(ls, '.')) {
-          if (check_next1(ls, '.'))
+          if (check_next1(ls, '='))
+            return TK_DOTDOTEQ;  /* '..=' inclusive range */
+          else if (check_next1(ls, '.'))
             return TK_DOTS;   /* '...' */
-          else return TK_CONCAT;   /* '..' */
+          else return TK_CONCAT;   /* '..' also used as range */
         }
         else if (!lisdigit(ls->current)) return '.';
         else return read_numeral(ls, seminfo);
