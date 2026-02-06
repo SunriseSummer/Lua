@@ -14,3 +14,4 @@ testes/libs/all
 temp
 lua
 all
+_codeql_detected_source_root
