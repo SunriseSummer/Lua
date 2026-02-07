@@ -72,6 +72,8 @@ static void blockexpr (LexState *ls, expdesc *v, int line);
 static void ifexpr (LexState *ls, expdesc *v, int line);
 static void matchexpr (LexState *ls, expdesc *v, int line);
 static void statlist_autoreturning (LexState *ls);
+static void ifstat_returning (LexState *ls, int line);
+static void matchstat_returning (LexState *ls, int line);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -3046,7 +3048,7 @@ static void forstat (LexState *ls, int line) {
 }
 
 
-static void test_then_block (LexState *ls, int *escapelist) {
+static void test_then_block (LexState *ls, int *escapelist, int autoreturn) {
   /* test_then_block -> [IF | ELSE IF] '(' cond ')' '{' block '}'
   ** Also handles: IF '(' LET Pattern '<-' expr ')' '{' block '}' */
   FuncState *fs = ls->fs;
@@ -3170,7 +3172,7 @@ static void test_then_block (LexState *ls, int *escapelist) {
       checknext(ls, ')');
     }
     checknext(ls, '{' /*}*/);
-    block(ls);
+    if (autoreturn) statlist_autoreturning(ls); else block(ls);
     checknext(ls, /*{*/ '}');
     leaveblock(fs);
     if (ls->t.token == TK_ELSE)
@@ -3181,7 +3183,7 @@ static void test_then_block (LexState *ls, int *escapelist) {
     condtrue = cond(ls);
     checknext(ls, ')');
     checknext(ls, '{' /*}*/);
-    block(ls);
+    if (autoreturn) statlist_autoreturning(ls); else block(ls);
     checknext(ls, /*{*/ '}');
     if (ls->t.token == TK_ELSE)
       luaK_concat(fs, escapelist, luaK_jump(fs));
@@ -3194,10 +3196,10 @@ static void ifstat (LexState *ls, int line) {
   /* ifstat -> IF cond '{' block '}' {ELSE IF cond '{' block '}'} [ELSE '{' block '}'] */
   FuncState *fs = ls->fs;
   int escapelist = NO_JUMP;  /* exit list for finished parts */
-  test_then_block(ls, &escapelist);  /* IF cond { block } */
+  test_then_block(ls, &escapelist, 0);  /* IF cond { block } */
   while (ls->t.token == TK_ELSE && luaX_lookahead(ls) == TK_IF) {
     luaX_next(ls);  /* skip 'else' - 'if' will be skipped by test_then_block */
-    test_then_block(ls, &escapelist);  /* ELSE IF cond { block } */
+    test_then_block(ls, &escapelist, 0);  /* ELSE IF cond { block } */
   }
   if (testnext(ls, TK_ELSE)) {
     checknext(ls, '{' /*}*/);
@@ -3205,6 +3207,24 @@ static void ifstat (LexState *ls, int line) {
     check_match(ls, /*{*/ '}', TK_IF, line);
   }
   luaK_patchtohere(fs, escapelist);  /* patch escape list to 'if' end */
+}
+
+
+static void ifstat_returning (LexState *ls, int line) {
+  /* Like ifstat but each branch uses statlist_autoreturning */
+  FuncState *fs = ls->fs;
+  int escapelist = NO_JUMP;
+  test_then_block(ls, &escapelist, 1);
+  while (ls->t.token == TK_ELSE && luaX_lookahead(ls) == TK_IF) {
+    luaX_next(ls);
+    test_then_block(ls, &escapelist, 1);
+  }
+  if (testnext(ls, TK_ELSE)) {
+    checknext(ls, '{' /*}*/);
+    statlist_autoreturning(ls);
+    check_match(ls, /*{*/ '}', TK_IF, line);
+  }
+  luaK_patchtohere(fs, escapelist);
 }
 
 
@@ -5018,7 +5038,8 @@ static int match_emit_tuple_subpattern (LexState *ls, TString *match_var_name,
 ** type patterns, tuple patterns, nested patterns.
 ** ============================================================
 */
-static void matchstat (LexState *ls, int line) {
+static void match_case_body_returning (LexState *ls);
+static void matchstat_impl (LexState *ls, int line, int autoreturn) {
   /*
   ** match '(' expr ')' '{' case_clauses '}'
   ** Supports:
@@ -5063,7 +5084,7 @@ static void matchstat (LexState *ls, int line) {
       luaX_next(ls);  /* skip '_' */
       checknext(ls, TK_ARROW);
       enterblock(fs, &bl, 0);
-      match_case_body(ls);
+      if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
       if (njumps < 256)
         jmp_to_end[njumps++] = luaK_jump(fs);
@@ -5127,7 +5148,7 @@ static void matchstat (LexState *ls, int line) {
         }
       }
 
-      match_case_body(ls);
+      if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
 
       if (njumps < 256)
@@ -5170,7 +5191,7 @@ static void matchstat (LexState *ls, int line) {
         condjmp = match_emit_tag_check(ls, match_var_name, patname);
         enterblock(fs, &bl, 0);
         match_bind_enum_params(ls, match_var_name, param_names, nparams);
-        match_case_body(ls);
+        if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
         if (njumps < 256)
@@ -5195,7 +5216,7 @@ static void matchstat (LexState *ls, int line) {
           luaK_exp2nextreg(fs, &mv);
           adjustlocalvars(ls, 1);
         }
-        match_case_body(ls);
+        if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
         if (njumps < 256)
@@ -5209,7 +5230,7 @@ static void matchstat (LexState *ls, int line) {
 
         condjmp = match_emit_tag_check(ls, match_var_name, patname);
         enterblock(fs, &bl, 0);
-        match_case_body(ls);
+        if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
         if (njumps < 256)
@@ -5238,7 +5259,7 @@ static void matchstat (LexState *ls, int line) {
       }
 
       enterblock(fs, &bl2, 0);
-      match_case_body(ls);
+      if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
 
       if (njumps < 256)
@@ -5259,6 +5280,14 @@ static void matchstat (LexState *ls, int line) {
       luaK_patchtohere(fs, jmp_to_end[ji]);
     }
   }
+}
+
+static void matchstat (LexState *ls, int line) {
+  matchstat_impl(ls, line, 0);
+}
+
+static void matchstat_returning (LexState *ls, int line) {
+  matchstat_impl(ls, line, 1);
 }
 
 
@@ -5345,8 +5374,20 @@ static void statlist_autoreturning (LexState *ls) {
                              tok == ';' || tok == TK_DBCOLON || tok == TK_IF ||
                              tok == TK_MATCH);
       if (is_keyword_stat) {
-        /* Parse as regular statement */
-        statement(ls);
+        /* if/match as last statement: use auto-returning branches */
+        if ((tok == TK_IF || tok == TK_MATCH)) {
+          int line2 = ls->linenumber;
+          if (tok == TK_IF)
+            ifstat_returning(ls, line2);
+          else
+            matchstat_returning(ls, line2);
+          if (block_follow(ls, 1))
+            return;  /* was the last statement; branches already auto-return */
+        }
+        else {
+          /* Parse as regular statement */
+          statement(ls);
+        }
       }
       else {
         /* Potential expression - could be assignment, call, or last expr */
@@ -5583,7 +5624,21 @@ static void match_case_body_returning (LexState *ls) {
                                tok == ';' || tok == TK_DBCOLON || tok == TK_IF ||
                                tok == TK_MATCH);
         if (is_keyword_stat) {
-          statement(ls);
+          /* if/match as last statement: use auto-returning branches */
+          if ((tok == TK_IF || tok == TK_MATCH)) {
+            int line2 = ls->linenumber;
+            if (tok == TK_IF)
+              ifstat_returning(ls, line2);
+            else
+              matchstat_returning(ls, line2);
+            if (ls->t.token == TK_CASE ||
+                ls->t.token == /*{*/ '}' ||
+                ls->t.token == TK_EOS)
+              return;  /* was the last statement */
+          }
+          else {
+            statement(ls);
+          }
         }
         else {
           FuncState *fs = ls->fs;
