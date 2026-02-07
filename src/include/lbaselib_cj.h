@@ -26,5 +26,7 @@ LUAI_FUNC int luaB_overload (lua_State *L);
 LUAI_FUNC int luaB_array_init (lua_State *L);
 LUAI_FUNC int luaB_option_init (lua_State *L);
 LUAI_FUNC int luaB_coalesce (lua_State *L);
+LUAI_FUNC int luaB_array_slice (lua_State *L);
+LUAI_FUNC int luaB_array_slice_set (lua_State *L);
 
 #endif

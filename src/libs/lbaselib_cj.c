@@ -1013,3 +1013,52 @@ int luaB_option_init (lua_State *L) {
   lua_pop(L, 1);  /* pop mt */
   return 0;
 }
+
+
+/*
+** __cangjie_array_slice(arr, start, end, inclusive)
+** Returns a new 0-based array from arr[start] to arr[end-1] (exclusive)
+** or arr[start] to arr[end] (inclusive).
+*/
+int luaB_array_slice (lua_State *L) {
+  lua_Integer start, end, i, count;
+  int inclusive;
+  luaL_checktype(L, 1, LUA_TTABLE);
+  start = luaL_checkinteger(L, 2);
+  end = luaL_checkinteger(L, 3);
+  inclusive = lua_toboolean(L, 4);
+  if (!inclusive) end--;
+  count = end - start + 1;
+  if (count < 0) count = 0;
+  lua_newtable(L);
+  for (i = 0; i < count; i++) {
+    lua_geti(L, 1, start + i);
+    lua_seti(L, -2, i);
+  }
+  lua_pushinteger(L, count);
+  lua_setfield(L, -2, "__n");
+  return 1;
+}
+
+
+/*
+** __cangjie_array_slice_set(arr, start, end, inclusive, values)
+** Assigns values from the 'values' array into arr[start..end].
+*/
+int luaB_array_slice_set (lua_State *L) {
+  lua_Integer start, end, i, count;
+  int inclusive;
+  luaL_checktype(L, 1, LUA_TTABLE);
+  start = luaL_checkinteger(L, 2);
+  end = luaL_checkinteger(L, 3);
+  inclusive = lua_toboolean(L, 4);
+  luaL_checktype(L, 5, LUA_TTABLE);
+  if (!inclusive) end--;
+  count = end - start + 1;
+  if (count < 0) count = 0;
+  for (i = 0; i < count; i++) {
+    lua_geti(L, 5, i);
+    lua_seti(L, 1, start + i);
+  }
+  return 0;
+}
