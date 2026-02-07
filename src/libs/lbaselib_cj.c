@@ -386,6 +386,39 @@ int luaB_set_parent (lua_State *L) {
 
 
 /*
+** __cangjie_apply_interface(target, iface) - Apply interface default
+** implementations to a class/type table. Copies all methods from the
+** interface table that are not already defined in the target.
+** Unlike __cangjie_set_parent, this also copies metamethods (__xxx).
+*/
+int luaB_apply_interface (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* target class/type */
+  luaL_checktype(L, 2, LUA_TTABLE);  /* interface table */
+  lua_pushnil(L);
+  while (lua_next(L, 2) != 0) {
+    /* stack: target, iface, key, value */
+    if (lua_type(L, -2) == LUA_TSTRING && lua_isfunction(L, -1)) {
+      /* Only copy function values (skip non-function entries) */
+      lua_pushvalue(L, -2);  /* push key */
+      lua_rawget(L, 1);      /* get target[key] */
+      if (lua_isnil(L, -1)) {
+        /* Not in target, copy from interface */
+        lua_pop(L, 1);  /* pop nil */
+        lua_pushvalue(L, -2);  /* push key */
+        lua_pushvalue(L, -2);  /* push value */
+        lua_rawset(L, 1);      /* target[key] = value */
+      }
+      else {
+        lua_pop(L, 1);  /* pop existing value */
+      }
+    }
+    lua_pop(L, 1);  /* pop value, keep key */
+  }
+  return 0;
+}
+
+
+/*
 ** __cangjie_is_instance(obj, cls) - Check if obj is an instance of cls
 ** (or any of its parent classes). Returns true/false.
 */
