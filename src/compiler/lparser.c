@@ -57,7 +57,6 @@ typedef struct BlockCnt {
   lu_byte isloop;  /* 1 if 'block' is a loop; 2 if it has pending breaks */
   lu_byte hascont;  /* true if block has pending continue gotos */
   lu_byte insidetbc;  /* true if inside the scope of a to-be-closed var. */
-  lu_byte autoreturn;  /* true if last expression in this block auto-returns */
 } BlockCnt;
 
 
@@ -766,7 +765,6 @@ static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isloop) {
   bl->firstlabel = fs->ls->dyd->label.n;
   bl->firstgoto = fs->ls->dyd->gt.n;
   bl->upval = 0;
-  bl->autoreturn = 0;
   /* inherit 'insidetbc' from enclosing block */
   bl->insidetbc = (fs->bl != NULL && fs->bl->insidetbc);
   bl->previous = fs->bl;  /* link block in function's block list */
@@ -4747,6 +4745,8 @@ static void enumstat (LexState *ls, int line) {
             }
             else {
               char mm[64];
+              if (strlen(opname) > 58)
+                luaX_syntaxerror(ls, "operator name too long");
               snprintf(mm, sizeof(mm), "__%s", opname);
               metamethod_name = luaS_new(ls->L, mm);
             }

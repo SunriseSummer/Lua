@@ -52,7 +52,7 @@ for (i in 0..scores.size) {
 let fibonacci_10 = {
   var a = 0
   var b = 1
-  for (i in 0..8) {
+  for (i in 0..9) {
     let temp = a + b
     a = b
     b = temp
