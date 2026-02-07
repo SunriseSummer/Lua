@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Enum type — simple enums, parameterized constructors, recursive enums, Option, Result, Tree traversal
 
 // --- Simple enum with no-arg constructors ---
@@ -23,7 +25,7 @@ enum Direction {
 }
 
 let d = North
-if (d.name() != "North") { println("FAIL: d.name() expected North, got ${d.name()}"); return () }
+expectEq(d.name(), "North", "d.name()")
 
 // --- Enum with parameterized constructors ---
 enum Color {
@@ -52,10 +54,10 @@ let g = Green
 let b = Blue(128)
 let rgb = RGB(255, 128, 0)
 
-if (r.describe() != "Red") { println("FAIL: Red.describe() expected Red, got ${r.describe()}"); return () }
-if (g.describe() != "Green") { println("FAIL: Green.describe() expected Green, got ${g.describe()}"); return () }
-if (b.describe() != "Blue(128)") { println("FAIL: Blue(128).describe() expected Blue(128), got ${b.describe()}"); return () }
-if (rgb.describe() != "RGB(255,128,0)") { println("FAIL: RGB.describe() expected RGB(255,128,0), got ${rgb.describe()}"); return () }
+expectEq(r.describe(), "Red", "Red.describe()")
+expectEq(g.describe(), "Green", "Green.describe()")
+expectEq(b.describe(), "Blue(128)", "Blue(128).describe()")
+expectEq(rgb.describe(), "RGB(255,128,0)", "RGB.describe()")
 
 // --- Recursive enum (expression tree) ---
 enum Expr {
@@ -79,7 +81,7 @@ func eval(e) {
 // Build: (2 + 3) * 4
 let e = Mul(Add(Num(2), Num(3)), Num(4))
 let evalResult = eval(e)
-if (evalResult != 20) { println("FAIL: (2+3)*4 expected 20, got ${evalResult}"); return () }
+expectEq(evalResult, 20, "(2+3)*4")
 
 // --- Enum for Option type ---
 enum Option {
@@ -99,8 +101,8 @@ enum Option {
 
 let val = Some(42)
 let empty = None
-if (val.isPresent() != true) { println("FAIL: Some(42).isPresent() expected true, got ${val.isPresent()}"); return () }
-if (empty.isPresent() != false) { println("FAIL: None.isPresent() expected false, got ${empty.isPresent()}"); return () }
+expectTrue(val.isPresent(), "Some(42).isPresent()")
+expectFalse(empty.isPresent(), "None.isPresent()")
 
 // --- Generic enum (type params are skipped, work via dynamic typing) ---
 enum Result<T, E> {
@@ -120,8 +122,8 @@ enum Result<T, E> {
 
 let ok = Ok(42)
 let err = Err("something went wrong")
-if (ok.isOk() != true) { println("FAIL: Ok(42).isOk() expected true, got ${ok.isOk()}"); return () }
-if (err.isOk() != false) { println("FAIL: Err(...).isOk() expected false, got ${err.isOk()}"); return () }
+expectTrue(ok.isOk(), "Ok(42).isOk()")
+expectFalse(err.isOk(), "Err(...).isOk()")
 
 // --- Recursive enum: binary tree with inline constructor syntax ---
 // traverse() uses print() for side effects; we keep the call and verify output visually
@@ -156,7 +158,7 @@ match (leaf) {
     case _ =>
         ()
 }
-if (leafVal != 42) { println("FAIL: leaf value expected 42, got ${leafVal}"); return () }
+expectEq(leafVal, 42, "leaf value")
 
 // --- Unit type literal () used in match (Empty match) ---
 let empty_tree = Empty
@@ -167,6 +169,8 @@ match (empty_tree) {
     case _ =>
         ()
 }
-if (matchedEmpty != true) { println("FAIL: empty tree match expected true, got ${matchedEmpty}"); return () }
+expectTrue(matchedEmpty, "empty tree match")
 
-println("PASS: 12_enum")
+if (!__test_failed) {
+    println("PASS: 12_enum")
+}

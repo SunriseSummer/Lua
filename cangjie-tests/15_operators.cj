@@ -1,20 +1,22 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Operators — logical (&&, ||, !), short-circuit, power (**), bitwise (^, &, |, ~), shifts (<<, >>)
 
 // --- Logical AND (&&) ---
-if ((true && true) != true) { println("FAIL: true && true expected true"); return () }
-if ((true && false) != false) { println("FAIL: true && false expected false"); return () }
-if ((false && true) != false) { println("FAIL: false && true expected false"); return () }
-if ((false && false) != false) { println("FAIL: false && false expected false"); return () }
+expectTrue(true && true, "true && true")
+expectFalse(true && false, "true && false")
+expectFalse(false && true, "false && true")
+expectFalse(false && false, "false && false")
 
 // --- Logical OR (||) ---
-if ((true || true) != true) { println("FAIL: true || true expected true"); return () }
-if ((true || false) != true) { println("FAIL: true || false expected true"); return () }
-if ((false || true) != true) { println("FAIL: false || true expected true"); return () }
-if ((false || false) != false) { println("FAIL: false || false expected false"); return () }
+expectTrue(true || true, "true || true")
+expectTrue(true || false, "true || false")
+expectTrue(false || true, "false || true")
+expectFalse(false || false, "false || false")
 
 // --- Logical NOT (!) ---
-if ((!true) != false) { println("FAIL: !true expected false"); return () }
-if ((!false) != true) { println("FAIL: !false expected true"); return () }
+expectFalse(!true, "!true")
+expectTrue(!false, "!false")
 
 // --- Short-circuit evaluation ---
 var x = 0
@@ -23,39 +25,41 @@ func sideEffect(): Bool {
   return true
 }
 let r1 = false && sideEffect()
-if (x != 0) { println("FAIL: short-circuit && expected x=0, got ${x}"); return () }
+expectEq(x, 0, "short-circuit && x")
 let r2 = true || sideEffect()
-if (x != 0) { println("FAIL: short-circuit || expected x=0, got ${x}"); return () }
+expectEq(x, 0, "short-circuit || x")
 
 // --- Power operator (**) ---
-if ((2 ** 0) != 1) { println("FAIL: 2**0 expected 1, got ${2 ** 0}"); return () }
-if ((2 ** 10) != 1024) { println("FAIL: 2**10 expected 1024, got ${2 ** 10}"); return () }
-if ((3 ** 3) != 27) { println("FAIL: 3**3 expected 27, got ${3 ** 3}"); return () }
+expectEq(2 ** 0, 1.0, "2**0")
+expectEq(2 ** 10, 1024.0, "2**10")
+expectEq(3 ** 3, 27.0, "3**3")
 
 // --- Bitwise XOR (^) ---
-if ((5 ^ 3) != 6) { println("FAIL: 5^3 expected 6, got ${5 ^ 3}"); return () }
-if ((0xFF ^ 0x0F) != 240) { println("FAIL: 0xFF^0x0F expected 240, got ${0xFF ^ 0x0F}"); return () }
+expectEq(5 ^ 3, 6, "5^3")
+expectEq(0xFF ^ 0x0F, 240, "0xFF^0x0F")
 
 // --- Bitwise AND (&) ---
-if ((5 & 3) != 1) { println("FAIL: 5&3 expected 1, got ${5 & 3}"); return () }
-if ((0xFF & 0x0F) != 15) { println("FAIL: 0xFF&0x0F expected 15, got ${0xFF & 0x0F}"); return () }
+expectEq(5 & 3, 1, "5&3")
+expectEq(0xFF & 0x0F, 15, "0xFF&0x0F")
 
 // --- Bitwise OR (|) ---
-if ((5 | 3) != 7) { println("FAIL: 5|3 expected 7, got ${5 | 3}"); return () }
-if ((0xF0 | 0x0F) != 255) { println("FAIL: 0xF0|0x0F expected 255, got ${0xF0 | 0x0F}"); return () }
+expectEq(5 | 3, 7, "5|3")
+expectEq(0xF0 | 0x0F, 255, "0xF0|0x0F")
 
 // --- Bitwise NOT (~) ---
-if ((~0) != -1) { println("FAIL: ~0 expected -1, got ${~0}"); return () }
+expectEq(~0, -1, "~0")
 
 // --- Bit shift operators ---
-if ((1 << 4) != 16) { println("FAIL: 1<<4 expected 16, got ${1 << 4}"); return () }
-if ((16 >> 2) != 4) { println("FAIL: 16>>2 expected 4, got ${16 >> 2}"); return () }
+expectEq(1 << 4, 16, "1<<4")
+expectEq(16 >> 2, 4, "16>>2")
 
 // --- Combined expressions ---
 let a = 5
 let b = 3
-if ((a > 0 && b > 0) != true) { println("FAIL: a>0 && b>0 expected true"); return () }
-if ((a > 10 || b > 0) != true) { println("FAIL: a>10 || b>0 expected true"); return () }
-if ((!(a == b)) != true) { println("FAIL: !(a==b) expected true"); return () }
+expectTrue(a > 0 && b > 0, "a>0 && b>0")
+expectTrue(a > 10 || b > 0, "a>10 || b>0")
+expectTrue(!(a == b), "!(a==b)")
 
-println("PASS: 15_operators")
+if (!__test_failed) {
+    println("PASS: 15_operators")
+}
