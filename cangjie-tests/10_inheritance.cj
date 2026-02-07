@@ -26,6 +26,7 @@ class Dog <: Animal {
     this.sound = "Woof"
     this.breed = breed
   }
+  // Override speak method (polymorphism)
   func speak(): String {
     return "${this.name} barks: ${this.sound}!"
   }

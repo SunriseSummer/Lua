@@ -20,6 +20,7 @@ struct Point {
   }
 }
 
+// Constructor call syntax: Point(x, y)
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
 let r_p1 = p1.toString()

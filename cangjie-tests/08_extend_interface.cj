@@ -20,12 +20,14 @@ struct Point {
   }
 }
 
+// Extend Point with Printable interface
 extend Point <: Printable {
   func toString(): String {
     return "(${this.x}, ${this.y})"
   }
 }
 
+// Extend Point with Describable interface
 extend Point <: Describable {
   func describe(): String {
     return "Point at (${this.x}, ${this.y})"
