@@ -4,44 +4,6 @@ dofile("cangjie-tests/_testing.cj")
 // Verifies that the interpreter produces correct error messages
 // for various error conditions using pcall/load.
 
-// -- Helper: check if error message contains expected substring --
-func expectError(test_name: String, code: String, expected: String) {
-  let ok, err = pcall(load(code))
-  if (!ok) {
-    let err_str = tostring(err)
-    if (string.find(err_str, expected, 1, true) == nil) {
-      println("FAIL: ${test_name} - expected error containing '${expected}', got '${err_str}'")
-      __test_failed = true
-    }
-  } else {
-    let ok2, err2 = pcall(err)
-    if (!ok2) {
-      let err_str2 = tostring(err2)
-      if (string.find(err_str2, expected, 1, true) == nil) {
-        println("FAIL: ${test_name} - expected error containing '${expected}', got '${err_str2}'")
-        __test_failed = true
-      }
-    } else {
-      println("FAIL: ${test_name} - expected an error but code succeeded")
-      __test_failed = true
-    }
-  }
-}
-
-func expectLoadError(test_name: String, code: String, expected: String) {
-  let result, err = load(code)
-  if (result == nil) {
-    let err_str = tostring(err)
-    if (string.find(err_str, expected, 1, true) == nil) {
-      println("FAIL: ${test_name} - expected '${expected}', got '${err_str}'")
-      __test_failed = true
-    }
-  } else {
-    println("FAIL: ${test_name} - expected a load error but code loaded successfully")
-    __test_failed = true
-  }
-}
-
 // -- Section: lexical errors --
 expectLoadError("unfinished string",
   "let s = \"hello",

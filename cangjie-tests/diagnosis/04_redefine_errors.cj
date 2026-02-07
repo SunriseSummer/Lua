@@ -3,36 +3,6 @@ dofile("cangjie-tests/_testing.cj")
 // Test: Type redefinition errors
 // Tests that same-scope type redefinition is caught.
 
-// -- Helper: check load-time errors --
-func expectLoadError(test_name: String, code: String, expected: String) {
-  let result, err = load(code)
-  if (result == nil) {
-    let err_str = tostring(err)
-    if (string.find(err_str, expected, 1, true) == nil) {
-      println("FAIL: ${test_name} - expected '${expected}', got '${err_str}'")
-      __test_failed = true
-    }
-  } else {
-    println("FAIL: ${test_name} - expected a load error but code loaded successfully")
-    __test_failed = true
-  }
-}
-
-// -- Helper: check that code runs without error --
-func expectNoError(test_name: String, code: String) {
-  let result, err = load(code)
-  if (result == nil) {
-    println("FAIL: ${test_name} - expected success but got load error: ${tostring(err)}")
-    __test_failed = true
-  } else {
-    let ok, rerr = pcall(result)
-    if (!ok) {
-      println("FAIL: ${test_name} - expected success but got runtime error: ${tostring(rerr)}")
-      __test_failed = true
-    }
-  }
-}
-
 // -- Section: same-scope type redefinition errors --
 expectLoadError("struct redefinition",
   "struct Point { var x: Int64 = 0 }\nstruct Point { var y: Int64 = 0 }",

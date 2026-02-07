@@ -30,3 +30,53 @@ func expectNil(actual, msg: String) {
         __test_failed = true
     }
 }
+
+// -- Diagnosis helpers: error expectation utilities --
+
+func expectLoadError(test_name: String, code: String, expected: String) {
+    let result, err = load(code)
+    if (result == nil) {
+        let err_str = tostring(err)
+        if (string.find(err_str, expected, 1, true) == nil) {
+            println("FAIL: ${test_name} - expected '${expected}', got '${err_str}'")
+            __test_failed = true
+        }
+    } else {
+        println("FAIL: ${test_name} - expected a load error but code loaded successfully")
+        __test_failed = true
+    }
+}
+
+func expectRuntimeError(test_name: String, code: String, expected: String) {
+    let chunk, err = load(code)
+    if (chunk == nil) {
+        println("FAIL: ${test_name} - code failed to load: ${tostring(err)}")
+        __test_failed = true
+        return ()
+    }
+    let ok, rerr = pcall(chunk)
+    if (!ok) {
+        let err_str = tostring(rerr)
+        if (string.find(err_str, expected, 1, true) == nil) {
+            println("FAIL: ${test_name} - expected '${expected}', got '${err_str}'")
+            __test_failed = true
+        }
+    } else {
+        println("FAIL: ${test_name} - expected a runtime error but code succeeded")
+        __test_failed = true
+    }
+}
+
+func expectNoError(test_name: String, code: String) {
+    let result, err = load(code)
+    if (result == nil) {
+        println("FAIL: ${test_name} - expected success but got load error: ${tostring(err)}")
+        __test_failed = true
+    } else {
+        let ok, rerr = pcall(result)
+        if (!ok) {
+            println("FAIL: ${test_name} - expected success but got runtime error: ${tostring(rerr)}")
+            __test_failed = true
+        }
+    }
+}
