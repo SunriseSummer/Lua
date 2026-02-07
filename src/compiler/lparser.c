@@ -3654,6 +3654,38 @@ static void interfacestat (LexState *ls, int line) {
         luaX_next(ls);  /* skip final '}' */
       }
     }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+      luaX_next(ls);  /* skip 'operator' */
+      checknext(ls, TK_FUNC);  /* expect 'func' */
+      /* skip operator token(s) */
+      if (ls->t.token == '[') {
+        luaX_next(ls);  /* skip '[' */
+        checknext(ls, ']');
+      }
+      else {
+        luaX_next(ls);  /* skip operator token */
+      }
+      skip_generic_params(ls);
+      checknext(ls, '(');
+      /* skip parameter list */
+      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        luaX_next(ls);
+      }
+      checknext(ls, ')');
+      skip_type_annotation(ls);
+      /* skip body if present (default implementation) */
+      if (ls->t.token == '{') {
+        int depth = 1;
+        luaX_next(ls);
+        while (depth > 0 && ls->t.token != TK_EOS) {
+          if (ls->t.token == '{') depth++;
+          else if (ls->t.token == '}') depth--;
+          if (depth > 0) luaX_next(ls);
+        }
+        luaX_next(ls);  /* skip final '}' */
+      }
+    }
     else {
       luaX_syntaxerror(ls, "expected 'func' declaration in interface body");
     }
@@ -3775,6 +3807,68 @@ static void extendstat (LexState *ls, int line) {
         luaK_storevar(fs, &mv, &mb);
         luaK_fixline(fs, line);
       }
+      else if (ls->t.token == TK_NAME &&
+               ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+        expdesc mv, mb;
+        TString *metamethod_name;
+        int op_token;
+        luaX_next(ls);  /* skip 'operator' */
+        checknext(ls, TK_FUNC);  /* expect 'func' */
+        op_token = ls->t.token;
+        switch (op_token) {
+          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+          case '[': {
+            luaX_next(ls);  /* skip '[' */
+            checknext(ls, ']');
+            metamethod_name = luaS_new(ls->L, "__index");
+            goto parse_ext_b_opbody;
+          }
+          default: {
+            if (ls->t.token == TK_NAME) {
+              const char *opname = getstr(ls->t.seminfo.ts);
+              if (strcmp(opname, "toString") == 0) {
+                metamethod_name = luaS_new(ls->L, "__tostring");
+              } else {
+                char mm[64];
+                snprintf(mm, sizeof(mm), "__%s", opname);
+                metamethod_name = luaS_new(ls->L, mm);
+              }
+            } else {
+              luaX_syntaxerror(ls, "unsupported operator for overloading");
+              metamethod_name = NULL;
+            }
+            break;
+          }
+        }
+        luaX_next(ls);  /* skip operator token */
+parse_ext_b_opbody:
+        skip_generic_params(ls);
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, metamethod_name);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
+      }
       else {
         luaX_next(ls);
       }
@@ -3819,6 +3913,68 @@ static void extendstat (LexState *ls, int line) {
           expdesc mkey;
           luaK_exp2anyregup(fs, &mv);
           codestring(&mkey, mname);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
+      }
+      else if (ls->t.token == TK_NAME &&
+               ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+        expdesc mv, mb;
+        TString *metamethod_name;
+        int op_token;
+        luaX_next(ls);  /* skip 'operator' */
+        checknext(ls, TK_FUNC);  /* expect 'func' */
+        op_token = ls->t.token;
+        switch (op_token) {
+          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+          case '[': {
+            luaX_next(ls);  /* skip '[' */
+            checknext(ls, ']');
+            metamethod_name = luaS_new(ls->L, "__index");
+            goto parse_ext_u_opbody;
+          }
+          default: {
+            if (ls->t.token == TK_NAME) {
+              const char *opname = getstr(ls->t.seminfo.ts);
+              if (strcmp(opname, "toString") == 0) {
+                metamethod_name = luaS_new(ls->L, "__tostring");
+              } else {
+                char mm[64];
+                snprintf(mm, sizeof(mm), "__%s", opname);
+                metamethod_name = luaS_new(ls->L, mm);
+              }
+            } else {
+              luaX_syntaxerror(ls, "unsupported operator for overloading");
+              metamethod_name = NULL;
+            }
+            break;
+          }
+        }
+        luaX_next(ls);  /* skip operator token */
+parse_ext_u_opbody:
+        skip_generic_params(ls);
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, metamethod_name);
           luaK_indexed(fs, &mv, &mkey);
         }
         body(ls, &mb, 1, ls->linenumber);
