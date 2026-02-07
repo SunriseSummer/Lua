@@ -144,21 +144,6 @@ class Dog <: Animal {
 - **方法继承**：子类自动继承父类未重写的方法
 - **多态**：父类引用可调用子类重写的方法
 
-#### 隐式 this
-
-在 struct 和 class 的构造函数和成员函数中，引用成员变量时可以省略 `this.` 前缀：
-```cangjie
-struct Counter {
-  var count: Int64
-  init() {
-    count = 0        // 等价于 this.count = 0
-  }
-  func increment() {
-    count = count + 1  // 等价于 this.count = this.count + 1
-  }
-}
-```
-
 #### 实例化（构造函数调用）
 ```cangjie
 let p = Point(3, 4)  // 调用 init
@@ -260,28 +245,56 @@ struct Vector {
 let v = Vector(1, 2) + Vector(3, 4)  // Vector(4, 6)
 ```
 
-#### interface（接口）
+#### this 可省略
+
+在 struct 和 class 的构造函数和实例成员函数中，引用成员变量时可以省略 `this.` 前缀：
 ```cangjie
-interface Printable {
-  func toString(): String
+struct Counter {
+  var count: Int64
+  init() {
+    count = 0        // 等价于 this.count = 0
+  }
+  func increment() {
+    count = count + 1  // 等价于 this.count = this.count + 1
+  }
 }
 ```
 
-#### extend（扩展）
-
-为已有类型添加方法，支持接口实现声明：
+### interface（接口）
 ```cangjie
-// 扩展用户定义类型
-extend Point <: Printable {
+interface Animal {
+  func speak(): String
+}
+
+// 自定义类型可实现接口
+class Dog <: Animal {
+  var name = "Tom"
+  // 实现接口中的函数
+  func speak(): String {
+    return "${name} barks!"
+  }
+}
+```
+
+### extend（扩展）
+
+为已有类型添加成员函数，支持直接扩展和基于接口扩展
+```cangjie
+// 直接扩展
+extend Int64 {
   func describe(): String {
-    return "Point at (${this.x}, ${this.y})"
+    return "value is ${this}"
   }
 }
 
-// 扩展内置基础类型
+// 基于接口扩展
+interface Printable {
+  func toString(): String
+}
+
 extend Int64 <: Printable {
-  func double(): Int64 {
-    return this * 2
+  func toString(): String {
+    return "value is ${this}"
   }
 }
 ```
@@ -600,7 +613,7 @@ let grid = Array<Array<Int64>>(3, { i: Int64 =>
 })
 ```
 
-### 数组区间索引
+### 数组切片，区间索引
 
 支持使用区间表达式对数组进行切片取值和赋值：
 
