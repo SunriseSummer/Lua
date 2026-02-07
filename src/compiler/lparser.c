@@ -3217,6 +3217,9 @@ static void structstat (LexState *ls, int line) {
   int reg;
   int saved_nfields = ls->nfields;
   int saved_in_struct = ls->in_struct_method;
+  int has_init = 0;
+  TString *var_fields[64];
+  int nvarfields = 0;
 
   /* Reset field tracking for this struct */
   ls->nfields = 0;
@@ -3459,6 +3462,7 @@ parse_operator_body:
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "init")) {
       /* Constructor: init(...) { ... } -- no 'func' keyword needed */
+      has_init = 1;
       expdesc mv, mb;
       TString *mname;
       luaX_next(ls);  /* skip 'init' */
@@ -3481,11 +3485,16 @@ parse_operator_body:
     else if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
       /* Field declaration - record field name for implicit this */
       TString *fname;
+      int is_var = (ls->t.token == TK_VAR);
       luaX_next(ls);  /* skip let/var */
       fname = str_checkname(ls);  /* field name */
       /* Track field name for implicit 'this' */
       if (ls->nfields < 64) {
         ls->struct_fields[ls->nfields++] = fname;
+      }
+      /* Track var fields for auto-constructor */
+      if (is_var && nvarfields < 64) {
+        var_fields[nvarfields++] = fname;
       }
       skip_type_annotation(ls);
       /* optional default value */
@@ -3501,6 +3510,33 @@ parse_operator_body:
   }
 
   check_match(ls, /*{*/ '}', TK_STRUCT, line);
+
+  /* If no init was defined, store field metadata for auto-constructor */
+  if (!has_init && nvarfields > 0) {
+    int fi;
+    for (fi = 0; fi < nvarfields; fi++) {
+      expdesc tab2, key2, val2;
+      char fieldkey[32];
+      snprintf(fieldkey, sizeof(fieldkey), "__field_%d", fi + 1);
+      buildvar(ls, sname, &tab2);
+      luaK_exp2anyregup(fs, &tab2);
+      codestring(&key2, luaX_newstring(ls, fieldkey, strlen(fieldkey)));
+      luaK_indexed(fs, &tab2, &key2);
+      codestring(&val2, var_fields[fi]);
+      luaK_storevar(fs, &tab2, &val2);
+    }
+    /* Store __nfields count */
+    {
+      expdesc tab2, key2, val2;
+      buildvar(ls, sname, &tab2);
+      luaK_exp2anyregup(fs, &tab2);
+      codestring(&key2, luaX_newstring(ls, "__nfields", 9));
+      luaK_indexed(fs, &tab2, &key2);
+      init_exp(&val2, VKINT, 0);
+      val2.u.ival = nvarfields;
+      luaK_storevar(fs, &tab2, &val2);
+    }
+  }
 
   /* Generate: __cangjie_setup_class(NAME) to enable Point(x,y) constructor */
   {

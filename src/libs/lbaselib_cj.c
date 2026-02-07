@@ -172,6 +172,26 @@ static int cangjie_call_handler (lua_State *L) {
   }
   else {
     lua_pop(L, 1);  /* pop nil */
+    /* Auto-constructor: assign args to fields if __nfields is set */
+    lua_getfield(L, 1, "__nfields");
+    if (lua_isinteger(L, -1)) {
+      int nf = (int)lua_tointeger(L, -1);
+      int fi;
+      lua_pop(L, 1);
+      for (fi = 1; fi <= nf && fi <= nargs; fi++) {
+        char fieldkey[32];
+        snprintf(fieldkey, sizeof(fieldkey), "__field_%d", fi);
+        lua_getfield(L, 1, fieldkey);  /* get field name */
+        if (lua_isstring(L, -1)) {
+          const char *fname = lua_tostring(L, -1);
+          lua_pushvalue(L, fi + 1);  /* push arg value */
+          lua_setfield(L, obj, fname);  /* obj.fieldname = arg */
+        }
+        lua_pop(L, 1);  /* pop field name string */
+      }
+    } else {
+      lua_pop(L, 1);
+    }
   }
   lua_pushvalue(L, obj);        /* return obj */
   return 1;
