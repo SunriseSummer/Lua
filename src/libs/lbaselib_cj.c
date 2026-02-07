@@ -12,6 +12,7 @@
 #include "lprefix.h"
 
 #include <string.h>
+#include <stdio.h>
 
 #include "lua.h"
 
@@ -46,7 +47,9 @@ static int cangjie_bound_method (lua_State *L) {
 
 /* Custom __index: if the value from the class table is a function,
 ** return a bound method; otherwise return the raw value.
-** Supports inheritance: walks the __parent chain to find methods. */
+** Supports inheritance: walks the __parent chain to find methods.
+** Static functions (marked with __static_<name> = true) are returned
+** without binding to the instance. */
 static int cangjie_index_handler (lua_State *L) {
   /* Arguments: obj (table), key */
   /* upvalue 1 = the class table */
@@ -67,7 +70,20 @@ static int cangjie_index_handler (lua_State *L) {
       lua_rawget(L, cls_idx);  /* rawget to avoid metatable loops */
       if (!lua_isnil(L, -1)) {
         if (lua_isfunction(L, -1)) {
-          /* It's a method - create a bound method closure */
+          /* Check if this is a static function (no binding needed) */
+          int is_static = 0;
+          if (lua_isstring(L, 2)) {
+            const char *keystr = lua_tostring(L, 2);
+            char marker[128];
+            snprintf(marker, sizeof(marker), "__static_%s", keystr);
+            lua_getfield(L, cls_idx, marker);
+            is_static = lua_toboolean(L, -1);
+            lua_pop(L, 1);  /* pop marker value */
+          }
+          if (is_static) {
+            return 1;  /* return static function directly (no binding) */
+          }
+          /* It's an instance method - create a bound method closure */
           lua_pushvalue(L, -1);  /* function */
           lua_pushvalue(L, 1);   /* obj (self) */
           lua_pushcclosure(L, cangjie_bound_method, 2);
@@ -91,7 +107,7 @@ static int cangjie_call_handler (lua_State *L) {
   /* Arguments: cls, arg1, arg2, ... (cls is first arg via __call) */
   int nargs = lua_gettop(L) - 1;  /* number of constructor args (excluding cls) */
   int i;
-  int obj;
+  int obj, mt;
   lua_newtable(L);              /* create new instance: obj = {} */
   /* stack: [cls, arg1, ..., argN, obj] */
   obj = lua_gettop(L);
@@ -100,9 +116,49 @@ static int cangjie_call_handler (lua_State *L) {
   lua_setfield(L, obj, "__class");
   /* Set up metatable for the instance with custom __index */
   lua_newtable(L);              /* instance metatable */
+  mt = lua_gettop(L);
   lua_pushvalue(L, 1);          /* push cls as upvalue */
   lua_pushcclosure(L, cangjie_index_handler, 1);
-  lua_setfield(L, -2, "__index");
+  lua_setfield(L, mt, "__index");
+  /* Copy metamethods from class table to instance metatable.
+  ** Walk the class hierarchy (__parent chain) to inherit operator overloads. */
+  {
+    static const char *const metamethods[] = {
+      "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
+      "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
+      "__eq", "__lt", "__le", "__len", "__concat", "__tostring",
+      "__newindex",
+      NULL
+    };
+    int cls_walk;
+    lua_pushvalue(L, 1);  /* start with the class table */
+    cls_walk = lua_gettop(L);
+    while (!lua_isnil(L, cls_walk)) {
+      int mi;
+      for (mi = 0; metamethods[mi] != NULL; mi++) {
+        /* Only set if not already set (child overrides parent) */
+        lua_getfield(L, mt, metamethods[mi]);
+        if (lua_isnil(L, -1)) {
+          lua_pop(L, 1);
+          lua_getfield(L, cls_walk, metamethods[mi]);
+          if (!lua_isnil(L, -1)) {
+            lua_setfield(L, mt, metamethods[mi]);
+          }
+          else {
+            lua_pop(L, 1);
+          }
+        }
+        else {
+          lua_pop(L, 1);  /* already set */
+        }
+      }
+      /* Walk to parent */
+      lua_getfield(L, cls_walk, "__parent");
+      lua_remove(L, cls_walk);
+      cls_walk = lua_gettop(L);
+    }
+    lua_pop(L, 1);  /* pop nil (end of chain) */
+  }
   lua_setmetatable(L, obj);
   /* Check if cls.init exists */
   lua_getfield(L, 1, "init");
