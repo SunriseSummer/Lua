@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: continue statement in loops
 // Validates that continue correctly skips iterations in for, while, and nested loops
 
@@ -9,7 +11,7 @@ for (i in 1..=10) {
   }
   sum = sum + i
 }
-if (sum != 25) { println("FAIL: sum expected 25, got ${sum}"); return () }
+expectEq(sum, 25, "sum of odd numbers 1..10")
 
 // --- continue in while loop - skip multiples of 3 ---
 var result: Int64 = 0
@@ -21,7 +23,7 @@ while (j < 10) {
   }
   result = result + j
 }
-if (result != 37) { println("FAIL: result expected 37, got ${result}"); return () }
+expectEq(result, 37, "sum skipping multiples of 3")
 
 // --- nested continue - inner loop only ---
 var total: Int64 = 0
@@ -33,7 +35,7 @@ for (a in 1..=3) {
     total = total + b
   }
 }
-if (total != 12) { println("FAIL: total expected 12, got ${total}"); return () }
+expectEq(total, 12, "nested continue total")
 
 // --- continue with complex condition ---
 var count: Int64 = 0
@@ -43,7 +45,7 @@ for (k in 1..=20) {
   }
   count = count + 1
 }
-if (count != 17) { println("FAIL: count expected 17, got ${count}"); return () }
+expectEq(count, 17, "count skipping multiples of 6")
 
 // --- continue in while with multiple conditions ---
 var s: String = ""
@@ -55,6 +57,8 @@ while (idx < 5) {
   }
   s = s + tostring(idx)
 }
-if (s != "1245") { println("FAIL: s expected '1245', got '${s}'"); return () }
+expectEq(s, "1245", "string skipping idx==3")
 
-println("PASS: 17_continue")
+if (!__test_failed) {
+    println("PASS: 17_continue")
+}

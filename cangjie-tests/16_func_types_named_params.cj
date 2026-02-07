@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Function types and named parameters
 
 // Function type annotation in parameter
@@ -13,12 +15,12 @@ func sub(a: Int64, b: Int64): Int64 {
   return a - b
 }
 
-println("apply(add, 3, 4) = ${apply(add, 3, 4)}")
-println("apply(sub, 10, 3) = ${apply(sub, 10, 3)}")
+expectEq(apply(add, 3, 4), 7, "apply add")
+expectEq(apply(sub, 10, 3), 7, "apply sub")
 
 // Lambda expression passed directly as function type parameter
-println("apply(lambda, 6, 7) = ${apply({ x, y => x * y }, 6, 7)}")
-println("apply(lambda, 10, 3) = ${apply({ a, b => a - b }, 10, 3)}")
+expectEq(apply({ x, y => x * y }, 6, 7), 42, "apply lambda multiply")
+expectEq(apply({ a, b => a - b }, 10, 3), 7, "apply lambda subtract")
 
 // Higher-order function accepting lambda with type annotation
 func mapInt(arr, fn: (Int64) -> Int64) {
@@ -33,13 +35,11 @@ func mapInt(arr, fn: (Int64) -> Int64) {
 
 let nums = {1, 2, 3, 4, 5}
 let doubled = mapInt(nums, { x => x * 2 })
-print("doubled: ")
-var i = 1
-while (doubled[i] != nil) {
-  print("${doubled[i]} ")
-  i = i + 1
-}
-println()
+expectEq(doubled[1], 2, "mapInt doubled[1]")
+expectEq(doubled[2], 4, "mapInt doubled[2]")
+expectEq(doubled[3], 6, "mapInt doubled[3]")
+expectEq(doubled[4], 8, "mapInt doubled[4]")
+expectEq(doubled[5], 10, "mapInt doubled[5]")
 
 // Function as return value with type annotation
 func makeOp(op: String): (Int64, Int64) -> Int64 {
@@ -51,8 +51,8 @@ func makeOp(op: String): (Int64, Int64) -> Int64 {
 
 let addOp = makeOp("add")
 let subOp = makeOp("sub")
-println("addOp(5, 3) = ${addOp(5, 3)}")
-println("subOp(5, 3) = ${subOp(5, 3)}")
+expectEq(addOp(5, 3), 8, "addOp(5, 3)")
+expectEq(subOp(5, 3), 2, "subOp(5, 3)")
 
 // Named parameter with ! syntax
 func greet(name: String, prefix!: String) {
@@ -70,18 +70,18 @@ func power(base: Int64, exponent!: Int64 = 2): Int64 {
   }
   return result
 }
-println("power(3) = ${power(3)}")        // uses default exponent=2 → 9
-println("power(3, 2) = ${power(3, 2)}")  // explicit exponent=2 → 9
-println("power(3, 3) = ${power(3, 3)}")  // explicit exponent=3 → 27
-println("power(5) = ${power(5)}")        // uses default exponent=2 → 25
+expectEq(power(3), 9, "power(3)")
+expectEq(power(3, 2), 9, "power(3,2)")
+expectEq(power(3, 3), 27, "power(3,3)")
+expectEq(power(5), 25, "power(5)")
 
 // Multiple named parameters with defaults
 func createPoint(x!: Int64 = 0, y!: Int64 = 0): String {
   return "(${x}, ${y})"
 }
-println("createPoint() = ${createPoint()}")        // (0, 0) - both defaults
-println("createPoint(3) = ${createPoint(3)}")      // (3, 0) - y defaults
-println("createPoint(3, 4) = ${createPoint(3, 4)}") // (3, 4) - no defaults
+expectEq(createPoint(), "(0, 0)", "createPoint()")
+expectEq(createPoint(3), "(3, 0)", "createPoint(3)")
+expectEq(createPoint(3, 4), "(3, 4)", "createPoint(3, 4)")
 
 // Function with both positional and named parameters with defaults
 func formatNum(value: Int64, prefix!: String = "", suffix!: String = "") {
@@ -89,13 +89,15 @@ func formatNum(value: Int64, prefix!: String = "", suffix!: String = "") {
 }
 formatNum(42, "$", " USD")
 formatNum(100, "", "%")
-formatNum(42)              // uses both defaults: "42"
+formatNum(42)
 
 // String default value
 func hello(name!: String = "World") {
   println("Hello, ${name}!")
 }
-hello()       // uses default → Hello, World!
-hello("Lua")  // explicit → Hello, Lua!
+hello()
+hello("Lua")
 
-println("PASS: 16_func_types_named_params")
+if (!__test_failed) {
+    println("PASS: 16_func_types_named_params")
+}
