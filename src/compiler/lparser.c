@@ -2924,7 +2924,7 @@ static void checktoclose (FuncState *fs, int level) {
 static int is_repl_toplevel (LexState *ls) {
   FuncState *fs = ls->fs;
   const char *src = getstr(ls->source);
-  return (src[0] == '=' && strcmp(src, "=stdin") == 0 &&
+  return (strcmp(src, "=stdin") == 0 &&
           fs->prev == NULL && fs->bl->previous == NULL);
 }
 
@@ -3081,6 +3081,7 @@ static void funcstat (LexState *ls, int line) {
   }
   body(ls, &b, 0, line);
   /* Get parameter count from the just-parsed function prototype */
+  lua_assert(fs->np > 0);
   func_nparams = fs->f->p[fs->np - 1]->numparams;
   /* Generate: fname = __cangjie_overload(fname, new_func, nparams) */
   {
@@ -3362,9 +3363,10 @@ static void structstat (LexState *ls, int line) {
         size_t plen = strlen(prefix);
         size_t nlen = strlen(namestr);
         char markerkey[128];
-        if (plen + nlen < sizeof(markerkey)) {
+        if (plen + nlen + 1 < sizeof(markerkey)) {
           memcpy(markerkey, prefix, plen);
           memcpy(markerkey + plen, namestr, nlen);
+          markerkey[plen + nlen] = '\0';
           buildvar(ls, sname, &tab2);
           luaK_exp2anyregup(fs, &tab2);
           codestring(&key2, luaX_newstring(ls, markerkey, plen + nlen));
