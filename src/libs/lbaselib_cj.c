@@ -429,39 +429,35 @@ int luaB_set_parent (lua_State *L) {
 
 
 /*
-** __cangjie_super_init(self, args...) - Call parent class constructor.
-** Looks up self's class via __class, then walks to __parent, and calls
-** parent.init(self, args...) so that parent fields are initialized.
+** __cangjie_super_init(self, current_class, args...) - Call parent class constructor.
+** Uses current_class (the class where super() is written) to find __parent,
+** avoiding infinite recursion when multi-level inheritance is used.
 */
 int luaB_super_init (lua_State *L) {
   int nargs = lua_gettop(L);
   int i;
-  /* arg 1 = self */
+  /* arg 1 = self, arg 2 = current_class */
   luaL_checktype(L, 1, LUA_TTABLE);
-  /* Get self.__class */
-  lua_getfield(L, 1, "__class");
-  if (lua_isnil(L, -1)) {
-    return luaL_error(L, "super: object has no __class");
-  }
-  /* Get __class.__parent */
-  lua_getfield(L, -1, "__parent");
+  luaL_checktype(L, 2, LUA_TTABLE);
+  /* Get current_class.__parent */
+  lua_getfield(L, 2, "__parent");
   if (lua_isnil(L, -1)) {
     return luaL_error(L, "super: class has no parent");
   }
   /* Get __parent.init */
   lua_getfield(L, -1, "init");
   if (lua_isnil(L, -1)) {
-    /* No explicit init in parent - just return, parent may use auto-init */
-    lua_pop(L, 3);  /* pop nil, parent, class */
+    /* No explicit init in parent - just return */
+    lua_pop(L, 2);  /* pop nil, parent */
     return 0;
   }
-  /* Call parent.init(self, args...) */
+  /* Call parent.init(self, args...) — skip arg 2 (current_class) */
   lua_pushvalue(L, 1);  /* push self */
-  for (i = 2; i <= nargs; i++) {
-    lua_pushvalue(L, i);  /* push remaining args */
+  for (i = 3; i <= nargs; i++) {
+    lua_pushvalue(L, i);  /* push remaining args (skip current_class) */
   }
-  lua_call(L, nargs, 0);  /* call init, discard return (init returns self) */
-  lua_pop(L, 2);  /* pop parent, class */
+  lua_call(L, nargs - 1, 0);  /* call init, discard return */
+  lua_pop(L, 1);  /* pop parent */
   return 0;
 }
 

@@ -1907,7 +1907,7 @@ static void primaryexp (LexState *ls, expdesc *v) {
     }
     case TK_SUPER: {
       /* 'super(args)' calls parent class constructor on self.
-      ** Compiles to: __cangjie_super_init(self, args...) */
+      ** Compiles to: __cangjie_super_init(self, ClassName, args...) */
       FuncState *fs2 = ls->fs;
       expdesc fn, selfvar;
       int base2;
@@ -1921,9 +1921,19 @@ static void primaryexp (LexState *ls, expdesc *v) {
         singlevaraux(fs2, sn, &selfvar, 1);
         luaK_exp2nextreg(fs2, &selfvar);
       }
+      /* push current class as second arg (so super_init can find the right parent) */
+      {
+        expdesc classvar;
+        if (ls->current_class_name != NULL) {
+          buildvar(ls, ls->current_class_name, &classvar);
+        } else {
+          init_exp(&classvar, VNIL, 0);
+        }
+        luaK_exp2nextreg(fs2, &classvar);
+      }
       checknext(ls, '(');
       {
-        int nargs = 1;  /* self is first arg */
+        int nargs = 2;  /* self + class are first two args */
         if (ls->t.token != ')') {
           expdesc arg;
           expr(ls, &arg);
@@ -3825,6 +3835,7 @@ static void structstat (LexState *ls, int line) {
   int reg;
   int saved_nfields = ls->nfields;
   int saved_in_struct = ls->in_struct_method;
+  TString *saved_class_name = ls->current_class_name;
   int has_init = 0;
 #define MAX_VAR_FIELDS 64
   TString *var_fields[MAX_VAR_FIELDS];
@@ -3839,6 +3850,7 @@ static void structstat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'struct' or 'class' */
   sname = str_checkname(ls);
+  ls->current_class_name = sname;
   check_type_redefine(ls, sname);
 
   /* Determine if '<' is generic params or '<:' inheritance */
@@ -3966,6 +3978,10 @@ static void structstat (LexState *ls, int line) {
       TString *mname;
       luaX_next(ls);  /* skip 'func' */
       mname = str_checkname(ls);
+      /* Track method name for implicit 'this' resolution */
+      if (ls->nfields < 64) {
+        ls->struct_fields[ls->nfields++] = mname;
+      }
       /* skip generic type params on method */
       skip_generic_params(ls);
       /* Build NAME.methodname */
@@ -4373,6 +4389,7 @@ parse_operator_body:
   /* Restore previous struct field context */
   ls->nfields = saved_nfields;
   ls->in_struct_method = saved_in_struct;
+  ls->current_class_name = saved_class_name;
 }
 
 

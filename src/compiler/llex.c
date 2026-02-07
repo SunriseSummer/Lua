@@ -199,6 +199,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
   ls->interp_depth = 0;  /* not inside string interpolation */
   ls->nfields = 0;  /* no struct fields */
   ls->in_struct_method = 0;  /* not inside a struct method */
+  ls->current_class_name = NULL;  /* not inside a class */
   ls->nclass_registry = 0;  /* no classes registered */
 #if LUA_COMPAT_GLOBAL
   /* compatibility mode: "global" is not a reserved word */
