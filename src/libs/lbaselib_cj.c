@@ -791,6 +791,26 @@ int luaB_named_call (lua_State *L) {
   }
   total_params = ar.nparams;
 
+  fprintf(stderr, "DEBUG named_call: nargs=%d, npos=%d, total_params=%d, func_type=%d(%s), is_c=%d\n", nargs, npos, total_params, lua_type(L, 1), lua_typename(L, lua_type(L, 1)), lua_iscfunction(L, 1));
+  /* Debug: print stack contents */
+  for (i = 1; i <= nargs; i++) {
+    fprintf(stderr, "  stack[%d] type=%s", i, lua_typename(L, lua_type(L, i)));
+    if (lua_type(L, i) == LUA_TSTRING) fprintf(stderr, " val=\"%s\"", lua_tostring(L, i));
+    if (lua_type(L, i) == LUA_TNUMBER) fprintf(stderr, " val=%g", lua_tonumber(L, i));
+    fprintf(stderr, "\n");
+  }
+  /* Debug: print named table contents */
+  if (lua_type(L, nargs) == LUA_TTABLE) {
+    fprintf(stderr, "  named_table contents:\n");
+    lua_pushnil(L);
+    while (lua_next(L, nargs) != 0) {
+      fprintf(stderr, "    key=%s type=%s", lua_tostring(L, -2), lua_typename(L, lua_type(L, -1)));
+      if (lua_type(L, -1) == LUA_TSTRING) fprintf(stderr, " val=\"%s\"", lua_tostring(L, -1));
+      fprintf(stderr, "\n");
+      lua_pop(L, 1);
+    }
+  }
+
   /* Build the call: push func, then all args in parameter order */
   lua_pushvalue(L, 1);  /* push func */
 
@@ -805,9 +825,11 @@ int luaB_named_call (lua_State *L) {
       lua_pushvalue(L, 1);  /* push func on top for lua_getlocal */
       pname = lua_getlocal(L, NULL, i);
       lua_pop(L, 1);  /* pop the func we pushed */
+      fprintf(stderr, "  param[%d] name=%s\n", i, pname ? pname : "NULL");
       if (pname != NULL) {
         /* Look up pname in the named_table (last argument) */
         lua_getfield(L, nargs, pname);
+        fprintf(stderr, "  -> found type=%s\n", lua_typename(L, lua_type(L, -1)));
       }
       else {
         lua_pushnil(L);
