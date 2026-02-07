@@ -1,6 +1,8 @@
 // Test: Class Inheritance and Polymorphism
+// Validates single and multi-level inheritance, method overriding,
+// polymorphic dispatch, and interface implementation on classes.
 
-// Base class
+// -- Section: Base class --
 class Animal {
   var name: String
   var sound: String
@@ -16,7 +18,7 @@ class Animal {
   }
 }
 
-// Subclass with <: inheritance syntax
+// -- Section: Subclasses with inheritance --
 class Dog <: Animal {
   var breed: String
   init(name: String, breed: String) {
@@ -24,7 +26,6 @@ class Dog <: Animal {
     this.sound = "Woof"
     this.breed = breed
   }
-  // Override speak method (polymorphism)
   func speak(): String {
     return "${this.name} barks: ${this.sound}!"
   }
@@ -43,33 +44,41 @@ class Cat <: Animal {
   }
 }
 
-// Test basic inheritance
+// -- Section: Basic inheritance assertions --
 let a = Animal("Bird", "Tweet")
 let d = Dog("Rex", "Labrador")
 let c = Cat("Whiskers")
 
-println(a.speak())
-println(d.speak())
-println(c.speak())
+let r_a = a.speak()
+if (r_a != "Bird says Tweet") { println("FAIL: a.speak() expected 'Bird says Tweet', got ${r_a}"); return () }
+let r_d = d.speak()
+if (r_d != "Rex barks: Woof!") { println("FAIL: d.speak() expected 'Rex barks: Woof!', got ${r_d}"); return () }
+let r_c = c.speak()
+if (r_c != "Whiskers purrs: Meow") { println("FAIL: c.speak() expected 'Whiskers purrs: Meow', got ${r_c}"); return () }
 
-// Test inherited methods
-println(d.getType())
-println(c.getType())
+// -- Section: Inherited methods --
+let r_dtype = d.getType()
+if (r_dtype != "Animal") { println("FAIL: d.getType() expected 'Animal', got ${r_dtype}"); return () }
+let r_ctype = c.getType()
+if (r_ctype != "Animal") { println("FAIL: c.getType() expected 'Animal', got ${r_ctype}"); return () }
 
-// Test child-specific methods
-println(d.fetch())
+// -- Section: Child-specific methods --
+let r_fetch = d.fetch()
+if (r_fetch != "Rex fetches the ball") { println("FAIL: d.fetch() expected 'Rex fetches the ball', got ${r_fetch}"); return () }
 
-// Test polymorphism: parent reference calling overridden method
-// In this dynamic implementation, the method dispatch is always dynamic
+// -- Section: Polymorphic dispatch --
 func makeSpeak(animal) {
   return animal.speak()
 }
 
-println(makeSpeak(a))
-println(makeSpeak(d))
-println(makeSpeak(c))
+let r_ma = makeSpeak(a)
+if (r_ma != "Bird says Tweet") { println("FAIL: makeSpeak(a) expected 'Bird says Tweet', got ${r_ma}"); return () }
+let r_md = makeSpeak(d)
+if (r_md != "Rex barks: Woof!") { println("FAIL: makeSpeak(d) expected 'Rex barks: Woof!', got ${r_md}"); return () }
+let r_mc = makeSpeak(c)
+if (r_mc != "Whiskers purrs: Meow") { println("FAIL: makeSpeak(c) expected 'Whiskers purrs: Meow', got ${r_mc}"); return () }
 
-// Multi-level inheritance
+// -- Section: Multi-level inheritance --
 class GuideDog <: Dog {
   var owner: String
   init(name: String, owner: String) {
@@ -84,12 +93,16 @@ class GuideDog <: Dog {
 }
 
 let gd = GuideDog("Buddy", "Alice")
-println(gd.speak())
-println(gd.getType())
-println(gd.fetch())
-println(gd.guide())
+let r_gdspeak = gd.speak()
+if (r_gdspeak != "Buddy barks: Woof!") { println("FAIL: gd.speak() expected 'Buddy barks: Woof!', got ${r_gdspeak}"); return () }
+let r_gdtype = gd.getType()
+if (r_gdtype != "Animal") { println("FAIL: gd.getType() expected 'Animal', got ${r_gdtype}"); return () }
+let r_gdfetch = gd.fetch()
+if (r_gdfetch != "Buddy fetches the ball") { println("FAIL: gd.fetch() expected 'Buddy fetches the ball', got ${r_gdfetch}"); return () }
+let r_gdguide = gd.guide()
+if (r_gdguide != "Buddy guides Alice") { println("FAIL: gd.guide() expected 'Buddy guides Alice', got ${r_gdguide}"); return () }
 
-// Class implementing interface
+// -- Section: Class implementing interface --
 interface Printable {
   func toString(): String
 }
@@ -107,6 +120,7 @@ class Point <: Printable {
 }
 
 let p = Point(3, 4)
-println(p.toString())
+let r_pts = p.toString()
+if (r_pts != "(3, 4)") { println("FAIL: p.toString() expected '(3, 4)', got ${r_pts}"); return () }
 
 println("PASS: 10_inheritance")

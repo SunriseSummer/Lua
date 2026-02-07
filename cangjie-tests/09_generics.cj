@@ -1,14 +1,16 @@
 // Test: Generics
+// Validates generic functions, generic structs, and generic stack operations.
 
-// Generic function with type parameter annotation
+// -- Section: Generic identity function --
 func identity<T>(x: T): T {
   return x
 }
-println("identity(42) = ${identity(42)}")
-let hw = identity("hello")
-println("identity(hello) = ${hw}")
+let r_id_int = identity(42)
+if (r_id_int != 42) { println("FAIL: identity(42) expected 42, got ${r_id_int}"); return () }
+let r_id_str = identity("hello")
+if (r_id_str != "hello") { println("FAIL: identity('hello') expected 'hello', got ${r_id_str}"); return () }
 
-// Generic struct with init/this
+// -- Section: Generic struct Box --
 struct Box<T> {
   var value: T
   init(value: T) {
@@ -24,18 +26,22 @@ struct Box<T> {
 
 let intBox = Box(42)
 let strBox = Box("hello")
-println(intBox.toString())
-println(strBox.toString())
-println("intBox.get() = ${intBox.get()}")
+let r_intBox = intBox.toString()
+if (r_intBox != "Box(42)") { println("FAIL: intBox.toString() expected 'Box(42)', got ${r_intBox}"); return () }
+let r_strBox = strBox.toString()
+if (r_strBox != "Box(hello)") { println("FAIL: strBox.toString() expected 'Box(hello)', got ${r_strBox}"); return () }
+let r_get = intBox.get()
+if (r_get != 42) { println("FAIL: intBox.get() expected 42, got ${r_get}"); return () }
 
-// Generic function: swap
+// -- Section: Generic swap function --
 func swap<T>(a: T, b: T) {
   return b, a
 }
 let x, y = swap(1, 2)
-println("swap(1, 2) = ${x}, ${y}")
+if (x != 2) { println("FAIL: swap(1,2) first expected 2, got ${x}"); return () }
+if (y != 1) { println("FAIL: swap(1,2) second expected 1, got ${y}"); return () }
 
-// Generic Stack
+// -- Section: Generic Stack --
 struct Stack<T> {
   var items: Array<T>
   var count: Int64
@@ -68,11 +74,17 @@ let stack = Stack()
 stack.push(10)
 stack.push(20)
 stack.push(30)
-println("peek: ${stack.peek()}")
-println("pop: ${stack.pop()}")
-println("pop: ${stack.pop()}")
-println("empty: ${tostring(stack.isEmpty())}")
-println("pop: ${stack.pop()}")
-println("empty: ${tostring(stack.isEmpty())}")
+let r_peek = stack.peek()
+if (r_peek != 30) { println("FAIL: peek expected 30, got ${r_peek}"); return () }
+let r_pop1 = stack.pop()
+if (r_pop1 != 30) { println("FAIL: first pop expected 30, got ${r_pop1}"); return () }
+let r_pop2 = stack.pop()
+if (r_pop2 != 20) { println("FAIL: second pop expected 20, got ${r_pop2}"); return () }
+let r_empty1 = stack.isEmpty()
+if (r_empty1 != false) { println("FAIL: isEmpty after 2 pops expected false, got ${r_empty1}"); return () }
+let r_pop3 = stack.pop()
+if (r_pop3 != 10) { println("FAIL: third pop expected 10, got ${r_pop3}"); return () }
+let r_empty2 = stack.isEmpty()
+if (r_empty2 != true) { println("FAIL: isEmpty after all pops expected true, got ${r_empty2}"); return () }
 
 println("PASS: 08_generics")

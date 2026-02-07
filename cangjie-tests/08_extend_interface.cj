@@ -1,6 +1,7 @@
 // Test: Interface-based Extension (extend A <: I { ... })
+// Validates extending structs/classes/built-in types with interface implementations.
 
-// Define interfaces
+// -- Section: Define interfaces --
 interface Printable {
   func toString(): String
 }
@@ -9,7 +10,7 @@ interface Describable {
   func describe(): String
 }
 
-// Define a struct
+// -- Section: Define and extend Point struct --
 struct Point {
   var x: Int64
   var y: Int64
@@ -19,14 +20,12 @@ struct Point {
   }
 }
 
-// Extend Point with Printable interface
 extend Point <: Printable {
   func toString(): String {
     return "(${this.x}, ${this.y})"
   }
 }
 
-// Extend Point with another interface
 extend Point <: Describable {
   func describe(): String {
     return "Point at (${this.x}, ${this.y})"
@@ -34,10 +33,12 @@ extend Point <: Describable {
 }
 
 let p = Point(3, 4)
-println("toString: ${p.toString()}")
-println("describe: ${p.describe()}")
+let r_pts = p.toString()
+if (r_pts != "(3, 4)") { println("FAIL: p.toString() expected (3, 4), got ${r_pts}"); return () }
+let r_pdesc = p.describe()
+if (r_pdesc != "Point at (3, 4)") { println("FAIL: p.describe() expected 'Point at (3, 4)', got ${r_pdesc}"); return () }
 
-// Extend a class with interface
+// -- Section: Extend class with interface --
 class Animal {
   var name: String
   init(name: String) {
@@ -52,9 +53,10 @@ extend Animal <: Printable {
 }
 
 let a = Animal("Cat")
-println("animal: ${a.toString()}")
+let r_animal = a.toString()
+if (r_animal != "Animal(Cat)") { println("FAIL: animal.toString() expected 'Animal(Cat)', got ${r_animal}"); return () }
 
-// Extend built-in type Int64 with an interface
+// -- Section: Extend built-in Int64 --
 extend Int64 <: Printable {
   func double(): Int64 {
     return this * 2
@@ -65,11 +67,14 @@ extend Int64 <: Printable {
 }
 
 let n = 42
-println("double: ${n.double()}")
-println("isPositive: ${n.isPositive()}")
-println("negative isPositive: ${(-5).isPositive()}")
+let r_dbl = n.double()
+if (r_dbl != 84) { println("FAIL: n.double() expected 84, got ${r_dbl}"); return () }
+let r_pos = n.isPositive()
+if (r_pos != true) { println("FAIL: n.isPositive() expected true, got ${r_pos}"); return () }
+let r_neg = (-5).isPositive()
+if (r_neg != false) { println("FAIL: (-5).isPositive() expected false, got ${r_neg}"); return () }
 
-// Extend built-in type String with an interface
+// -- Section: Extend built-in String --
 extend String <: Describable {
   func shout(): String {
     return this + "!!!"
@@ -77,9 +82,10 @@ extend String <: Describable {
 }
 
 let s = "hello"
-println("shout: ${s.shout()}")
+let r_shout = s.shout()
+if (r_shout != "hello!!!") { println("FAIL: s.shout() expected 'hello!!!', got ${r_shout}"); return () }
 
-// Extend without interface (existing feature should still work)
+// -- Section: Extend without interface --
 extend Point {
   func translate(dx: Int64, dy: Int64) {
     return Point(this.x + dx, this.y + dy)
@@ -87,6 +93,7 @@ extend Point {
 }
 
 let p2 = p.translate(10, 20)
-println("translated: ${p2.toString()}")
+let r_trans = p2.toString()
+if (r_trans != "(13, 24)") { println("FAIL: translated point expected (13, 24), got ${r_trans}"); return () }
 
 println("PASS: 11_extend_interface")

@@ -1,6 +1,8 @@
 // Test: Struct and Class
+// Validates struct/class definitions, constructors, methods, extend blocks,
+// and generic structs.
 
-// Basic struct with member declarations, init, and this
+// -- Section: Basic struct with init and methods --
 struct Point {
   var x: Int64
   var y: Int64
@@ -18,14 +20,16 @@ struct Point {
   }
 }
 
-// Constructor call syntax: Point(x, y)
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
-println("p1 = ${p1.toString()}")
-println("p2 = ${p2.toString()}")
-println("distance = ${p1.distance(p2)}")
+let r_p1 = p1.toString()
+if (r_p1 != "(3, 4)") { println("FAIL: p1.toString() expected (3, 4), got ${r_p1}"); return () }
+let r_p2 = p2.toString()
+if (r_p2 != "(0, 0)") { println("FAIL: p2.toString() expected (0, 0), got ${r_p2}"); return () }
+let r_dist = tostring(p1.distance(p2))
+if (r_dist != "5.0") { println("FAIL: distance expected 5.0, got ${r_dist}"); return () }
 
-// Class with member declarations
+// -- Section: Class with member declarations --
 class Animal {
   var name: String
   var sound: String
@@ -40,10 +44,12 @@ class Animal {
 
 let dog = Animal("Dog", "Woof")
 let cat = Animal("Cat", "Meow")
-println(dog.speak())
-println(cat.speak())
+let r_dog = dog.speak()
+if (r_dog != "Dog says Woof!") { println("FAIL: dog.speak() expected 'Dog says Woof!', got ${r_dog}"); return () }
+let r_cat = cat.speak()
+if (r_cat != "Cat says Meow!") { println("FAIL: cat.speak() expected 'Cat says Meow!', got ${r_cat}"); return () }
 
-// Extend - add methods to existing types
+// -- Section: Extend with translate method --
 extend Point {
   func translate(dx: Int64, dy: Int64) {
     return Point(this.x + dx, this.y + dy)
@@ -52,9 +58,10 @@ extend Point {
 
 let p3 = Point(1, 1)
 let p4 = p3.translate(5, 10)
-println("translated: ${p4.toString()}")
+let r_p4 = p4.toString()
+if (r_p4 != "(6, 11)") { println("FAIL: translated point expected (6, 11), got ${r_p4}"); return () }
 
-// Struct with generic type parameter
+// -- Section: Generic struct Pair --
 struct Pair<T, U> {
   var first: T
   var second: U
@@ -68,6 +75,7 @@ struct Pair<T, U> {
 }
 
 let pair = Pair(1, "hello")
-println("pair = ${pair.toString()}")
+let r_pair = pair.toString()
+if (r_pair != "(1, hello)") { println("FAIL: pair.toString() expected (1, hello), got ${r_pair}"); return () }
 
 println("PASS: 07_struct_class")

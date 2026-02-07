@@ -1,6 +1,7 @@
 // Test: Implicit this in struct and class
+// Validates that struct/class methods can access fields without explicit 'this'.
 
-// Struct with implicit this in init and methods
+// -- Section: Struct with implicit this --
 struct Point {
   var x: Int64
   var y: Int64
@@ -20,11 +21,14 @@ struct Point {
 
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
-println("p1 = ${p1.toString()}")
-println("p2 = ${p2.toString()}")
-println("distance = ${p1.distanceTo(p2)}")
+let r_p1 = p1.toString()
+if (r_p1 != "(3, 4)") { println("FAIL: p1.toString() expected (3, 4), got ${r_p1}"); return () }
+let r_p2 = p2.toString()
+if (r_p2 != "(0, 0)") { println("FAIL: p2.toString() expected (0, 0), got ${r_p2}"); return () }
+let r_dist = tostring(p1.distanceTo(p2))
+if (r_dist != "5.0") { println("FAIL: distance expected 5.0, got ${r_dist}"); return () }
 
-// Class with implicit this
+// -- Section: Class with implicit this (Counter) --
 class Counter {
   var count: Int64
   var step: Int64
@@ -47,11 +51,13 @@ let c = Counter(5)
 c.increment()
 c.increment()
 c.increment()
-println("count after 3 increments: ${c.getCount()}")
+let r_count = c.getCount()
+if (r_count != 15) { println("FAIL: count after 3 increments expected 15, got ${r_count}"); return () }
 c.reset()
-println("count after reset: ${c.getCount()}")
+let r_reset = c.getCount()
+if (r_reset != 0) { println("FAIL: count after reset expected 0, got ${r_reset}"); return () }
 
-// Mix implicit and explicit this
+// -- Section: Mix implicit and explicit this (Rectangle) --
 struct Rectangle {
   var width: Int64
   var height: Int64
@@ -68,10 +74,12 @@ struct Rectangle {
 }
 
 let r = Rectangle(5, 3)
-println("area: ${r.area()}")
-println("rect: ${r.toString()}")
+let r_area = r.area()
+if (r_area != 15) { println("FAIL: area expected 15, got ${r_area}"); return () }
+let r_rect = r.toString()
+if (r_rect != "5x3") { println("FAIL: toString expected 5x3, got ${r_rect}"); return () }
 
-// Class with string fields using implicit this
+// -- Section: Class with string fields (Greeter) --
 class Greeter {
   var greeting: String
   var target: String
@@ -85,6 +93,7 @@ class Greeter {
 }
 
 let g = Greeter("Hello", "World")
-println(g.greet())
+let r_greet = g.greet()
+if (r_greet != "Hello, World!") { println("FAIL: greet expected 'Hello, World!', got ${r_greet}"); return () }
 
 println("PASS: 12_implicit_this")
