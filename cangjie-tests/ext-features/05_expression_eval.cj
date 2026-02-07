@@ -1,15 +1,15 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Expression Evaluation (if, match, block expressions and implicit return)
 
-// === If Expression ===
-
-// Basic if expression
+// -- Section: if expression --
 let x = if (3 > 2) { 10 } else { 20 }
-println("if expr (true): " + tostring(x))
+expectEq(x, 10, "if expr (true branch)")
 
 let y = if (1 > 2) { 10 } else { 20 }
-println("if expr (false): " + tostring(y))
+expectEq(y, 20, "if expr (false branch)")
 
-// If expression with else if
+// -- Section: if expression with else if --
 let grade = 85
 let level = if (grade >= 90) {
   "A"
@@ -20,25 +20,22 @@ let level = if (grade >= 90) {
 } else {
   "D"
 }
-println("grade level: " + level)
+expectEq(level, "B", "if-else-if grade level")
 
-// If expression without else (value is nil)
+// -- Section: if expression without else (nil) --
 let z = if (false) { 42 }
-println("if no else: " + tostring(z))
+expectNil(z, "if no else")
 
-// If expression with computation in branches
+// -- Section: if expression with computation --
 let result = if (10 % 2 == 0) {
   var s = "even"
   s
 } else {
   "odd"
 }
-println("10 is: " + result)
+expectEq(result, "even", "if expr with computation")
 
-
-// === Match Expression ===
-
-// Basic match expression with constants
+// -- Section: match expression with constants --
 let day = 3
 let dayName = match (day) {
   case 1 => "Monday"
@@ -48,9 +45,9 @@ let dayName = match (day) {
   case 5 => "Friday"
   case _ => "Weekend"
 }
-println("day 3: " + dayName)
+expectEq(dayName, "Wednesday", "match day name")
 
-// Match expression with enum
+// -- Section: match expression with enum --
 enum Shape {
   | Circle(Int64)
   | Rect(Int64, Int64)
@@ -61,19 +58,16 @@ let area = match (s) {
   case Circle(r) => r * r * 3
   case Rect(w, h) => w * h
 }
-println("circle area: " + tostring(area))
+expectEq(area, 75, "match circle area")
 
-// Match expression with no match (nil)
+// -- Section: match expression with no match (nil) --
 let nomatch = match (99) {
   case 1 => "one"
   case 2 => "two"
 }
-println("no match: " + tostring(nomatch))
+expectNil(nomatch, "match no match")
 
-
-// === Block Expression ===
-
-// Basic block expression
+// -- Section: block expression --
 let sum = {
   var s = 0
   for (i in 0..10) {
@@ -81,20 +75,19 @@ let sum = {
   }
   s
 }
-println("sum 0..9: " + tostring(sum))
+expectEq(sum, 45, "block expr sum 0..9")
 
-// Block expression with variable
 let doubled = {
   let x = 21
   x * 2
 }
-println("21 * 2 = " + tostring(doubled))
+expectEq(doubled, 42, "block expr 21*2")
 
-// Empty block expression (nil) - using explicit empty block syntax
+// -- Section: keyword-only block expression --
 let empty_val = { let _x = 0 }
-println("keyword-only block: " + tostring(empty_val))
+expectNil(empty_val, "keyword-only block")
 
-// Nested block expression
+// -- Section: nested block expression --
 let nested = {
   let a = {
     var v = 1
@@ -106,18 +99,14 @@ let nested = {
   }
   a + b
 }
-println("nested blocks: " + tostring(nested))
+expectEq(nested, 10, "nested blocks")
 
-
-// === Function Implicit Return ===
-
-// Function with last expression as return value
+// -- Section: function implicit return --
 func add(a: Int64, b: Int64): Int64 {
   a + b
 }
-println("add(3,4) = " + tostring(add(3, 4)))
+expectEq(add(3, 4), 7, "implicit return add")
 
-// Function with variable and implicit return
 func computeSum(n: Int64): Int64 {
   var s = 0
   for (i in 0..n) {
@@ -125,30 +114,28 @@ func computeSum(n: Int64): Int64 {
   }
   s
 }
-println("sum(100) = " + tostring(computeSum(100)))
+expectEq(computeSum(100), 4950, "implicit return computeSum")
 
-// Function with explicit return still works
 func explicitReturn(x: Int64): Int64 {
   if (x < 0) {
     return -x
   }
   return x
 }
-println("abs(-5) = " + tostring(explicitReturn(-5)))
+expectEq(explicitReturn(-5), 5, "explicit return abs")
 
-// Function with string implicit return
 func greet(name: String): String {
   "Hello, " + name + "!"
 }
-println(greet("World"))
+expectEq(greet("World"), "Hello, World!", "implicit return greet")
 
-// === Undetermined expressions evaluate to nil ===
-// while expression value is nil
+// -- Section: undetermined expressions evaluate to nil --
 let w = while (false) { println("unreachable") }
-println("while expr: " + tostring(w))
+expectNil(w, "while expr is nil")
 
-// for expression value is nil
 let f = for (i in 0..0) { println("unreachable") }
-println("for expr: " + tostring(f))
+expectNil(f, "for expr is nil")
 
-println("PASS: 05_expression_eval")
+if (!__test_failed) {
+    println("PASS: ext-features/05_expression_eval")
+}

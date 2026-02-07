@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Primary constructor for struct and class
 
 // Basic class with primary constructor
@@ -7,21 +9,12 @@ class Wave {
 }
 
 let w = Wave(440.0, 0.5)
-if (w.freq != 440.0) {
-    println("FAIL: w.freq expected 440.0, got " + tostring(w.freq))
-    return ()
-}
-if (w.phi != 0.5) {
-    println("FAIL: w.phi expected 0.5, got " + tostring(w.phi))
-    return ()
-}
+expectEq(w.freq, 440.0, "w.freq")
+expectEq(w.phi, 0.5, "w.phi")
 
 // Modify var field (should succeed)
 w.phi = 1.0
-if (w.phi != 1.0) {
-    println("FAIL: w.phi after set expected 1.0, got " + tostring(w.phi))
-    return ()
-}
+expectEq(w.phi, 1.0, "w.phi after set")
 
 // Struct with primary constructor
 struct Point3D {
@@ -33,14 +26,10 @@ struct Point3D {
 }
 
 let p = Point3D(1, 2, 3)
-if (p.x != 1 || p.y != 2 || p.z != 3) {
-    println("FAIL: Point3D fields wrong")
-    return ()
-}
-if (p.toString() != "(1, 2, 3)") {
-    println("FAIL: Point3D.toString() expected '(1, 2, 3)', got '" + p.toString() + "'")
-    return ()
-}
+expectEq(p.x, 1, "p.x")
+expectEq(p.y, 2, "p.y")
+expectEq(p.z, 3, "p.z")
+expectEq(p.toString(), "(1, 2, 3)", "Point3D.toString()")
 
 // Primary constructor with initialization logic in body
 class Counter {
@@ -55,30 +44,19 @@ class Counter {
 }
 
 let c1 = Counter(5, 2)
-if (c1.count != 5) {
-    println("FAIL: c1.count expected 5, got " + tostring(c1.count))
-    return ()
-}
+expectEq(c1.count, 5, "c1.count")
 c1.increment()
-if (c1.count != 7) {
-    println("FAIL: c1.count after increment expected 7, got " + tostring(c1.count))
-    return ()
-}
+expectEq(c1.count, 7, "c1.count after increment")
 
 // Primary constructor with negative count should be corrected to 0
 let c2 = Counter(-3, 1)
-if (c2.count != 0) {
-    println("FAIL: c2.count expected 0 (corrected), got " + tostring(c2.count))
-    return ()
-}
+expectEq(c2.count, 0, "c2.count (corrected)")
 
 // Multiple instances with different values
 let w1 = Wave(220.0, 0.0)
 let w2 = Wave(880.0, 3.14)
-if (w1.freq != 220.0 || w2.freq != 880.0) {
-    println("FAIL: multiple instances have wrong values")
-    return ()
-}
+expectEq(w1.freq, 220.0, "w1.freq")
+expectEq(w2.freq, 880.0, "w2.freq")
 
 // Existing init syntax should still work
 class Traditional {
@@ -89,9 +67,8 @@ class Traditional {
 }
 
 let t = Traditional(3)
-if (t.value != 30) {
-    println("FAIL: Traditional init expected 30, got " + tostring(t.value))
-    return ()
-}
+expectEq(t.value, 30, "Traditional init")
 
-println("PASS: 31_primary_constructor")
+if (!__test_failed) {
+    println("PASS: 31_primary_constructor")
+}

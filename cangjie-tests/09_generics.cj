@@ -1,14 +1,16 @@
-// Test: Generics
+dofile("cangjie-tests/_testing.cj")
 
-// Generic function with type parameter annotation
+// Test: Generics
+// Validates generic functions, generic structs, and generic stack operations.
+
+// -- Section: Generic identity function --
 func identity<T>(x: T): T {
   return x
 }
-println("identity(42) = ${identity(42)}")
-let hw = identity("hello")
-println("identity(hello) = ${hw}")
+expectEq(identity(42), 42, "identity(42)")
+expectEq(identity("hello"), "hello", "identity('hello')")
 
-// Generic struct with init/this
+// -- Section: Generic struct Box --
 struct Box<T> {
   var value: T
   init(value: T) {
@@ -24,18 +26,19 @@ struct Box<T> {
 
 let intBox = Box(42)
 let strBox = Box("hello")
-println(intBox.toString())
-println(strBox.toString())
-println("intBox.get() = ${intBox.get()}")
+expectEq(intBox.toString(), "Box(42)", "intBox.toString()")
+expectEq(strBox.toString(), "Box(hello)", "strBox.toString()")
+expectEq(intBox.get(), 42, "intBox.get()")
 
-// Generic function: swap
+// -- Section: Generic swap function --
 func swap<T>(a: T, b: T) {
   return b, a
 }
 let x, y = swap(1, 2)
-println("swap(1, 2) = ${x}, ${y}")
+expectEq(x, 2, "swap(1,2) first")
+expectEq(y, 1, "swap(1,2) second")
 
-// Generic Stack
+// -- Section: Generic Stack --
 struct Stack<T> {
   var items: Array<T>
   var count: Int64
@@ -68,11 +71,13 @@ let stack = Stack()
 stack.push(10)
 stack.push(20)
 stack.push(30)
-println("peek: ${stack.peek()}")
-println("pop: ${stack.pop()}")
-println("pop: ${stack.pop()}")
-println("empty: ${tostring(stack.isEmpty())}")
-println("pop: ${stack.pop()}")
-println("empty: ${tostring(stack.isEmpty())}")
+expectEq(stack.peek(), 30, "peek")
+expectEq(stack.pop(), 30, "first pop")
+expectEq(stack.pop(), 20, "second pop")
+expectFalse(stack.isEmpty(), "isEmpty after 2 pops")
+expectEq(stack.pop(), 10, "third pop")
+expectTrue(stack.isEmpty(), "isEmpty after all pops")
 
-println("PASS: 08_generics")
+if (!__test_failed) {
+  println("PASS: 09_generics")
+}

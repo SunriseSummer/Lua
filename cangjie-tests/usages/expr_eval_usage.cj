@@ -1,8 +1,9 @@
-// Usage: Expression Evaluation and Enum Operators
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Expression evaluation and enum operators usage
 // Demonstrates practical use of expression evaluation features
 
-// === Calculator with enum types ===
-
+// -- Section: calculator with enum types --
 enum Expr {
   | Num(Int64)
   | Add(Expr, Expr)
@@ -25,14 +26,12 @@ func evaluate(e: Expr): Int64 {
   }
 }
 
-// Build expression: (2 + 3) * 4
 let expr = Num(2) + Num(3)
 let expr2 = expr * Num(4)
 let result = evaluate(expr2)
-println("(2 + 3) * 4 = " + tostring(result))
+expectEq(result, 20, "(2 + 3) * 4")
 
-// === Using if/match/block expressions for concise code ===
-
+// -- Section: if expression for classification --
 func classify(score: Int64): String {
   return if (score >= 90) { "Excellent" }
   else if (score >= 70) { "Good" }
@@ -40,15 +39,13 @@ func classify(score: Int64): String {
   else { "Fail" }
 }
 
-// Process scores using block expression  
-let scores = [85, 92, 67, 45, 78]
-for (i in 0..scores.size) {
-  let s = scores[i]
-  let label = classify(s)
-  println("Score " + tostring(s) + ": " + label)
-}
+expectEq(classify(85), "Good", "classify 85")
+expectEq(classify(92), "Excellent", "classify 92")
+expectEq(classify(67), "Pass", "classify 67")
+expectEq(classify(45), "Fail", "classify 45")
+expectEq(classify(78), "Good", "classify 78")
 
-// === Block expression for complex initialization ===
+// -- Section: block expression for initialization --
 let fibonacci_10 = {
   var a = 0
   var b = 1
@@ -59,9 +56,9 @@ let fibonacci_10 = {
   }
   b
 }
-println("Fibonacci(10) = " + tostring(fibonacci_10))
+expectEq(fibonacci_10, 55, "fibonacci(10)")
 
-// === Match expression for value mapping ===
+// -- Section: match expression for value mapping --
 enum Status {
   | Ok
   | Error(String)
@@ -76,15 +73,11 @@ func statusMessage(s: Status): String {
   }
 }
 
-let s1 = Ok
-let s2 = Error("not found")
-let s3 = Loading
-println(statusMessage(s1))
-println(statusMessage(s2))
-println(statusMessage(s3))
+expectEq(statusMessage(Ok), "Operation completed successfully", "status Ok")
+expectEq(statusMessage(Error("not found")), "Error: not found", "status Error")
+expectEq(statusMessage(Loading), "Please wait...", "status Loading")
 
-// === Function implicit return for clean code ===
-
+// -- Section: function implicit return for clean code --
 func max(a: Int64, b: Int64): Int64 {
   return if (a > b) { a } else { b }
 }
@@ -97,8 +90,10 @@ func clamp(value: Int64, lo: Int64, hi: Int64): Int64 {
   return max(lo, min(value, hi))
 }
 
-println("clamp(15, 0, 10) = " + tostring(clamp(15, 0, 10)))
-println("clamp(-5, 0, 10) = " + tostring(clamp(-5, 0, 10)))
-println("clamp(5, 0, 10) = " + tostring(clamp(5, 0, 10)))
+expectEq(clamp(15, 0, 10), 10, "clamp(15, 0, 10)")
+expectEq(clamp(-5, 0, 10), 0, "clamp(-5, 0, 10)")
+expectEq(clamp(5, 0, 10), 5, "clamp(5, 0, 10)")
 
-println("PASS: expr_eval_usage")
+if (!__test_failed) {
+    println("PASS: usages/expr_eval_usage")
+}

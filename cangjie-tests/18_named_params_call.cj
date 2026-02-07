@@ -1,30 +1,42 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Named parameter calling syntax (name: value)
+// Validates named params with defaults, lambda defaults, and mixed positional/named args
 
-// Basic named parameter with default
-func greet(name: String, prefix!: String = "Hello", suffix!: String = "!") {
-    println("${prefix}, ${name}${suffix}")
+// --- Basic named parameter with default (refactored to return string) ---
+func greet(name: String, prefix!: String = "Hello", suffix!: String = "!"): String {
+    return "${prefix}, ${name}${suffix}"
 }
-greet("World")
-greet("World", prefix: "Hi")
-greet("World", suffix: ".")
-greet("World", prefix: "Hi", suffix: ".")
+var r = greet("World")
+expectEq(r, "Hello, World!", "greet default")
+r = greet("World", prefix: "Hi")
+expectEq(r, "Hi, World!", "greet prefix")
+r = greet("World", suffix: ".")
+expectEq(r, "Hello, World.", "greet suffix")
+r = greet("World", prefix: "Hi", suffix: ".")
+expectEq(r, "Hi, World.", "greet both")
 
-// Named parameter with all named args (no positional)
+// --- Named parameter with all named args (no positional) ---
 func point(x!: Int64 = 0, y!: Int64 = 0): String {
     return "(${x}, ${y})"
 }
-println("point() = ${point()}")
-println("point(x: 3) = ${point(x: 3)}")
-println("point(y: 4) = ${point(y: 4)}")
-println("point(x: 3, y: 4) = ${point(x: 3, y: 4)}")
+var p = point()
+expectEq(p, "(0, 0)", "point()")
+p = point(x: 3)
+expectEq(p, "(3, 0)", "point(x:3)")
+p = point(y: 4)
+expectEq(p, "(0, 4)", "point(y:4)")
+p = point(x: 3, y: 4)
+expectEq(p, "(3, 4)", "point(x:3,y:4)")
 
-// Lambda as default value for named parameter
+// --- Lambda as default value for named parameter (tree traversal) ---
+var treeResult: String = ""
 func node(value: String,
     left!: () -> Unit = {=>},
     right!: () -> Unit = {=>}) {
     return { =>
         left()
-        print(value)
+        treeResult = treeResult + value
         right()
     }
 }
@@ -34,14 +46,19 @@ let tree = node("A",
     left: node("B", left: node("C", right: node("D"))),
     right: node("E", left: node("F"), right: node("G")))
 tree()
-println("")
+expectEq(treeResult, "CDBAFEG", "tree traversal")
 
-// Named params with mixed positional and named
-func formatNum(value: Int64, prefix!: String = "", suffix!: String = "") {
-    println("${prefix}${value}${suffix}")
+// --- Named params with mixed positional and named (refactored to return string) ---
+func formatNum(value: Int64, prefix!: String = "", suffix!: String = ""): String {
+    return "${prefix}${value}${suffix}"
 }
-formatNum(42, prefix: "$", suffix: " USD")
-formatNum(100, suffix: "%")
-formatNum(42)
+var f = formatNum(42, prefix: "$", suffix: " USD")
+expectEq(f, "$42 USD", "formatNum $42 USD")
+f = formatNum(100, suffix: "%")
+expectEq(f, "100%", "formatNum 100%")
+f = formatNum(42)
+expectEq(f, "42", "formatNum 42")
 
-println("PASS: 18_named_params_call")
+if (!__test_failed) {
+    println("PASS: 18_named_params_call")
+}

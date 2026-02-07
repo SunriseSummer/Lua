@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: HashMap implementation
 
 struct HashMap<K, V> {
@@ -82,47 +84,49 @@ struct HashMap<K, V> {
   }
 }
 
-// === Tests ===
-
+// -- Section: basic operations --
 let map = HashMap()
-println("empty: ${tostring(map.isEmpty())}")
-println("size: ${map.size()}")
+expectTrue(map.isEmpty(), "empty map")
+expectEq(map.size(), 0, "empty map size")
 
+// -- Section: put and get --
 map.put("name", "Cangjie")
 map.put("version", 1)
 map.put("type", "language")
-println("after put: ${map.toString()}")
+expectEq(map.get("name"), "Cangjie", "get name")
+expectEq(map.get("version"), 1, "get version")
+expectEq(map.size(), 3, "size after 3 puts")
 
-let gn = map.get("name")
-let gv = map.get("version")
-println("get name: ${gn}")
-println("get version: ${gv}")
-println("size: ${map.size()}")
+// -- Section: containsKey --
+expectTrue(map.containsKey("name"), "containsKey name")
+expectFalse(map.containsKey("missing"), "containsKey missing")
 
-let hk = map.containsKey("name")
-println("has name: ${tostring(hk)}")
-
+// -- Section: put update --
 map.put("version", 2)
-let gv2 = map.get("version")
-println("updated version: ${gv2}")
+expectEq(map.get("version"), 2, "updated version")
+expectEq(map.size(), 3, "size unchanged after update")
 
+// -- Section: remove --
 map.remove("type")
-println("after remove: ${map.toString()}")
-println("size: ${map.size()}")
+expectEq(map.size(), 2, "size after remove")
+expectFalse(map.containsKey("type"), "type removed")
 
-print("forEach: ")
+// -- Section: forEach --
+var forEach_keys = ""
 map.forEach(func(k, v) {
-  print("${k}=${v} ")
+  forEach_keys = forEach_keys + tostring(k) + " "
 })
-println()
+expectTrue(string.find(forEach_keys, "name", 1, true) != nil, "forEach has name")
+expectTrue(string.find(forEach_keys, "version", 1, true) != nil, "forEach has version")
 
-// Test with integer keys
+// -- Section: integer keys --
 let intMap = HashMap()
 intMap.put(1, "one")
 intMap.put(2, "two")
 intMap.put(3, "three")
-println("intMap: ${intMap.toString()}")
-let ig = intMap.get(2)
-println("intMap.get(2) = ${ig}")
+expectEq(intMap.get(2), "two", "intMap get(2)")
+expectEq(intMap.size(), 3, "intMap size")
 
-println("PASS: 10_hashmap")
+if (!__test_failed) {
+    println("PASS: usages/hashmap")
+}

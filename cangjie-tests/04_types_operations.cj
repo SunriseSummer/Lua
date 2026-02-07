@@ -1,54 +1,58 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Types and operations
 
-// Integer operations
+// -- Section: integer arithmetic --
 let a: Int64 = 10
 let b: Int64 = 3
-println("a + b = ${a + b}")
-println("a - b = ${a - b}")
-println("a * b = ${a * b}")
-println("a % b = ${a % b}")
+expectEq(a + b, 13, "a + b")
+expectEq(a - b, 7, "a - b")
+expectEq(a * b, 30, "a * b")
+expectEq(a % b, 1, "a % b")
 
-// Float operations
+// -- Section: float arithmetic --
 let pi: Float64 = 3.14159
 let r: Float64 = 5.0
 let area = pi * r * r
-println("area = ${area}")
+expectEq(area, 78.53975, "float area")
 
-// Boolean operations
+// -- Section: boolean operations --
 let t: Bool = true
 let f: Bool = false
-println("t and f = ${t && f}")
-println("t or f = ${t || f}")
-println("not t = ${!t}")
+expectFalse(t && f, "t && f")
+expectTrue(t || f, "t || f")
+expectFalse(!t, "!t")
 
-// String operations
+// -- Section: string operations --
 let s1: String = "Hello"
 let s2: String = "World"
 let s3 = s1 + ", " + s2 + "!"
-println(s3)
+expectEq(s3, "Hello, World!", "string concat")
 
-// Comparison operators
-println(10 == 10)
-println(10 != 20)
-println(10 < 20)
-println(10 > 20)
-println(10 <= 10)
-println(10 >= 20)
+// -- Section: comparison operators --
+expectTrue(10 == 10, "equality")
+expectTrue(10 != 20, "inequality")
+expectTrue(10 < 20, "less than")
+expectFalse(10 > 20, "greater than")
+expectTrue(10 <= 10, "less or equal")
+expectFalse(10 >= 20, "greater or equal")
 
-// Type conversion
+// -- Section: type conversions --
 let n = tostring(42)
-println(n)
+expectEq(n, "42", "tostring(42)")
 let m = tonumber("123")
-println(m)
+expectEq(m, 123, "tonumber('123')")
 
-// Array literal and 0-based indexing
+// -- Section: array access --
 let arr: Array<Int64> = [1, 2, 3, 4, 5]
-println("arr[0] = ${arr[0]}")     // 1 (0-based)
-println("arr[1] = ${arr[1]}")     // 2 (0-based)
-println("arr.size = ${arr.size}") // 5
+expectEq(arr[0], 1, "arr[0]")
+expectEq(arr[1], 2, "arr[1]")
+expectEq(arr.size, 5, "arr.size")
 
-// Rune (character) type - single quotes
+// -- Section: Rune type --
 let ch: Rune = 'X'
-println("char = ${ch}")
+expectEq(ch, 'X', "Rune ch")
 
-println("PASS: 04_types_operations")
+if (!__test_failed) {
+    println("PASS: 04_types_operations")
+}

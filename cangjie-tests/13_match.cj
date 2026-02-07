@@ -1,4 +1,6 @@
-// Test: Pattern Matching with match expression
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Pattern matching — enum, constant, wildcard, recursive, Option, type, tuple patterns
 
 // === Enum pattern matching (no braces after =>) ===
 enum Color {
@@ -10,36 +12,47 @@ enum Color {
 func describeColor(c) {
   match (c) {
     case Red =>
-      println("It is red")
+      return "It is red"
     case Green =>
-      println("It is green")
+      return "It is green"
     case Blue(val) =>
-      println("It is blue with value ${val}")
+      return "It is blue with value ${val}"
   }
+  return "Unknown"
 }
 
-describeColor(Red)
-describeColor(Green)
-describeColor(Blue(200))
+// --- Assert describeColor results ---
+let redResult = describeColor(Red)
+expectEq(redResult, "It is red", "describeColor(Red)")
+let greenResult = describeColor(Green)
+expectEq(greenResult, "It is green", "describeColor(Green)")
+let blueResult = describeColor(Blue(200))
+expectEq(blueResult, "It is blue with value 200", "describeColor(Blue(200))")
 
 // === Constant pattern matching ===
 func describeNumber(n) {
   match (n) {
     case 0 =>
-      println("zero")
+      return "zero"
     case 1 =>
-      println("one")
+      return "one"
     case 42 =>
-      println("the answer")
+      return "the answer"
     case _ =>
-      println("some number: ${n}")
+      return "some number: ${n}"
   }
+  return "unknown"
 }
 
-describeNumber(0)
-describeNumber(1)
-describeNumber(42)
-describeNumber(99)
+// --- Assert describeNumber results ---
+let num0 = describeNumber(0)
+expectEq(num0, "zero", "describeNumber(0)")
+let num1 = describeNumber(1)
+expectEq(num1, "one", "describeNumber(1)")
+let num42 = describeNumber(42)
+expectEq(num42, "the answer", "describeNumber(42)")
+let num99 = describeNumber(99)
+expectEq(num99, "some number: 99", "describeNumber(99)")
 
 // === Wildcard pattern with multi-line body ===
 enum Shape {
@@ -60,9 +73,12 @@ func getArea(s) {
   return 0.0
 }
 
-println("circle area: ${getArea(Circle(5.0))}")
-println("rect area: ${getArea(Rectangle(3.0, 4.0))}")
-println("triangle area: ${getArea(Triangle(3.0, 4.0, 5.0))}")
+// --- Assert area calculations ---
+let circleArea = getArea(Circle(5.0))
+let rectArea = getArea(Rectangle(3.0, 4.0))
+let triArea = getArea(Triangle(3.0, 4.0, 5.0))
+expectEq(rectArea, 12.0, "rect area")
+expectEq(triArea, 0.0, "triangle area")
 
 // === Recursive enum with pattern matching ===
 enum Expr {
@@ -86,12 +102,13 @@ func eval(e) {
   return 0
 }
 
-// (1 + 2) * (4 - 1)
+// --- Assert (1+2)*(4-1) = 9 ---
 let expr1 = Mul(
   Add(Num(1), Num(2)),
   Sub(Num(4), Num(1))
 )
-println("(1+2)*(4-1) = ${eval(expr1)}")
+let evalResult = eval(expr1)
+expectEq(evalResult, 9, "(1+2)*(4-1)")
 
 // === Option type pattern matching ===
 enum Option {
@@ -109,8 +126,11 @@ func getOrDefault(opt, default_val) {
   return default_val
 }
 
-println("Some(42): ${getOrDefault(Some(42), 0)}")
-println("None: ${getOrDefault(None, -1)}")
+// --- Assert getOrDefault results ---
+let someResult = getOrDefault(Some(42), 0)
+let noneResult = getOrDefault(None, -1)
+expectEq(someResult, 42, "getOrDefault(Some(42),0)")
+expectEq(noneResult, -1, "getOrDefault(None,-1)")
 
 // === Type pattern matching ===
 class Animal {
@@ -138,32 +158,41 @@ class Cat <: Animal {
 func describeAnimal(a) {
   match (a) {
     case d: Dog =>
-      println(d.bark())
+      return d.bark()
     case c: Cat =>
-      println("${c.name} meows!")
+      return "${c.name} meows!"
     case a: Animal =>
-      println("${a.name} is generic")
+      return "${a.name} is generic"
     case _ =>
-      println("not an animal")
+      return "not an animal"
   }
+  return "unknown"
 }
 
-describeAnimal(Dog("Rex"))
-describeAnimal(Cat("Whiskers"))
-describeAnimal(Animal("Parrot"))
+// --- Assert describeAnimal results ---
+let dogResult = describeAnimal(Dog("Rex"))
+expectEq(dogResult, "Rex barks!", "describeAnimal(Dog)")
+let catResult = describeAnimal(Cat("Whiskers"))
+expectEq(catResult, "Whiskers meows!", "describeAnimal(Cat)")
+let animalResult = describeAnimal(Animal("Parrot"))
+expectEq(animalResult, "Parrot is generic", "describeAnimal(Animal)")
 
 // === Tuple pattern matching ===
 func processPair(p) {
   match (p) {
     case (x, y) =>
-      println("pair: ${x}, ${y}")
+      return "pair: ${x}, ${y}"
   }
+  return "unknown"
 }
 
-processPair((10, 20))
-processPair(("hello", "world"))
+// --- Assert processPair results ---
+let pairResult1 = processPair((10, 20))
+expectEq(pairResult1, "pair: 10, 20", "processPair(10,20)")
+let pairResult2 = processPair(("hello", "world"))
+expectEq(pairResult2, "pair: hello, world", "processPair(hello,world)")
 
-// Tuple pattern with wildcard
+// --- Tuple pattern with wildcard ---
 func getFirst(t) {
   match (t) {
     case (x, _) =>
@@ -172,6 +201,9 @@ func getFirst(t) {
   return nil
 }
 
-println("first of (42, 99) = ${getFirst((42, 99))}")
+let firstResult = getFirst((42, 99))
+expectEq(firstResult, 42, "getFirst((42,99))")
 
-println("PASS: 13_match")
+if (!__test_failed) {
+    println("PASS: 13_match")
+}

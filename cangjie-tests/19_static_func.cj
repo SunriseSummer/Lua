@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Static member functions (static func)
 
 // Struct with static functions
@@ -32,37 +34,22 @@ struct MathUtils {
 
 // Call static functions via type name
 let sum = MathUtils.add(3, 4)
-if (sum != 7) {
-  println("FAIL: MathUtils.add(3, 4) expected 7, got " + tostring(sum))
-  return ()
-}
+expectEq(sum, 7, "MathUtils.add(3, 4)")
 
 let product = MathUtils.multiply(5, 6)
-if (product != 30) {
-  println("FAIL: MathUtils.multiply(5, 6) expected 30, got " + tostring(product))
-  return ()
-}
+expectEq(product, 30, "MathUtils.multiply(5, 6)")
 
 let z = MathUtils.zero()
-if (z != 0) {
-  println("FAIL: MathUtils.zero() expected 0, got " + tostring(z))
-  return ()
-}
+expectEq(z, 0, "MathUtils.zero()")
 
 // Instance methods still work
 let m = MathUtils(10)
 let doubled = m.doubleValue()
-if (doubled != 20) {
-  println("FAIL: m.doubleValue() expected 20, got " + tostring(doubled))
-  return ()
-}
+expectEq(doubled, 20, "m.doubleValue()")
 
 // Calling static from within instance method
 let added = m.addToValue(5)
-if (added != 15) {
-  println("FAIL: m.addToValue(5) expected 15, got " + tostring(added))
-  return ()
-}
+expectEq(added, 15, "m.addToValue(5)")
 
 // Class with static functions
 class Counter {
@@ -89,10 +76,7 @@ let c = Counter.create()
 c.increment()
 c.increment()
 c.increment()
-if (c.getCount() != 3) {
-  println("FAIL: counter expected 3, got " + tostring(c.getCount()))
-  return ()
-}
+expectEq(c.getCount(), 3, "counter after 3 increments")
 
 // Static with complex logic
 struct StringHelper {
@@ -118,16 +102,12 @@ struct StringHelper {
 }
 
 let stars = StringHelper.repeat("*", 5)
-if (stars != "*****") {
-  println("FAIL: repeat expected '*****', got " + stars)
-  return ()
-}
+expectEq(stars, "*****", "StringHelper.repeat('*', 5)")
 
 let sh = StringHelper("ab")
 let rep = sh.repeated(3)
-if (rep != "ababab") {
-  println("FAIL: repeated expected 'ababab', got " + rep)
-  return ()
-}
+expectEq(rep, "ababab", "sh.repeated(3)")
 
-println("PASS: 19_static_func")
+if (!__test_failed) {
+    println("PASS: 19_static_func")
+}

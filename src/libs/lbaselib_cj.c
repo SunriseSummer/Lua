@@ -775,6 +775,8 @@ int luaB_overload (lua_State *L) {
 int luaB_named_call (lua_State *L) {
   int nargs = lua_gettop(L);
   int npos, total_params, i;
+  int real_func_idx;  /* stack index of the real Lua function */
+  int call_base;  /* stack index where the call frame starts */
   lua_Debug ar;
 
   /* Stack: func, pos1, ..., posN, npos, named_table */
@@ -784,15 +786,61 @@ int luaB_named_call (lua_State *L) {
 
   npos = (int)lua_tointeger(L, nargs - 1);
 
-  /* Get function's parameter count using debug API */
-  lua_pushvalue(L, 1);  /* push func for getinfo */
+  /* The function at position 1 may be an overload dispatcher (C closure).
+  ** We need to unwrap it to find the real Lua function for introspection
+  ** (parameter count and names via debug API). */
+  real_func_idx = 1;  /* default: use the function as-is */
+  if (lua_iscfunction(L, 1)) {
+    /* Check if it's an overload dispatcher by inspecting its upvalue */
+    if (lua_getupvalue(L, 1, 1) != NULL) {
+      if (lua_istable(L, -1)) {
+        int tbl_idx = lua_gettop(L);
+        lua_getfield(L, tbl_idx, "__overload");
+        if (lua_toboolean(L, -1)) {
+          /* It's an overload dispatcher. Find the best matching overload.
+          ** Strategy: find the overload with the smallest nparams >= npos
+          ** (since named args fill remaining params via defaults). */
+          int best_np = -1;
+          lua_pop(L, 1);  /* pop __overload marker */
+          lua_pushnil(L);
+          while (lua_next(L, tbl_idx) != 0) {
+            if (lua_isinteger(L, -2) && lua_isfunction(L, -1)) {
+              int np = (int)lua_tointeger(L, -2);
+              if (np >= npos && (best_np < 0 || np < best_np)) {
+                best_np = np;
+              }
+            }
+            lua_pop(L, 1);  /* pop value, keep key */
+          }
+          if (best_np >= 0) {
+            lua_pushinteger(L, best_np);
+            lua_gettable(L, tbl_idx);
+            real_func_idx = lua_gettop(L);
+          }
+          else {
+            lua_pop(L, 1);  /* pop table */
+          }
+        }
+        else {
+          lua_pop(L, 2);  /* pop non-marker + table */
+        }
+      }
+      else {
+        lua_pop(L, 1);  /* pop non-table upvalue */
+      }
+    }
+  }
+
+  /* Determine parameter count using debug API */
+  lua_pushvalue(L, real_func_idx);  /* push func for getinfo */
   if (!lua_getinfo(L, ">u", &ar)) {
     return luaL_error(L, "__cangjie_named_call: cannot get function info");
   }
   total_params = ar.nparams;
 
-  /* Build the call: push func, then all args in parameter order */
-  lua_pushvalue(L, 1);  /* push func */
+  /* Build the call: push the real function, then all args in parameter order */
+  lua_pushvalue(L, real_func_idx);
+  call_base = lua_gettop(L);
 
   for (i = 1; i <= total_params; i++) {
     if (i <= npos) {
@@ -802,7 +850,7 @@ int luaB_named_call (lua_State *L) {
     else {
       /* Look up this parameter's name and find it in named_table */
       const char *pname;
-      lua_pushvalue(L, 1);  /* push func on top for lua_getlocal */
+      lua_pushvalue(L, real_func_idx);  /* push func for lua_getlocal */
       pname = lua_getlocal(L, NULL, i);
       lua_pop(L, 1);  /* pop the func we pushed */
       if (pname != NULL) {
@@ -817,7 +865,20 @@ int luaB_named_call (lua_State *L) {
 
   /* Call func with total_params arguments, returning all results */
   lua_call(L, total_params, LUA_MULTRET);
-  return lua_gettop(L) - nargs;
+  /* Results are from call_base onwards (call_base slot itself is consumed).
+  ** If we had extra items from unwrapping the overload dispatcher
+  ** (between nargs and call_base), move results down. */
+  {
+    int nresults = lua_gettop(L) - call_base + 1;
+    if (call_base > nargs + 1) {
+      /* Move results down over the extra items */
+      for (i = 0; i < nresults; i++) {
+        lua_copy(L, call_base + i, nargs + 1 + i);
+      }
+      lua_settop(L, nargs + nresults);
+    }
+    return nresults;
+  }
 }
 
 

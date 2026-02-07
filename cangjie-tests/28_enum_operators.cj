@@ -1,6 +1,9 @@
-// Test: Enum Operator Overloading
+dofile("cangjie-tests/_testing.cj")
 
-// Enum with operator + overloading
+// Test: Enum Operator Overloading
+// Validates +, -, == operators on enums, toString, and combined operators with methods
+
+// --- Enum with operator overloading ---
 enum Money {
   | Yuan(Int64)
 
@@ -35,22 +38,24 @@ enum Money {
   }
 }
 
-// Test + operator
+// --- Test + operator ---
 let m1 = Yuan(100)
 let m2 = Yuan(200)
 let m3 = m1 + m2
-println("100 + 200 = " + tostring(m3.value()))
+expectEq(m3.value(), 300, "m3.value()")
 
-// Test - operator
+// --- Test - operator ---
 let m4 = m3 - m1
-println("300 - 100 = " + tostring(m4.value()))
+expectEq(m4.value(), 200, "m4.value()")
 
-// Test == operator
+// --- Test == operator ---
 let m5 = Yuan(200)
-println("m2 == m5: " + tostring(m2 == m5))
-println("m1 == m2: " + tostring(m1 == m2))
+let eqTrue = m2 == m5
+expectTrue(eqTrue, "m2==m5")
+let eqFalse = m1 == m2
+expectFalse(eqFalse, "m1==m2")
 
-// Enum with toString operator
+// --- Enum with toString operator ---
 enum Color {
   | Red
   | Green
@@ -66,9 +71,10 @@ enum Color {
 }
 
 let c = Red
-println("Color: " + tostring(c))
+let colorStr = tostring(c)
+expectEq(colorStr, "Red", "Color toString")
 
-// Enum with multiple operators and methods combined
+// --- Enum with multiple operators and methods combined ---
 enum Vec2 {
   | V(Int64, Int64)
 
@@ -96,6 +102,9 @@ enum Vec2 {
 let v1 = V(1, 2)
 let v2 = V(3, 4)
 let v3 = v1 + v2
-println("(1,2) + (3,4) = (" + tostring(v3.x()) + "," + tostring(v3.y()) + ")")
+expectEq(v3.x(), 4, "Vec2 v3.x()")
+expectEq(v3.y(), 6, "Vec2 v3.y()")
 
-println("PASS: 28_enum_operators")
+if (!__test_failed) {
+    println("PASS: 28_enum_operators")
+}

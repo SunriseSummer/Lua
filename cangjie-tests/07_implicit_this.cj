@@ -1,6 +1,9 @@
-// Test: Implicit this in struct and class
+dofile("cangjie-tests/_testing.cj")
 
-// Struct with implicit this in init and methods
+// Test: Implicit this in struct and class
+// Validates that struct/class methods can access fields without explicit 'this'.
+
+// -- Section: Struct with implicit this --
 struct Point {
   var x: Int64
   var y: Int64
@@ -20,11 +23,11 @@ struct Point {
 
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
-println("p1 = ${p1.toString()}")
-println("p2 = ${p2.toString()}")
-println("distance = ${p1.distanceTo(p2)}")
+expectEq(p1.toString(), "(3, 4)", "p1.toString()")
+expectEq(p2.toString(), "(0, 0)", "p2.toString()")
+expectEq(p1.distanceTo(p2), 5.0, "distance")
 
-// Class with implicit this
+// -- Section: Class with implicit this (Counter) --
 class Counter {
   var count: Int64
   var step: Int64
@@ -47,11 +50,11 @@ let c = Counter(5)
 c.increment()
 c.increment()
 c.increment()
-println("count after 3 increments: ${c.getCount()}")
+expectEq(c.getCount(), 15, "count after 3 increments")
 c.reset()
-println("count after reset: ${c.getCount()}")
+expectEq(c.getCount(), 0, "count after reset")
 
-// Mix implicit and explicit this
+// -- Section: Mix implicit and explicit this (Rectangle) --
 struct Rectangle {
   var width: Int64
   var height: Int64
@@ -68,10 +71,10 @@ struct Rectangle {
 }
 
 let r = Rectangle(5, 3)
-println("area: ${r.area()}")
-println("rect: ${r.toString()}")
+expectEq(r.area(), 15, "area")
+expectEq(r.toString(), "5x3", "toString")
 
-// Class with string fields using implicit this
+// -- Section: Class with string fields (Greeter) --
 class Greeter {
   var greeting: String
   var target: String
@@ -85,6 +88,8 @@ class Greeter {
 }
 
 let g = Greeter("Hello", "World")
-println(g.greet())
+expectEq(g.greet(), "Hello, World!", "greet")
 
-println("PASS: 12_implicit_this")
+if (!__test_failed) {
+  println("PASS: 12_implicit_this")
+}

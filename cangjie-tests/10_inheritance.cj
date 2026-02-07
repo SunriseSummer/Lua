@@ -1,6 +1,10 @@
-// Test: Class Inheritance and Polymorphism
+dofile("cangjie-tests/_testing.cj")
 
-// Base class
+// Test: Class Inheritance and Polymorphism
+// Validates single and multi-level inheritance, method overriding,
+// polymorphic dispatch, and interface implementation on classes.
+
+// -- Section: Base class --
 class Animal {
   var name: String
   var sound: String
@@ -16,7 +20,7 @@ class Animal {
   }
 }
 
-// Subclass with <: inheritance syntax
+// -- Section: Subclasses with inheritance --
 class Dog <: Animal {
   var breed: String
   init(name: String, breed: String) {
@@ -43,33 +47,32 @@ class Cat <: Animal {
   }
 }
 
-// Test basic inheritance
+// -- Section: Basic inheritance assertions --
 let a = Animal("Bird", "Tweet")
 let d = Dog("Rex", "Labrador")
 let c = Cat("Whiskers")
 
-println(a.speak())
-println(d.speak())
-println(c.speak())
+expectEq(a.speak(), "Bird says Tweet", "a.speak()")
+expectEq(d.speak(), "Rex barks: Woof!", "d.speak()")
+expectEq(c.speak(), "Whiskers purrs: Meow", "c.speak()")
 
-// Test inherited methods
-println(d.getType())
-println(c.getType())
+// -- Section: Inherited methods --
+expectEq(d.getType(), "Animal", "d.getType()")
+expectEq(c.getType(), "Animal", "c.getType()")
 
-// Test child-specific methods
-println(d.fetch())
+// -- Section: Child-specific methods --
+expectEq(d.fetch(), "Rex fetches the ball", "d.fetch()")
 
-// Test polymorphism: parent reference calling overridden method
-// In this dynamic implementation, the method dispatch is always dynamic
+// -- Section: Polymorphic dispatch --
 func makeSpeak(animal) {
   return animal.speak()
 }
 
-println(makeSpeak(a))
-println(makeSpeak(d))
-println(makeSpeak(c))
+expectEq(makeSpeak(a), "Bird says Tweet", "makeSpeak(a)")
+expectEq(makeSpeak(d), "Rex barks: Woof!", "makeSpeak(d)")
+expectEq(makeSpeak(c), "Whiskers purrs: Meow", "makeSpeak(c)")
 
-// Multi-level inheritance
+// -- Section: Multi-level inheritance --
 class GuideDog <: Dog {
   var owner: String
   init(name: String, owner: String) {
@@ -84,12 +87,12 @@ class GuideDog <: Dog {
 }
 
 let gd = GuideDog("Buddy", "Alice")
-println(gd.speak())
-println(gd.getType())
-println(gd.fetch())
-println(gd.guide())
+expectEq(gd.speak(), "Buddy barks: Woof!", "gd.speak()")
+expectEq(gd.getType(), "Animal", "gd.getType()")
+expectEq(gd.fetch(), "Buddy fetches the ball", "gd.fetch()")
+expectEq(gd.guide(), "Buddy guides Alice", "gd.guide()")
 
-// Class implementing interface
+// -- Section: Class implementing interface --
 interface Printable {
   func toString(): String
 }
@@ -107,6 +110,8 @@ class Point <: Printable {
 }
 
 let p = Point(3, 4)
-println(p.toString())
+expectEq(p.toString(), "(3, 4)", "p.toString()")
 
-println("PASS: 10_inheritance")
+if (!__test_failed) {
+  println("PASS: 10_inheritance")
+}

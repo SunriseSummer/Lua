@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Bool default parameter values
 // Verifies that passing 'false' is not confused with omitting the parameter
 
@@ -6,22 +8,13 @@ func check(flag!: Bool = true): Bool {
 }
 
 // Explicit false should NOT use default
-if (check(false) != false) {
-  println("FAIL: check(false) expected false, got " + tostring(check(false)))
-  return ()
-}
+expectFalse(check(false), "check(false)")
 
 // Explicit true should return true
-if (check(true) != true) {
-  println("FAIL: check(true) expected true, got " + tostring(check(true)))
-  return ()
-}
+expectTrue(check(true), "check(true)")
 
 // Omitted should use default (true)
-if (check() != true) {
-  println("FAIL: check() expected true, got " + tostring(check()))
-  return ()
-}
+expectTrue(check(), "check() default")
 
 // Multiple parameters with Bool defaults
 func config(verbose!: Bool = false, debug!: Bool = false, strict!: Bool = true): String {
@@ -39,34 +32,19 @@ func config(verbose!: Bool = false, debug!: Bool = false, strict!: Bool = true):
 }
 
 // All defaults: verbose=false, debug=false, strict=true
-if (config() != "S") {
-  println("FAIL: config() expected 'S', got '" + config() + "'")
-  return ()
-}
+expectEq(config(), "S", "config() all defaults")
 
 // Override verbose to true
-if (config(true) != "VS") {
-  println("FAIL: config(true) expected 'VS', got '" + config(true) + "'")
-  return ()
-}
+expectEq(config(true), "VS", "config(true)")
 
 // Override verbose=true, debug=true
-if (config(true, true) != "VDS") {
-  println("FAIL: config(true, true) expected 'VDS', got '" + config(true, true) + "'")
-  return ()
-}
+expectEq(config(true, true), "VDS", "config(true, true)")
 
 // Override verbose=false, debug=false, strict=false
-if (config(false, false, false) != "") {
-  println("FAIL: config(false, false, false) expected '', got '" + config(false, false, false) + "'")
-  return ()
-}
+expectEq(config(false, false, false), "", "config(false, false, false)")
 
 // Override strict to false explicitly
-if (config(false, false, false) != "") {
-  println("FAIL: config with all false expected '', got '" + config(false, false, false) + "'")
-  return ()
-}
+expectEq(config(false, false, false), "", "config with all false")
 
 // Mix of types with Bool
 func greet(name: String, excited!: Bool = false): String {
@@ -76,20 +54,9 @@ func greet(name: String, excited!: Bool = false): String {
   return "Hello, " + name + "."
 }
 
-if (greet("World") != "Hello, World.") {
-  println("FAIL: greet('World') expected 'Hello, World.', got '" + greet("World") + "'")
-  return ()
-}
-
-if (greet("World", true) != "Hello, World!!!") {
-  println("FAIL: greet('World', true) expected 'Hello, World!!!', got '" + greet("World", true) + "'")
-  return ()
-}
-
-if (greet("World", false) != "Hello, World.") {
-  println("FAIL: greet('World', false) expected 'Hello, World.', got '" + greet("World", false) + "'")
-  return ()
-}
+expectEq(greet("World"), "Hello, World.", "greet('World')")
+expectEq(greet("World", true), "Hello, World!!!", "greet('World', true)")
+expectEq(greet("World", false), "Hello, World.", "greet('World', false)")
 
 // Int64 default (should still work correctly)
 func power(base: Int64, exp!: Int64 = 2): Int64 {
@@ -102,19 +69,10 @@ func power(base: Int64, exp!: Int64 = 2): Int64 {
   return result
 }
 
-if (power(3) != 9) {
-  println("FAIL: power(3) expected 9, got " + tostring(power(3)))
-  return ()
-}
+expectEq(power(3), 9, "power(3)")
+expectEq(power(3, 3), 27, "power(3, 3)")
+expectEq(power(5, 0), 1, "power(5, 0)")
 
-if (power(3, 3) != 27) {
-  println("FAIL: power(3, 3) expected 27, got " + tostring(power(3, 3)))
-  return ()
+if (!__test_failed) {
+    println("PASS: 21_bool_default_params")
 }
-
-if (power(5, 0) != 1) {
-  println("FAIL: power(5, 0) expected 1, got " + tostring(power(5, 0)))
-  return ()
-}
-
-println("PASS: 21_bool_default_params")

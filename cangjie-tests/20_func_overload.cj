@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Function overloading and operator func overloading
 
 // === Basic function overloading ===
@@ -13,18 +15,9 @@ func describe(a: Int64, b: Int64, c: Int64): String {
   return "triple: " + tostring(a) + "," + tostring(b) + "," + tostring(c)
 }
 
-if (describe(1) != "int: 1") {
-  println("FAIL: describe(1) expected 'int: 1', got '" + describe(1) + "'")
-  return ()
-}
-if (describe(1, 2) != "pair: 1,2") {
-  println("FAIL: describe(1,2) expected 'pair: 1,2', got '" + describe(1, 2) + "'")
-  return ()
-}
-if (describe(1, 2, 3) != "triple: 1,2,3") {
-  println("FAIL: describe(1,2,3) expected 'triple: 1,2,3', got '" + describe(1, 2, 3) + "'")
-  return ()
-}
+expectEq(describe(1), "int: 1", "describe(1)")
+expectEq(describe(1, 2), "pair: 1,2", "describe(1,2)")
+expectEq(describe(1, 2, 3), "triple: 1,2,3", "describe(1,2,3)")
 
 // === Operator func overloading ===
 struct Vector2D {
@@ -62,34 +55,19 @@ let v2 = Vector2D(3, 4)
 
 // Test addition
 let v3 = v1 + v2
-if (v3.x != 4 || v3.y != 6) {
-  println("FAIL: v1 + v2 expected (4, 6), got " + v3.toString())
-  return ()
-}
+expectEq(v3.toString(), "(4, 6)", "v1 + v2")
 
 // Test subtraction
 let v4 = v2 - v1
-if (v4.x != 2 || v4.y != 2) {
-  println("FAIL: v2 - v1 expected (2, 2), got " + v4.toString())
-  return ()
-}
+expectEq(v4.toString(), "(2, 2)", "v2 - v1")
 
 // Test multiplication
 let v5 = v1 * 3
-if (v5.x != 3 || v5.y != 6) {
-  println("FAIL: v1 * 3 expected (3, 6), got " + v5.toString())
-  return ()
-}
+expectEq(v5.toString(), "(3, 6)", "v1 * 3")
 
 // Test equality
-if (!(v1 == v1)) {
-  println("FAIL: v1 == v1 should be true")
-  return ()
-}
-if (v1 == v2) {
-  println("FAIL: v1 == v2 should be false")
-  return ()
-}
+expectTrue(v1 == v1, "v1 == v1")
+expectFalse(v1 == v2, "v1 == v2 should be false")
 
 // === Operator overloading with toString ===
 struct Fraction {
@@ -117,17 +95,11 @@ struct Fraction {
 let f1 = Fraction(1, 2)
 let f2 = Fraction(1, 3)
 let f3 = f1 + f2
-if (f3.num != 5 || f3.den != 6) {
-  println("FAIL: 1/2 + 1/3 expected 5/6, got " + f3.toString())
-  return ()
-}
+expectEq(f3.toString(), "5/6", "1/2 + 1/3")
 
 // Equivalent fractions
 let f4 = Fraction(2, 4)
-if (!(f1 == f4)) {
-  println("FAIL: 1/2 == 2/4 should be true")
-  return ()
-}
+expectTrue(f1 == f4, "1/2 == 2/4")
 
 // === Overloading with different scenarios ===
 func area(r: Float64): Float64 {
@@ -141,9 +113,8 @@ func area(w: Float64, h: Float64): Float64 {
 let circle = area(5.0)
 let rect = area(3.0, 4.0)
 
-if (rect != 12.0) {
-  println("FAIL: area(3.0, 4.0) expected 12.0, got " + tostring(rect))
-  return ()
-}
+expectEq(rect, 12.0, "area(3.0, 4.0)")
 
-println("PASS: 20_func_overload")
+if (!__test_failed) {
+    println("PASS: 20_func_overload")
+}

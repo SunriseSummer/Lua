@@ -14,9 +14,10 @@ FAIL=0
 TOTAL=0
 FAILURES=""
 
-# Run main tests
+# Run main tests (skip utility files starting with '_')
 for f in "${TEST_DIR}"/*.cj; do
   name=$(basename "$f")
+  [[ "$name" == _* ]] && continue
   TOTAL=$((TOTAL + 1))
   printf "Running %-40s ... " "$name"
   output=$("$LUA" "$f" 2>&1)

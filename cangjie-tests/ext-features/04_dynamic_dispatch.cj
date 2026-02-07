@@ -1,9 +1,9 @@
-// Extended features: Dynamic dispatch, enum internals, and generic enums
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Dynamic dispatch, enum internals, and generic enums
 // These leverage Lua's dynamic nature combined with Cangjie's new features
 
-// === Dynamic enum: accessing internal representation (Lua extension) ===
-// In standard Cangjie, enum values don't expose [1], [2] indexing.
-// Here we can access the internal representation directly.
+// -- Section: dynamic enum internal representation --
 enum Color {
   | Red
   | Green
@@ -16,23 +16,22 @@ let b = Blue(128)
 let rgb = RGB(255, 128, 0)
 
 // Direct access to __tag (Lua extension)
-println(r.__tag)     // Red
-println(b.__tag)     // Blue
-println(rgb.__tag)   // RGB
+expectEq(r.__tag, "Red", "Red __tag")
+expectEq(b.__tag, "Blue", "Blue __tag")
+expectEq(rgb.__tag, "RGB", "RGB __tag")
 
 // Index-based access to enum constructor args (Lua extension)
-println(b[1])        // 128
-println(rgb[1])      // 255
-println(rgb[2])      // 128
-println(rgb[3])      // 0
+expectEq(b[1], 128, "Blue[1]")
+expectEq(rgb[1], 255, "RGB[1]")
+expectEq(rgb[2], 128, "RGB[2]")
+expectEq(rgb[3], 0, "RGB[3]")
 
-// === Generic enum (type params erased, work via dynamic typing) ===
+// -- Section: generic enum (dynamic typing) --
 enum Option<T> {
   | Some(T)
   | None
 }
 
-// Lua-style dynamic function to work with enum values
 func unwrap_or(opt, default_val) {
   match (opt) {
     case Some(v) =>
@@ -56,17 +55,16 @@ func map_option(opt, fn) {
 let x = Some(10)
 let y = None
 
-println("unwrap Some: " .. tostring(unwrap_or(x, 0)))
-println("unwrap None: " .. tostring(unwrap_or(y, -1)))
+expectEq(unwrap_or(x, 0), 10, "unwrap Some")
+expectEq(unwrap_or(y, -1), -1, "unwrap None")
 
 let doubled = map_option(x, func(v) { return v * 2 })
-println("mapped: " .. tostring(unwrap_or(doubled, 0)))
+expectEq(unwrap_or(doubled, 0), 20, "map_option doubled")
 
-// Generic enum with different types (dynamic)
 let str_opt = Some("hello")
-println("string option: " .. tostring(unwrap_or(str_opt, "default")))
+expectEq(unwrap_or(str_opt, "default"), "hello", "string option unwrap")
 
-// === Dynamic class construction with inheritance ===
+// -- Section: dynamic class construction with inheritance --
 class Base {
   var data: String
   init(data: String) {
@@ -83,7 +81,6 @@ class Child <: Base {
   }
 }
 
-// Dynamic polymorphism: function accepting any object
 func processAny(obj) {
   if (type(obj) == "table" && obj.process) {
     return obj.process()
@@ -91,36 +88,44 @@ func processAny(obj) {
   return tostring(obj)
 }
 
-println(processAny(Base("raw")))
-println(processAny(Child("wrapped")))
-println(processAny(42))
+expectEq(processAny(Base("raw")), "raw", "processAny Base")
+expectEq(processAny(Child("wrapped")), "[wrapped]", "processAny Child")
+expectEq(processAny(42), "42", "processAny primitive")
 
-// === Tuples with dynamic operations ===
+// -- Section: tuples with dynamic operations --
 func swap(t) {
   return (t[1], t[0])
 }
 
 let pair = (1, 2)
 let swapped = swap(pair)
-println("original: " .. tostring(pair[0]) .. "," .. tostring(pair[1]))
-println("swapped: " .. tostring(swapped[0]) .. "," .. tostring(swapped[1]))
+expectEq(pair[0], 1, "pair[0]")
+expectEq(pair[1], 2, "pair[1]")
+expectEq(swapped[0], 2, "swapped[0]")
+expectEq(swapped[1], 1, "swapped[1]")
 
-// === Match with braces (extended syntax for Lua compatibility) ===
+// -- Section: match with enum (extended syntax) --
 let r1 = Some(10)
 let r2 = None
 
+var match_result1 = ""
 match (r1) {
   case Some(v) =>
-    println("10: " .. tostring(v))
+    match_result1 = tostring(v)
   case None =>
-    println("none")
+    match_result1 = "none"
 }
+expectEq(match_result1, "10", "match Some(10)")
 
+var match_result2 = ""
 match (r2) {
   case Some(v) =>
-    println("value: " .. tostring(v))
+    match_result2 = "value: " .. tostring(v)
   case None =>
-    println("division by zero")
+    match_result2 = "division by zero"
 }
+expectEq(match_result2, "division by zero", "match None")
 
-println("PASS: ext-features/04_dynamic_dispatch")
+if (!__test_failed) {
+    println("PASS: ext-features/04_dynamic_dispatch")
+}

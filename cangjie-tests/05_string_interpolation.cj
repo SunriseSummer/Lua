@@ -1,31 +1,41 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: String interpolation
 
 let name = "Cangjie"
 let version = 1
 
-// Basic interpolation
-println("Hello, ${name}!")  // Hello, Cangjie!
+// -- Section: basic interpolation --
+let s1 = "Hello, ${name}!"
+expectEq(s1, "Hello, Cangjie!", "basic interpolation")
 
-// Multiple interpolations
-println("${name} v${version}")  // Cangjie v1
+// -- Section: multiple interpolations --
+let s2 = "${name} v${version}"
+expectEq(s2, "Cangjie v1", "multi interpolation")
 
-// Expression interpolation
+// -- Section: expression interpolation --
 let x = 10
 let y = 20
-println("${x} + ${y} = ${x + y}")  // 10 + 20 = 30
+let s3 = "${x} + ${y} = ${x + y}"
+expectEq(s3, "10 + 20 = 30", "expr interpolation")
 
-// Nested string operations
+// -- Section: variable with interpolation --
 let greeting = "Welcome to ${name}!"
-println(greeting)  // Welcome to Cangjie!
+expectEq(greeting, "Welcome to Cangjie!", "greeting interpolation")
 
-// Interpolation with property access
+// -- Section: interpolation with property access --
 let arr = [1, 2, 3]
-println("length = ${arr.size}")  // length = 3
+let s4 = "length = ${arr.size}"
+expectEq(s4, "length = 3", "property interpolation")
 
-// Empty interpolation parts
-println("start${1}end")  // start1end
+// -- Section: numeric interpolation --
+let s5 = "start${1}end"
+expectEq(s5, "start1end", "numeric interpolation")
 
-// String without interpolation
-println("no interpolation here")
+// -- Section: no interpolation --
+let s6 = "no interpolation here"
+expectEq(s6, "no interpolation here", "plain string")
 
-println("PASS: 05_string_interpolation")
+if (!__test_failed) {
+    println("PASS: 05_string_interpolation")
+}

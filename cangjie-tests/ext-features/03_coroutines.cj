@@ -1,21 +1,26 @@
-// Extended features: Lua coroutines
-// Coroutines provide cooperative multitasking beyond standard Cangjie.
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Lua coroutines (cooperative multitasking)
 // Note: coroutine.* uses Lua's module call syntax with :
 
-// Basic coroutine
+// -- Section: basic coroutine --
+var steps = ""
 let co = coroutine.create(func() {
-  println("step 1")
+  steps = steps + "1"
   coroutine.yield()
-  println("step 2")
+  steps = steps + "2"
   coroutine.yield()
-  println("step 3")
+  steps = steps + "3"
 })
 
-coroutine.resume(co)  // step 1
-coroutine.resume(co)  // step 2
-coroutine.resume(co)  // step 3
+coroutine.resume(co)
+expectEq(steps, "1", "coroutine step 1")
+coroutine.resume(co)
+expectEq(steps, "12", "coroutine step 2")
+coroutine.resume(co)
+expectEq(steps, "123", "coroutine step 3")
 
-// Producer-consumer pattern with coroutines
+// -- Section: producer-consumer with coroutines --
 func producer() {
   return coroutine.create(func() {
     var i = 1
@@ -28,15 +33,18 @@ func producer() {
 
 let gen = producer()
 var sum = 0
+var values = ""
 while (true) {
   let ok, val = coroutine.resume(gen)
   if (!ok || val == nil) {
     break
   }
   sum = sum + val
-  print("${val} ")
+  values = values + tostring(val) + " "
 }
-println()
-println("sum = ${sum}")  // 150
+expectEq(sum, 150, "coroutine producer sum")
+expectEq(values, "10 20 30 40 50 ", "coroutine producer values")
 
-println("PASS: ext-features/03_coroutines")
+if (!__test_failed) {
+    println("PASS: ext-features/03_coroutines")
+}

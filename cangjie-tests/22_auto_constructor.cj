@@ -1,26 +1,31 @@
-// Auto constructor for class
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Auto-generated constructors for classes and structs
+// Validates auto-constructor field assignment, no-arg defaults, and explicit init
+
+// --- Auto constructor for class ---
 class A {
   var x: Int64 = 0
   var y: Int64 = 1
 }
 let a = A(2, 4)
-println(a.x)  // 2
-println(a.y)  // 4
+expectEq(a.x, 2, "a.x")
+expectEq(a.y, 4, "a.y")
 
-// Auto constructor for struct
+// --- Auto constructor for struct ---
 struct B {
   var x: Int64 = 0
   var y: String = ""
 }
 let b = B(1, "hello")
-println(b.x)  // 1
-println(b.y)  // hello
+expectEq(b.x, 1, "b.x")
+expectEq(b.y, "hello", "b.y")
 
-// No args: auto-constructor has no args to assign, fields remain unset (nil)
+// --- No args: fields remain unset (nil) ---
 let c = A()
-println(c.x)  // nil - no init and no args, so fields are not assigned
+expectNil(c.x, "c.x")
 
-// Class with explicit init should still work
+// --- Class with explicit init ---
 class C {
   var x: Int64
   init(v: Int64) {
@@ -28,6 +33,8 @@ class C {
   }
 }
 let d = C(5)
-println(d.x)  // 10
+expectEq(d.x, 10, "d.x")
 
-println("PASS: 22_auto_constructor")
+if (!__test_failed) {
+    println("PASS: 22_auto_constructor")
+}

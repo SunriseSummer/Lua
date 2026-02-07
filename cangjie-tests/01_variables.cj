@@ -1,39 +1,42 @@
-// Test: Variable declarations (let and var)
-// let = immutable, var = mutable
+dofile("cangjie-tests/_testing.cj")
 
-// let declarations with type annotations
+// Test: Variable declarations (let and var)
+
+// -- Section: let declarations with type annotations --
 let a: Int64 = 10
 let b: Float64 = 3.14
 let c: String = "hello"
 let d: Bool = true
 let e: Bool = false
 
-println(a)      // 10
-println(b)      // 3.14
-println(c)      // hello
-println(d)      // true
-println(e)      // false
+expectEq(a, 10, "let Int64 a")
+expectEq(b, 3.14, "let Float64 b")
+expectEq(c, "hello", "let String c")
+expectTrue(d, "let Bool d")
+expectFalse(e, "let Bool e")
 
-// Rune (character) type - using single quotes
+// -- Section: Rune (character) type --
 let ch: Rune = 'A'
-println(ch)     // A
+expectEq(ch, 'A', "Rune ch")
 
-// var declarations (mutable)
+// -- Section: var declarations (mutable) --
 var x: Int64 = 1
-println(x)      // 1
+expectEq(x, 1, "var x initial")
 x = 2
-println(x)      // 2
+expectEq(x, 2, "var x after assignment")
 x = x + 10
-println(x)      // 12
+expectEq(x, 12, "var x after x+10")
 
-// Array type (0-based indexing)
+// -- Section: Array type (0-based indexing) --
 let arr: Array<Int64> = [1, 2, 3, 4, 5]
-println(arr[0])     // 1 (first element, 0-based)
-println(arr[1])     // 2 (second element)
-println(arr.size)   // 5
+expectEq(arr[0], 1, "arr[0]")
+expectEq(arr[1], 2, "arr[1]")
+expectEq(arr.size, 5, "arr.size")
 
-// let without type annotation (type inference)
+// -- Section: type inference --
 let pi = 3.14159
-println(pi)
+expectEq(pi, 3.14159, "type inference pi")
 
-println("PASS: 01_variables")
+if (!__test_failed) {
+    println("PASS: 01_variables")
+}

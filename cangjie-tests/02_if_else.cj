@@ -1,42 +1,56 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Control flow - if, else if, else
 
 let x = 15
 
-// Basic if (parentheses required)
+// -- Section: basic if --
+var result = ""
 if (x > 10) {
-  println("x > 10")
+  result = "x > 10"
 }
+expectEq(result, "x > 10", "basic if")
 
-// if-else
+// -- Section: if-else --
+var result2 = ""
 if (x > 20) {
-  println("big")
+  result2 = "big"
 } else {
-  println("not big")
+  result2 = "not big"
 }
+expectEq(result2, "not big", "if-else")
 
-// if-else if-else
+// -- Section: if-else if-else chain --
+var result3 = ""
 if (x > 100) {
-  println("huge")
+  result3 = "huge"
 } else if (x > 50) {
-  println("large")
+  result3 = "large"
 } else if (x > 10) {
-  println("medium")
+  result3 = "medium"
 } else {
-  println("small")
+  result3 = "small"
 }
+expectEq(result3, "medium", "else-if chain")
 
-// Nested if
+// -- Section: nested if --
+var result4 = ""
 if (x > 0) {
   if (x > 10) {
-    println("positive and > 10")
+    result4 = "positive and > 10"
   } else {
-    println("positive and <= 10")
+    result4 = "positive and <= 10"
   }
 }
+expectEq(result4, "positive and > 10", "nested if")
 
-// if with equality check
+// -- Section: equality check --
+var result5 = ""
 if (x == 15) {
-  println("x is 15")
+  result5 = "x is 15"
 }
+expectEq(result5, "x is 15", "equality check")
 
-println("PASS: 02_if_else")
+if (!__test_failed) {
+    println("PASS: 02_if_else")
+}

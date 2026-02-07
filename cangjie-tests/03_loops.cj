@@ -1,44 +1,46 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Loops - while, for
 
-// while loop (parentheses required)
+// -- Section: while loop --
 var sum = 0
 var i = 1
 while (i <= 10) {
   sum = sum + i
   i = i + 1
 }
-println("sum 1..=10 = ${sum}")  // 55
+expectEq(sum, 55, "while sum 1..=10")
 
-// Numeric for with inclusive range
+// -- Section: for with inclusive range --
 var total = 0
 for (j in 1..=100) {
   total = total + j
 }
-println("sum 1..=100 = ${total}")  // 5050
+expectEq(total, 5050, "inclusive range sum")
 
-// Numeric for with exclusive range
+// -- Section: for with exclusive range --
 var total2 = 0
 for (j in 1..101) {
   total2 = total2 + j
 }
-println("sum 1..101 = ${total2}")  // 5050
+expectEq(total2, 5050, "exclusive range sum")
 
-// For loop with step
+// -- Section: for with step --
 var evens = 0
 for (k in 0..=10:2) {
   evens = evens + k
 }
-println("sum evens 0..=10:2 = ${evens}")  // 30
+expectEq(evens, 30, "step range evens")
 
-// Iterating over array by index (0-based)
+// -- Section: array iteration by index --
 let t = [10, 20, 30, 40, 50]
 var tsum = 0
 for (i in 0..t.size) {
   tsum = tsum + t[i]
 }
-println("array sum = ${tsum}")  // 150
+expectEq(tsum, 150, "array sum")
 
-// Break in loop
+// -- Section: break in loop --
 var found = 0
 for (n in 1..=100) {
   if (n * n > 50) {
@@ -46,15 +48,17 @@ for (n in 1..=100) {
     break
   }
 }
-println("first n where n*n > 50: ${found}")  // 8
+expectEq(found, 8, "break/found")
 
-// Nested loops
+// -- Section: nested loops --
 var matrix_sum = 0
 for (r in 1..=3) {
   for (c in 1..=3) {
     matrix_sum = matrix_sum + r * c
   }
 }
-println("matrix sum = ${matrix_sum}")  // 36
+expectEq(matrix_sum, 36, "nested loops matrix_sum")
 
-println("PASS: 03_loops")
+if (!__test_failed) {
+    println("PASS: 03_loops")
+}

@@ -1,6 +1,10 @@
-// Test: Struct and Class
+dofile("cangjie-tests/_testing.cj")
 
-// Basic struct with member declarations, init, and this
+// Test: Struct and Class
+// Validates struct/class definitions, constructors, methods, extend blocks,
+// and generic structs.
+
+// -- Section: Basic struct with init and methods --
 struct Point {
   var x: Int64
   var y: Int64
@@ -21,11 +25,11 @@ struct Point {
 // Constructor call syntax: Point(x, y)
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
-println("p1 = ${p1.toString()}")
-println("p2 = ${p2.toString()}")
-println("distance = ${p1.distance(p2)}")
+expectEq(p1.toString(), "(3, 4)", "p1.toString()")
+expectEq(p2.toString(), "(0, 0)", "p2.toString()")
+expectEq(p1.distance(p2), 5.0, "distance")
 
-// Class with member declarations
+// -- Section: Class with member declarations --
 class Animal {
   var name: String
   var sound: String
@@ -40,10 +44,10 @@ class Animal {
 
 let dog = Animal("Dog", "Woof")
 let cat = Animal("Cat", "Meow")
-println(dog.speak())
-println(cat.speak())
+expectEq(dog.speak(), "Dog says Woof!", "dog.speak()")
+expectEq(cat.speak(), "Cat says Meow!", "cat.speak()")
 
-// Extend - add methods to existing types
+// -- Section: Extend with translate method --
 extend Point {
   func translate(dx: Int64, dy: Int64) {
     return Point(this.x + dx, this.y + dy)
@@ -52,9 +56,9 @@ extend Point {
 
 let p3 = Point(1, 1)
 let p4 = p3.translate(5, 10)
-println("translated: ${p4.toString()}")
+expectEq(p4.toString(), "(6, 11)", "translated point")
 
-// Struct with generic type parameter
+// -- Section: Generic struct Pair --
 struct Pair<T, U> {
   var first: T
   var second: U
@@ -68,6 +72,8 @@ struct Pair<T, U> {
 }
 
 let pair = Pair(1, "hello")
-println("pair = ${pair.toString()}")
+expectEq(pair.toString(), "(1, hello)", "pair.toString()")
 
-println("PASS: 07_struct_class")
+if (!__test_failed) {
+  println("PASS: 07_struct_class")
+}
