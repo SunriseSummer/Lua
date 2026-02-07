@@ -4055,10 +4055,18 @@ parse_operator_body:
         var_fields[nvarfields++] = fname;
       }
       skip_type_annotation(ls);
-      /* optional default value */
+      /* optional default value - compile as ClassName.field = value */
       if (testnext(ls, '=')) {
-        expdesc dummy;
-        expr(ls, &dummy);  /* skip the expression */
+        expdesc field_target, field_val;
+        buildvar(ls, sname, &field_target);
+        {
+          expdesc fkey;
+          luaK_exp2anyregup(fs, &field_target);
+          codestring(&fkey, fname);
+          luaK_indexed(fs, &field_target, &fkey);
+        }
+        expr(ls, &field_val);
+        luaK_storevar(fs, &field_target, &field_val);
       }
     }
     else if (ls->t.token == TK_NAME &&
@@ -5671,13 +5679,43 @@ static void matchstat_returning (LexState *ls, int line) {
 
 
 static void exprstat (LexState *ls) {
-  /* stat -> func | assignment */
+  /* stat -> func | assignment | compound_assignment */
   FuncState *fs = ls->fs;
   struct LHS_assign v;
   suffixedexp(ls, &v.v);
   if (ls->t.token == '=' || ls->t.token == ',') { /* stat -> assignment ? */
     v.prev = NULL;
     restassign(ls, &v, 1);
+  }
+  else if ((ls->t.token == '+' || ls->t.token == '-' ||
+            ls->t.token == '*' || ls->t.token == '/') &&
+           luaX_lookahead(ls) == '=') {
+    /* Compound assignment: x += e  =>  x = x + e */
+    int op_token = ls->t.token;
+    BinOpr opr;
+    expdesc lhs_copy, rhs, result;
+    int line2 = ls->linenumber;
+    switch (op_token) {
+      case '+': opr = OPR_ADD; break;
+      case '-': opr = OPR_SUB; break;
+      case '*': opr = OPR_MUL; break;
+      case '/': opr = OPR_DIV; break;
+      default: opr = OPR_ADD; break;  /* unreachable */
+    }
+    luaX_next(ls);  /* skip operator (+, -, etc.) */
+    luaX_next(ls);  /* skip '=' (was consumed by lookahead) */
+    /* Save lhs for the store, and create a copy for the read */
+    lhs_copy = v.v;
+    /* Read the current value of the lhs */
+    luaK_exp2nextreg(fs, &lhs_copy);
+    /* Parse the right-hand expression */
+    expr(ls, &rhs);
+    /* Combine: lhs_copy OP rhs */
+    luaK_infix(fs, opr, &lhs_copy);
+    luaK_posfix(fs, opr, &lhs_copy, &rhs, line2);
+    result = lhs_copy;
+    /* Store back to the original lhs */
+    luaK_storevar(fs, &v.v, &result);
   }
   else {  /* stat -> func */
     Instruction *inst;
@@ -5795,6 +5833,31 @@ static void statlist_autoreturning (LexState *ls) {
             v.v = e;
             v.prev = NULL;
             restassign(ls, &v, 1);
+          }
+          else if ((ls->t.token == '+' || ls->t.token == '-' ||
+                    ls->t.token == '*' || ls->t.token == '/') &&
+                   luaX_lookahead(ls) == '=') {
+            /* Compound assignment: x += e2  =>  x = x + e2 */
+            int op_token = ls->t.token;
+            BinOpr opr;
+            expdesc lhs_copy, rhs, result;
+            int line2 = ls->linenumber;
+            switch (op_token) {
+              case '+': opr = OPR_ADD; break;
+              case '-': opr = OPR_SUB; break;
+              case '*': opr = OPR_MUL; break;
+              case '/': opr = OPR_DIV; break;
+              default: opr = OPR_ADD; break;
+            }
+            luaX_next(ls);  /* skip operator */
+            luaX_next(ls);  /* skip '=' */
+            lhs_copy = e;
+            luaK_exp2nextreg(fs, &lhs_copy);
+            expr(ls, &rhs);
+            luaK_infix(fs, opr, &lhs_copy);
+            luaK_posfix(fs, opr, &lhs_copy, &rhs, line2);
+            result = lhs_copy;
+            luaK_storevar(fs, &e, &result);
           }
           else {
             /* Continue parsing as full expression (binary ops, ??, etc.) */

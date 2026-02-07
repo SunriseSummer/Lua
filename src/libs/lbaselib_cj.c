@@ -13,6 +13,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "lua.h"
 
@@ -279,10 +280,52 @@ static int cangjie_type_index_handler (lua_State *L) {
 ** Creates/updates metatables so that values of these types can call
 ** extension methods using dot syntax (e.g., 42.double()).
 */
+/* C function: Float64.GetPI() returns pi */
+static int cangjie_float64_getpi (lua_State *L) {
+  UNUSED(L);
+  lua_pushnumber(L, 3.14159265358979323846);
+  return 1;
+}
+
+/* C function: Float64(value) converts to float */
+static int cangjie_float64_call (lua_State *L) {
+  /* First arg is the table itself (Float64), second is the value to convert */
+  lua_Number n = luaL_checknumber(L, 2);
+  lua_pushnumber(L, n);
+  return 1;
+}
+
+
 int luaB_extend_type (lua_State *L) {
   const char *tname = luaL_checkstring(L, 1);
   int val_idx;
   luaL_checktype(L, 2, LUA_TTABLE);  /* methods table */
+
+  /* For Float64, add built-in static methods and __call metamethod */
+  if (strcmp(tname, "Float64") == 0) {
+    lua_getfield(L, 2, "GetPI");
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 1);
+      lua_pushcfunction(L, cangjie_float64_getpi);
+      lua_setfield(L, 2, "GetPI");
+      lua_pushboolean(L, 1);
+      lua_setfield(L, 2, "__static_GetPI");
+    }
+    else {
+      lua_pop(L, 1);
+    }
+    /* Set up __call metamethod for Float64(value) conversion */
+    {
+      int has_mt;
+      has_mt = lua_getmetatable(L, 2);
+      if (!has_mt) {
+        lua_newtable(L);  /* create metatable for Float64 table */
+      }
+      lua_pushcfunction(L, cangjie_float64_call);
+      lua_setfield(L, -2, "__call");
+      lua_setmetatable(L, 2);
+    }
+  }
 
   /* Create a representative value to get/set its metatable */
   if (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0) {
