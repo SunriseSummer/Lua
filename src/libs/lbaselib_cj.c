@@ -429,6 +429,40 @@ int luaB_set_parent (lua_State *L) {
 
 
 /*
+** __cangjie_super_init(self, current_class, args...) - Call parent class constructor.
+** Uses current_class (the class where super() is written) to find __parent,
+** avoiding infinite recursion when multi-level inheritance is used.
+*/
+int luaB_super_init (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int i;
+  /* arg 1 = self, arg 2 = current_class */
+  luaL_checktype(L, 1, LUA_TTABLE);
+  luaL_checktype(L, 2, LUA_TTABLE);
+  /* Get current_class.__parent */
+  lua_getfield(L, 2, "__parent");
+  if (lua_isnil(L, -1)) {
+    return luaL_error(L, "super: class has no parent");
+  }
+  /* Get __parent.init */
+  lua_getfield(L, -1, "init");
+  if (lua_isnil(L, -1)) {
+    /* No explicit init in parent - just return */
+    lua_pop(L, 2);  /* pop nil, parent */
+    return 0;
+  }
+  /* Call parent.init(self, args...) — skip arg 2 (current_class) */
+  lua_pushvalue(L, 1);  /* push self */
+  for (i = 3; i <= nargs; i++) {
+    lua_pushvalue(L, i);  /* push remaining args (skip current_class) */
+  }
+  lua_call(L, nargs - 1, 0);  /* call init, discard return */
+  lua_pop(L, 1);  /* pop parent */
+  return 0;
+}
+
+
+/*
 ** __cangjie_apply_interface(target, iface) - Apply interface default
 ** implementations to a class/type table. Copies all methods from the
 ** interface table that are not already defined in the target.
@@ -484,6 +518,53 @@ int luaB_is_instance (lua_State *L) {
   return 1;
 }
 
+
+
+/*
+** __cangjie_iter(value) - Create an iterator for for-in loops.
+** If value is a table (array), returns a value-only iterator
+** (skipping array indices). For other iterables, pass through.
+*/
+static int cangjie_array_iter_next (lua_State *L) {
+  /* upvalue 1 = array table, upvalue 2 = current index (integer) */
+  lua_Integer i = lua_tointeger(L, lua_upvalueindex(2));
+  lua_Integer n;
+  i++;
+  lua_pushinteger(L, i);
+  lua_copy(L, -1, lua_upvalueindex(2));  /* update index */
+  lua_pop(L, 1);
+  /* Check bounds using __n field */
+  lua_getfield(L, lua_upvalueindex(1), "__n");
+  n = lua_isinteger(L, -1) ? lua_tointeger(L, -1) : 0;
+  lua_pop(L, 1);
+  if (i >= n) {
+    lua_pushnil(L);
+    return 1;  /* return nil to stop iteration */
+  }
+  lua_pushinteger(L, i);
+  lua_gettable(L, lua_upvalueindex(1));  /* get array[i] */
+  return 1;  /* return value */
+}
+
+int luaB_iter (lua_State *L) {
+  if (lua_istable(L, 1)) {
+    /* For tables: create a closure iterator that yields values (0-based) */
+    lua_pushvalue(L, 1);       /* push table as upvalue 1 */
+    lua_pushinteger(L, -1);    /* push initial index as upvalue 2 (will be incremented to 0) */
+    lua_pushcclosure(L, cangjie_array_iter_next, 2);
+    lua_pushnil(L);            /* state (unused) */
+    lua_pushnil(L);            /* initial control value */
+    return 3;  /* return iterator, state, initial */
+  }
+  else if (lua_isfunction(L, 1)) {
+    /* Already an iterator function, pass through */
+    lua_pushvalue(L, 1);
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 3;
+  }
+  return luaL_error(L, "cannot iterate over %s", luaL_typename(L, 1));
+}
 
 
 /*

@@ -55,6 +55,7 @@
   - 排他范围：`for (i in 1..10) { ... }`
   - 包含范围：`for (i in 1..=10) { ... }`
   - 步长：`for (i in 0..=10:2) { ... }`
+  - 数组遍历：`for (item in array) { ... }`
 - **break 语句**：在循环中提前跳出
 - **continue 语句**：跳过当前迭代，继续下一次循环
 - **嵌套循环**
@@ -138,11 +139,26 @@ class Dog <: Animal {
 
 支持的继承特性：
 - **单继承**：`class Child <: Parent { ... }`
+- **开放类**：`open class Parent { ... }` — 使用 `open` 修饰的类才能被继承
 - **接口实现**：`class Point <: Printable { ... }`
 - **多级继承**：`class GuideDog <: Dog`（Dog 已继承 Animal）
-- **方法重写**：子类可重写父类方法，运行时动态派发
+- **方法重写**：子类可重写父类的 `open` 方法，运行时动态派发
 - **方法继承**：子类自动继承父类未重写的方法
 - **多态**：父类引用可调用子类重写的方法
+- **super 调用**：子类构造函数中使用 `super(args)` 调用父类构造函数
+  ```cangjie
+  open class Circle {
+      Circle(var x: Int64, var y: Int64, var radius: Float64) {}
+      open public func info(): String { "${x}, ${y}, ${radius}" }
+  }
+  class Cylinder <: Circle {
+      var height: Float64 = 1.0
+      init(x: Int64, y: Int64, r: Float64, h: Float64) {
+          super(x, y, r)
+          this.height = h
+      }
+  }
+  ```
 
 #### 实例化（构造函数调用）
 ```cangjie
@@ -257,6 +273,23 @@ struct Counter {
   func increment() {
     count = count + 1  // 等价于 this.count = this.count + 1
   }
+}
+```
+
+#### 可见性修饰符
+
+支持 `public` 和 `private` 修饰成员变量和成员函数。`open` 修饰类表示可被继承，修饰方法表示可被子类重写：
+
+```cangjie
+open class Account {
+    public var name: String = ""
+    private var balance: Float64 = 0.0
+    public func deposit(amount: Float64) {
+        this.balance = this.balance + amount
+    }
+    open public func info(): String {
+        "${name}: ${balance}"
+    }
 }
 ```
 
@@ -675,6 +708,7 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 - **迭代器**：
   - `ipairs()` - 有序数字索引迭代
   - `pairs()` - 遍历所有键值对
+  - `for (item in array)` - 数组元素遍历（仓颉语法）
 
 ### 元编程
 
@@ -727,12 +761,12 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 ## 使用限制
 
 1. **类型注解为编译期提示**：类型注解在解析阶段被读取后跳过，不进行静态类型检查，所有类型检查在运行时由 Lua VM 完成
-2. **继承**：支持 `class B <: A` 单继承语法，子类继承父类方法并可重写，运行时动态派发；不支持 `open`/`override` 修饰符（所有方法默认可重写）
+2. **继承**：支持 `class B <: A` 单继承语法，子类继承父类方法并可重写；`open` 修饰的类可被继承，`open` 修饰的方法可被重写；支持 `super(args)` 调用父类构造函数
 3. **接口**：`interface` 声明创建接口表，方法签名被解析；接口中的方法可提供默认实现体，默认方法被编译并存储在接口表中；class 可使用 `<:` 声明实现接口，运行时通过 `__cangjie_apply_interface` 自动继承未覆盖的默认方法
 4. **泛型**：泛型类型参数在解析阶段被跳过，依赖 Lua 的动态类型在运行时实现多态
 5. **内置类型扩展**：扩展方法通过元表 `__index` 实现，对同一类型的多次扩展会叠加方法（后续扩展的方法会优先被查找）
 6. **隐式 this**：仅在 `struct/class` 体内声明的 `var/let` 字段名可被隐式解析为 `self.field`，局部变量同名时局部变量优先
-7. **访问控制**：不支持 `public`/`private`/`protected` 访问修饰符
+7. **访问控制**：支持 `public` 和 `private` 修饰成员变量和成员函数（编译期语法支持，运行时不强制检查）
 8. **元组嵌套字面量**：不支持直接嵌套元组字面量 `((1,2), (3,4))`，需通过变量间接嵌套
 9. **枚举类型**：支持带参数的枚举构造器、递归枚举、泛型枚举、成员函数和操作符重载
 10. **模式匹配**：支持枚举模式、常量模式、通配符模式、类型模式和元组模式，但不支持守卫条件（where）
@@ -751,6 +785,7 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 23. **字段默认值**：struct/class 中 `var field = defaultValue` 声明会将默认值存储在类表中，实例通过原型链继承默认值
 24. **表达式语句**：支持将运算符表达式作为语句使用（如 `a << b`），结果被丢弃，用于运算符的副作用调用
 25. **Float64 类型工具**：`extend Float64` 后支持 `Float64.GetPI()` 获取圆周率、`Float64(value)` 类型转换
+26. **数组 for-in 遍历**：`for (item in array) { ... }` 支持遍历数组元素，底层通过 `__cangjie_iter` 运行时函数自动适配
 
 ## 构建与测试
 
@@ -851,9 +886,9 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（32 个）
+│   ├── *.cj                      #   基础语言特性测试（39 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
-│   ├── usages/                   #   综合应用案例（6 个）
+│   ├── usages/                   #   综合应用案例（9 个）
 │   └── diagnosis/                #   错误检测和诊断测试（4 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
