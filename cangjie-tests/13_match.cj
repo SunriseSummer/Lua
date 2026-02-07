@@ -20,9 +20,12 @@ func describeColor(c) {
 }
 
 // --- Assert describeColor results ---
-if (describeColor(Red) != "It is red") { println("FAIL: describeColor(Red) expected It is red, got ${describeColor(Red)}"); return () }
-if (describeColor(Green) != "It is green") { println("FAIL: describeColor(Green) expected It is green, got ${describeColor(Green)}"); return () }
-if (describeColor(Blue(200)) != "It is blue with value 200") { println("FAIL: describeColor(Blue(200)) expected It is blue with value 200, got ${describeColor(Blue(200))}"); return () }
+let redResult = describeColor(Red)
+if (redResult != "It is red") { println("FAIL: describeColor(Red) expected It is red, got ${redResult}"); return () }
+let greenResult = describeColor(Green)
+if (greenResult != "It is green") { println("FAIL: describeColor(Green) expected It is green, got ${greenResult}"); return () }
+let blueResult = describeColor(Blue(200))
+if (blueResult != "It is blue with value 200") { println("FAIL: describeColor(Blue(200)) expected It is blue with value 200, got ${blueResult}"); return () }
 
 // === Constant pattern matching ===
 func describeNumber(n) {
@@ -40,10 +43,14 @@ func describeNumber(n) {
 }
 
 // --- Assert describeNumber results ---
-if (describeNumber(0) != "zero") { println("FAIL: describeNumber(0) expected zero, got ${describeNumber(0)}"); return () }
-if (describeNumber(1) != "one") { println("FAIL: describeNumber(1) expected one, got ${describeNumber(1)}"); return () }
-if (describeNumber(42) != "the answer") { println("FAIL: describeNumber(42) expected the answer, got ${describeNumber(42)}"); return () }
-if (describeNumber(99) != "some number: 99") { println("FAIL: describeNumber(99) expected some number: 99, got ${describeNumber(99)}"); return () }
+let num0 = describeNumber(0)
+if (num0 != "zero") { println("FAIL: describeNumber(0) expected zero, got ${num0}"); return () }
+let num1 = describeNumber(1)
+if (num1 != "one") { println("FAIL: describeNumber(1) expected one, got ${num1}"); return () }
+let num42 = describeNumber(42)
+if (num42 != "the answer") { println("FAIL: describeNumber(42) expected the answer, got ${num42}"); return () }
+let num99 = describeNumber(99)
+if (num99 != "some number: 99") { println("FAIL: describeNumber(99) expected some number: 99, got ${num99}"); return () }
 
 // === Wildcard pattern with multi-line body ===
 enum Shape {
