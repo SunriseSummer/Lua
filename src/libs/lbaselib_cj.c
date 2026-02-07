@@ -809,6 +809,7 @@ int luaB_array_init (lua_State *L) {
   int size = (int)luaL_checkinteger(L, 1);
   int tbl, i;
   luaL_checkany(L, 2);
+  luaL_argcheck(L, size >= 0, 1, "size must be non-negative");
   lua_newtable(L);
   tbl = lua_gettop(L);
   for (i = 0; i < size; i++) {

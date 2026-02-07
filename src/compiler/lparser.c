@@ -3193,7 +3193,10 @@ static void skip_generic_params (LexState *ls) {
     while (depth > 0 && ls->t.token != TK_EOS) {
       if (ls->t.token == '<') depth++;
       else if (ls->t.token == '>') depth--;
-      else if (ls->t.token == TK_SHR) depth -= 2;  /* >> counts as two > */
+      else if (ls->t.token == TK_SHR) {  /* >> counts as two > */
+        depth -= 2;
+        if (depth < 0) depth = 0;
+      }
       if (depth > 0) luaX_next(ls);
     }
     luaX_next(ls);  /* skip final '>' or '>>' */
