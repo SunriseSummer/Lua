@@ -22,7 +22,7 @@
 - Array
 - Range
 - Unit
-- Option（`?Type` 语法糖）
+- Option
 
 ### 运算符
 
@@ -93,9 +93,9 @@
 - **递归**
 - **多返回值**
 
-### 面向对象
+### 自定义类型
 
-#### struct（值类型）
+#### struct
 ```cangjie
 struct Point {
   var x: Int64
@@ -110,71 +110,7 @@ struct Point {
 }
 ```
 
-#### 自动构造函数
-
-当 struct 或 class 的 `var` 字段有默认值但未定义显式 `init` 构造函数时，支持按字段顺序传参构造：
-
-```cangjie
-class A {
-  var x: Int64 = 0
-  var y: Int64 = 1
-}
-let a = A(2, 4)    // a.x == 2, a.y == 4
-
-struct B {
-  var x: Int64 = 0
-  var y: String = ""
-}
-let b = B(1, "hello")  // b.x == 1, b.y == "hello"
-```
-
-#### static func（静态成员函数）
-
-静态成员函数属于类型本身，不需要实例即可调用，也没有 `this`/`self` 参数：
-
-```cangjie
-struct MathUtils {
-  var value: Int64
-  init(v: Int64) { this.value = v }
-
-  static func add(a: Int64, b: Int64): Int64 {
-    return a + b
-  }
-
-  func addToValue(n: Int64): Int64 {
-    return add(value, n)  // 成员函数中可直接调用静态函数
-  }
-}
-
-MathUtils.add(3, 4)  // 通过类型名调用，结果为 7
-```
-
-#### operator func（操作符函数重载）
-
-在 struct/class/enum 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作。
-在 `interface` 和 `extend` 中也支持 `operator func` 声明和实现：
-
-```cangjie
-struct Vector {
-  var x: Int64
-  var y: Int64
-  init(x: Int64, y: Int64) { this.x = x; this.y = y }
-
-  operator func +(other: Vector): Vector {
-    return Vector(x + other.x, y + other.y)
-  }
-
-  operator func ==(other: Vector): Bool {
-    return x == other.x && y == other.y
-  }
-}
-
-let v = Vector(1, 2) + Vector(3, 4)  // Vector(4, 6)
-```
-
-支持的可重载运算符：`+`、`-`、`*`、`/`、`%`、`**`、`==`、`<`、`<=`、`<<`、`>>`、`&`、`|`、`~`、`#`
-
-#### class（引用类型）与继承
+#### class
 ```cangjie
 class Animal {
   var name: String
@@ -208,6 +144,89 @@ class Dog <: Animal {
 - **方法继承**：子类自动继承父类未重写的方法
 - **多态**：父类引用可调用子类重写的方法
 
+#### 隐式 this
+
+在 struct 和 class 的构造函数和成员函数中，引用成员变量时可以省略 `this.` 前缀：
+```cangjie
+struct Counter {
+  var count: Int64
+  init() {
+    count = 0        // 等价于 this.count = 0
+  }
+  func increment() {
+    count = count + 1  // 等价于 this.count = this.count + 1
+  }
+}
+```
+
+#### 实例化（构造函数调用）
+```cangjie
+let p = Point(3, 4)  // 调用 init
+let dog = Animal("Dog")
+```
+
+#### 自动构造函数
+
+当 struct 或 class 的 `var` 字段有默认值但未定义显式 `init` 构造函数时，支持按字段顺序传参构造：
+
+```cangjie
+class A {
+  var x: Int64 = 0
+  var y: Int64 = 1
+}
+let a = A(2, 4)    // a.x == 2, a.y == 4
+
+struct B {
+  var x: Int64 = 0
+  var y: String = ""
+}
+let b = B(1, "hello")  // b.x == 1, b.y == "hello"
+```
+
+#### 静态成员函数
+
+静态成员函数属于类型本身，不需要实例即可调用，也没有 `this`/`self` 参数：
+
+```cangjie
+struct MathUtils {
+  var value: Int64
+  init(v: Int64) { this.value = v }
+
+  static func add(a: Int64, b: Int64): Int64 {
+    return a + b
+  }
+
+  func addToValue(n: Int64): Int64 {
+    return add(value, n)  // 成员函数中可直接调用静态函数
+  }
+}
+
+MathUtils.add(3, 4)  // 通过类型名调用，结果为 7
+```
+
+#### 操作符函数重载
+
+在 struct/class/enum 中通过 `operator func` 重载操作符函数。
+**可重载操作符**：`+`、`-`、`*`、`/`、`%`、`**`、`==`、`<`、`<=`、`<<`、`>>`、`&`、`|`、`~`、`#`
+
+```cangjie
+struct Vector {
+  var x: Int64
+  var y: Int64
+  init(x: Int64, y: Int64) { this.x = x; this.y = y }
+
+  operator func +(other: Vector): Vector {
+    return Vector(x + other.x, y + other.y)
+  }
+
+  operator func ==(other: Vector): Bool {
+    return x == other.x && y == other.y
+  }
+}
+
+let v = Vector(1, 2) + Vector(3, 4)  // Vector(4, 6)
+```
+
 #### interface（接口）
 ```cangjie
 interface Printable {
@@ -234,38 +253,7 @@ extend Int64 <: Printable {
 }
 ```
 
-支持扩展的内置类型：`Int64`、`Float64`、`String`、`Bool`
-
-#### 隐式 this
-
-在 struct 和 class 的构造函数和成员函数中，引用成员变量时可以省略 `this.` 前缀：
-```cangjie
-struct Counter {
-  var count: Int64
-  init() {
-    count = 0        // 等价于 this.count = 0
-  }
-  func increment() {
-    count = count + 1  // 等价于 this.count = this.count + 1
-  }
-}
-```
-
-隐式 `this` 和显式 `this.` 可混合使用。
-
-#### 构造函数调用
-```cangjie
-let p = Point(3, 4)     // 自动调用 init
-let dog = Animal("Dog")
-```
-
-### 泛型
-
-- **泛型函数**：`func identity<T>(x: T): T { return x }`
-- **泛型 struct**：`struct Box<T> { var value: T; ... }`
-- **多类型参数**：`struct Pair<T, U> { ... }`
-- **泛型方法**
-- **类型参数推断**
+在 `interface` 和 `extend` 中也支持 `operator func` 声明或实现。
 
 ### 元组类型
 
@@ -376,6 +364,14 @@ let total = Yuan(100) + Yuan(200)  // Yuan(300)
 - **操作符重载**：在枚举中支持 `operator func` 重载运算符（`+`、`-`、`*`、`==` 等），使枚举实例支持算术和比较操作
 - **直接访问**：无命名冲突时可直接使用枚举项名字 `Red`，也可使用限定名 `Color.Red`
 
+### 泛型
+
+- **泛型函数**：`func identity<T>(x: T): T { return x }`
+- **泛型 struct**：`struct Box<T> { var value: T; ... }`
+- **多类型参数**：`struct Pair<T, U> { ... }`
+- **泛型方法**
+- **类型参数推断**
+
 ### Option 类型
 
 内建支持 `Option<T>` 类型，提供 `?Type` 语法糖：
@@ -467,6 +463,31 @@ func eval(e) {
 - **while-let 模式匹配**：`while (let Pattern <- expr) { ... }` 循环解构
 - **与逻辑表达式混合**：`if (let Some(v) <- expr && v > 0)` 或 `if (let Some(v) <- expr || fallback)`
 
+#### if-let 和 while-let
+
+```cangjie
+// if-let：解构 Option 值
+let opt = Some(42)
+if (let Some(v) <- opt) {
+  println("got: ${v}")    // got: 42
+}
+
+// 与 && 混合：模式匹配成功且额外条件满足
+if (let Some(v) <- opt && v > 10) {
+  println("v is ${v}, greater than 10")
+}
+
+// 与 || 混合：模式匹配成功或备选条件为真
+if (let Some(v) <- opt || fallbackCondition) {
+  println("entered")
+}
+
+// while-let：循环解构
+while (let Some(v) <- getNext()) {
+  println(v)
+}
+```
+
 ### 表达式求值
 
 #### if 表达式
@@ -527,31 +548,6 @@ func greet(name: String): String {
 ```cangjie
 let r = while (false) { println("unreachable") }  // r == nil
 let f = for (i in 0..0) { println(i) }             // f == nil
-```
-
-#### if-let 和 while-let
-
-```cangjie
-// if-let：解构 Option 值
-let opt = Some(42)
-if (let Some(v) <- opt) {
-  println("got: ${v}")    // got: 42
-}
-
-// 与 && 混合：模式匹配成功且额外条件满足
-if (let Some(v) <- opt && v > 10) {
-  println("v is ${v}, greater than 10")
-}
-
-// 与 || 混合：模式匹配成功或备选条件为真
-if (let Some(v) <- opt || fallbackCondition) {
-  println("entered")
-}
-
-// while-let：循环解构
-while (let Some(v) <- getNext()) {
-  println(v)
-}
 ```
 
 ### 多维数组与 Array 初始化
