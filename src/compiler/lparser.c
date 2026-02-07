@@ -1878,7 +1878,6 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         break;
       }
       case '[': {  /* '[' exp ']' or '[' exp '..' exp ']' (range) */
-        luaK_exp2anyregup(fs, v);
         luaX_next(ls);  /* skip '[' */
         {
           expdesc start_e;
@@ -1897,9 +1896,12 @@ static void suffixedexp (LexState *ls, expdesc *v) {
               /* Range assignment: arr[start..end] = values */
               expdesc rhs;
               luaX_next(ls);  /* skip '=' */
+              /* Build call: fn(arr, start, end, inclusive, values)
+              ** Load fn first at freereg, then resolve arr, then args. */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice_set"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
               base2 = fn_e.u.info;
+              /* Now resolve arr (v) into next register */
               luaK_exp2nextreg(fs, v);
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
@@ -1914,9 +1916,12 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             }
             else {
               /* Range read: arr[start..end] */
+              /* Build call: fn(arr, start, end, inclusive)
+              ** Load fn first at freereg, then resolve arr, then args. */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
               base2 = fn_e.u.info;
+              /* Now resolve arr (v) into next register */
               luaK_exp2nextreg(fs, v);
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
@@ -1930,6 +1935,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
           }
           else {
             /* Normal subscript: arr[expr] */
+            luaK_exp2anyregup(fs, v);
             luaK_exp2val(fs, &start_e);
             checknext(ls, ']');
             luaK_indexed(fs, v, &start_e);
