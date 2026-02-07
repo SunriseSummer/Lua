@@ -1973,10 +1973,6 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             /* Resolve arr (v) to a register first. This avoids register
             ** corruption when v is an indexed expression (e.g., m.data[1])
             ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
-            ** if fn were already loaded above the table register. */
-            /* Resolve arr (v) to a register first. This avoids register
-            ** corruption when v is an indexed expression (e.g., m.data[1])
-            ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
             ** if fn were already loaded above the table register.
             ** Strategy: put arr into nextreg, then fn, then swap them
             ** with OP_MOVE so fn is at base and arr is at base+1. */
@@ -5729,7 +5725,7 @@ static void exprstat (LexState *ls) {
       case '-': opr = OPR_SUB; break;
       case '*': opr = OPR_MUL; break;
       case '/': opr = OPR_DIV; break;
-      default: opr = OPR_ADD; break;  /* unreachable */
+      default: lua_assert(0); opr = OPR_ADD; break;
     }
     luaX_next(ls);  /* skip operator (+, -, etc.) */
     luaX_next(ls);  /* skip '=' (was consumed by lookahead) */
@@ -5890,7 +5886,7 @@ static void statlist_autoreturning (LexState *ls) {
               case '-': opr = OPR_SUB; break;
               case '*': opr = OPR_MUL; break;
               case '/': opr = OPR_DIV; break;
-              default: opr = OPR_ADD; break;
+              default: lua_assert(0); opr = OPR_ADD; break;
             }
             luaX_next(ls);  /* skip operator */
             luaX_next(ls);  /* skip '=' */
