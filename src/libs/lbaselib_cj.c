@@ -599,6 +599,128 @@ int luaB_tuple (lua_State *L) {
 
 
 /*
+** ============================================================
+** Function overloading support
+** ============================================================
+*/
+
+/* Dispatcher for overloaded functions.
+** Upvalue 1 = overload table { [nparams] = func, ... }
+** Selects the overload matching the number of arguments, or falls
+** back to the closest overload with more parameters (for defaults). */
+static int cangjie_overload_dispatch (lua_State *L) {
+  int nargs = lua_gettop(L);
+  /* Look up exact match first */
+  lua_pushinteger(L, nargs);
+  lua_gettable(L, lua_upvalueindex(1));
+  if (!lua_isnil(L, -1)) {
+    /* Found exact match - call it */
+    lua_insert(L, 1);  /* move function to bottom */
+    lua_call(L, nargs, LUA_MULTRET);
+    return lua_gettop(L);  /* all results */
+  }
+  lua_pop(L, 1);
+  /* No exact match: try to find an overload that can accept these args
+  ** (one with more params, relying on default values).
+  ** Iterate over the overload table to find the best match. */
+  {
+    int best_nparams = -1;
+    lua_pushnil(L);
+    while (lua_next(L, lua_upvalueindex(1)) != 0) {
+      if (lua_isinteger(L, -2)) {
+        int np = (int)lua_tointeger(L, -2);
+        if (np > nargs && (best_nparams < 0 || np < best_nparams)) {
+          best_nparams = np;
+        }
+      }
+      lua_pop(L, 1);  /* pop value, keep key */
+    }
+    if (best_nparams >= 0) {
+      lua_pushinteger(L, best_nparams);
+      lua_gettable(L, lua_upvalueindex(1));
+      lua_insert(L, 1);
+      lua_call(L, nargs, LUA_MULTRET);
+      return lua_gettop(L);
+    }
+    /* Also try overloads with fewer params (vararg or flexible matching) */
+    best_nparams = -1;
+    lua_pushnil(L);
+    while (lua_next(L, lua_upvalueindex(1)) != 0) {
+      if (lua_isinteger(L, -2)) {
+        int np = (int)lua_tointeger(L, -2);
+        if (np < nargs && (best_nparams < 0 || np > best_nparams)) {
+          best_nparams = np;
+        }
+      }
+      lua_pop(L, 1);
+    }
+    if (best_nparams >= 0) {
+      lua_pushinteger(L, best_nparams);
+      lua_gettable(L, lua_upvalueindex(1));
+      lua_insert(L, 1);
+      lua_call(L, nargs, LUA_MULTRET);
+      return lua_gettop(L);
+    }
+  }
+  return luaL_error(L, "no overload matches %d argument(s)", nargs);
+}
+
+/*
+** __cangjie_overload(old_value, new_func, new_nparams)
+** If old_value is nil, creates a new dispatcher with just new_func.
+** If old_value is already an overload dispatcher, adds new_func to it.
+** new_nparams is the parameter count passed explicitly by the compiler.
+** Returns the (updated) dispatcher.
+*/
+int luaB_overload (lua_State *L) {
+  int new_nparams;
+  /* arg 1 = old value, arg 2 = new function, arg 3 = nparams (int) */
+  new_nparams = (int)luaL_checkinteger(L, 3);
+
+  if (lua_isnil(L, 1)) {
+    /* First definition: create a new dispatcher with one entry */
+    int tbl;
+    lua_newtable(L);
+    tbl = lua_gettop(L);
+    lua_pushboolean(L, 1);
+    lua_setfield(L, tbl, "__overload");
+    lua_pushinteger(L, new_nparams);
+    lua_pushvalue(L, 2);
+    lua_settable(L, tbl);
+    lua_pushcclosure(L, cangjie_overload_dispatch, 1);
+    return 1;
+  }
+
+  /* Check if old value is already an overload dispatcher */
+  if (lua_isfunction(L, 1)) {
+    if (lua_getupvalue(L, 1, 1) != NULL) {
+      if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "__overload");
+        if (lua_toboolean(L, -1)) {
+          int tbl_idx;
+          lua_pop(L, 1);  /* pop marker */
+          tbl_idx = lua_gettop(L);  /* the overload table */
+          /* Add new overload */
+          lua_pushinteger(L, new_nparams);
+          lua_pushvalue(L, 2);
+          lua_settable(L, tbl_idx);
+          /* Return old dispatcher (now updated via upvalue) */
+          lua_pushvalue(L, 1);
+          return 1;
+        }
+        lua_pop(L, 1);  /* pop non-marker */
+      }
+      lua_pop(L, 1);  /* pop upvalue */
+    }
+  }
+
+  /* Old value exists but is not an overload dispatcher - just replace */
+  lua_pushvalue(L, 2);
+  return 1;
+}
+
+
+/*
 ** __cangjie_named_call(func, pos1, ..., posN, npos, named_table)
 ** Call 'func' with a mixture of positional and named arguments.
 ** Positional arguments come first, then named arguments are matched to

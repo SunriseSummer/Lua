@@ -3059,9 +3059,13 @@ static int funcname (LexState *ls, expdesc *v) {
 
 
 static void funcstat (LexState *ls, int line) {
-  /* funcstat -> FUNC NAME ['<' typeparams '>'] body */
+  /* funcstat -> FUNC NAME ['<' typeparams '>'] body
+  ** Supports function overloading: if NAME already has a value,
+  ** wraps both into an overload dispatcher via __cangjie_overload. */
+  FuncState *fs = ls->fs;
   expdesc v, b;
   TString *fname;
+  int func_nparams;
   luaX_next(ls);  /* skip FUNC */
   fname = str_checkname(ls);
   /* skip generic type parameters <T, U, ...> if present */
@@ -3075,11 +3079,41 @@ static void funcstat (LexState *ls, int line) {
     }
     luaX_next(ls);  /* skip final '>' */
   }
-  buildvar(ls, fname, &v);
-  check_readonly(ls, &v);
   body(ls, &b, 0, line);
-  luaK_storevar(ls->fs, &v, &b);
-  luaK_fixline(ls->fs, line);  /* definition "happens" in the first line */
+  /* Get parameter count from the just-parsed function prototype */
+  func_nparams = fs->f->p[fs->np - 1]->numparams;
+  /* Generate: fname = __cangjie_overload(fname, new_func, nparams) */
+  {
+    expdesc fn_ov, arg_old;
+    int base2, func_reg;
+    /* The closure from body() is already in a register (b.u.info) */
+    func_reg = b.u.info;
+    /* Ensure it's fixed in a register */
+    luaK_exp2nextreg(fs, &b);
+    func_reg = b.u.info;  /* update after exp2nextreg */
+    /* Now build the __cangjie_overload call */
+    buildvar(ls, luaX_newstring(ls, "__cangjie_overload", 18), &fn_ov);
+    luaK_exp2nextreg(fs, &fn_ov);
+    base2 = fn_ov.u.info;
+    /* Push old value of fname (may be nil if first definition) */
+    buildvar(ls, fname, &arg_old);
+    luaK_exp2nextreg(fs, &arg_old);
+    /* Copy closure from its saved register */
+    luaK_codeABC(fs, OP_MOVE, fs->freereg, func_reg, 0);
+    luaK_reserveregs(fs, 1);
+    /* Push parameter count */
+    luaK_int(fs, fs->freereg, func_nparams);
+    luaK_reserveregs(fs, 1);
+    init_exp(&fn_ov, VCALL,
+             luaK_codeABC(fs, OP_CALL, base2, 4, 2));
+    /* Store result back to fname */
+    buildvar(ls, fname, &v);
+    check_readonly(ls, &v);
+    luaK_storevar(fs, &v, &fn_ov);
+    /* Free all temp registers */
+    fs->freereg = cast_byte(func_reg);
+  }
+  luaK_fixline(fs, line);  /* definition "happens" in the first line */
 }
 
 
