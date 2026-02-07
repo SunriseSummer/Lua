@@ -1966,21 +1966,39 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             /* Range subscript: arr[start..end] or arr[start..=end] */
             int inclusive = (ls->t.token == TK_DOTDOTEQ);
             expdesc end_e, fn_e, incl_e;
-            int base2;
+            int base2, arr_reg;
             luaX_next(ls);  /* skip '..' or '..=' */
             expr(ls, &end_e);
             checknext(ls, ']');
+            /* Resolve arr (v) to a register first. This avoids register
+            ** corruption when v is an indexed expression (e.g., m.data[1])
+            ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
+            ** if fn were already loaded above the table register. */
+            /* Resolve arr (v) to a register first. This avoids register
+            ** corruption when v is an indexed expression (e.g., m.data[1])
+            ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
+            ** if fn were already loaded above the table register.
+            ** Strategy: put arr into nextreg, then fn, then swap them
+            ** with OP_MOVE so fn is at base and arr is at base+1. */
+            luaK_exp2nextreg(fs, v);  /* arr at freereg-1 */
             if (ls->t.token == '=') {
               /* Range assignment: arr[start..end] = values */
               expdesc rhs;
+              int arr_r;
               luaX_next(ls);  /* skip '=' */
-              /* Build call: fn(arr, start, end, inclusive, values)
-              ** Load fn first at freereg, then resolve arr, then args. */
+              arr_r = fs->freereg - 1;  /* register where arr landed */
+              /* Build call: fn(arr, start, end, inclusive, values) */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice_set"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              base2 = fn_e.u.info;
-              /* Now resolve arr (v) into next register */
-              luaK_exp2nextreg(fs, v);
+              /* Now: arr at arr_r, fn at arr_r+1. Swap: fn to arr_r, arr to arr_r+1 */
+              base2 = arr_r;
+              {
+                int fn_r = arr_r + 1;
+                int tmp_r = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);  /* tmp = arr */
+                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);   /* arr_slot = fn */
+                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);   /* fn_slot = arr */
+              }
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
@@ -1994,13 +2012,19 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             }
             else {
               /* Range read: arr[start..end] */
-              /* Build call: fn(arr, start, end, inclusive)
-              ** Load fn first at freereg, then resolve arr, then args. */
+              int arr_r;
+              arr_r = fs->freereg - 1;  /* register where arr landed */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              base2 = fn_e.u.info;
-              /* Now resolve arr (v) into next register */
-              luaK_exp2nextreg(fs, v);
+              /* Now: arr at arr_r, fn at arr_r+1. Swap them. */
+              base2 = arr_r;
+              {
+                int fn_r = arr_r + 1;
+                int tmp_r = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);
+                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);
+                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);
+              }
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
@@ -5722,9 +5746,23 @@ static void exprstat (LexState *ls) {
     /* Store back to the original lhs */
     luaK_storevar(fs, &v.v, &result);
   }
-  else {  /* stat -> func */
-    Instruction *inst;
+  else {  /* stat -> func or expression statement */
+    /* Continue parsing binary operators if present */
+    {
+      BinOpr op = getbinopr(ls->t.token);
+      while (op != OPR_NOBINOPR && priority[op].left > 0) {
+        expdesc e2;
+        BinOpr nextop;
+        int line2 = ls->linenumber;
+        luaX_next(ls);
+        luaK_infix(fs, op, &v.v);
+        nextop = subexpr(ls, &e2, priority[op].right);
+        luaK_posfix(fs, op, &v.v, &e2, line2);
+        op = nextop;
+      }
+    }
     if (v.v.k == VCALL) {
+      Instruction *inst;
       inst = &getinstruction(fs, &v.v);
       SETARG_C(*inst, 1);  /* call statement uses no results */
     }
