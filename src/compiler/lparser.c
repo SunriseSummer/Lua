@@ -3013,6 +3013,19 @@ static void letvarstat (LexState *ls, int isconst) {
     lu_byte defkind = isconst ? RDKCONST : VDKREG;
     do {
       TString *vname = str_checkname(ls);  /* get variable name */
+      /* Check for redefinition in the same scope */
+      {
+        int i;
+        int block_first = fs->bl ? fs->bl->nactvar : 0;
+        for (i = block_first; i < fs->nactvar + nvars; i++) {
+          Vardesc *existing = getlocalvardesc(fs, i);
+          if (existing->vd.name == vname) {
+            luaX_syntaxerror(ls, luaO_pushfstring(ls->L,
+                "variable '%s' already defined in this scope",
+                getstr(vname)));
+          }
+        }
+      }
       /* optional type annotation ': Type' - parse and validate */
       if (testnext(ls, ':'))
         skip_letvar_type(ls);
