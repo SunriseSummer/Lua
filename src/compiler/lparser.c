@@ -66,6 +66,7 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
+static BinOpr subexpr (LexState *ls, expdesc *v, int limit);
 static void skip_generic_params (LexState *ls);
 static void exp1 (LexState *ls);
 static void blockexpr (LexState *ls, expdesc *v, int line);
@@ -1876,11 +1877,61 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         fieldsel(ls, v);
         break;
       }
-      case '[': {  /* '[' exp ']' */
-        expdesc key;
+      case '[': {  /* '[' exp ']' or '[' exp '..' exp ']' (range) */
         luaK_exp2anyregup(fs, v);
-        yindex(ls, &key);
-        luaK_indexed(fs, v, &key);
+        luaX_next(ls);  /* skip '[' */
+        {
+          expdesc start_e;
+          /* Use subexpr with limit 9 so '..' (priority 9) is NOT consumed */
+          subexpr(ls, &start_e, 9);
+          if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ) {
+            /* Range subscript: arr[start..end] or arr[start..=end] */
+            int inclusive = (ls->t.token == TK_DOTDOTEQ);
+            expdesc end_e, fn_e, incl_e;
+            int base2;
+            luaX_next(ls);  /* skip '..' or '..=' */
+            expr(ls, &end_e);
+            checknext(ls, ']');
+            if (ls->t.token == '=') {
+              /* Range assignment: arr[start..end] = values */
+              expdesc rhs;
+              luaX_next(ls);  /* skip '=' */
+              buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice_set"), &fn_e);
+              luaK_exp2nextreg(fs, &fn_e);
+              base2 = fn_e.u.info;
+              luaK_exp2nextreg(fs, v);
+              luaK_exp2nextreg(fs, &start_e);
+              luaK_exp2nextreg(fs, &end_e);
+              init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
+              luaK_exp2nextreg(fs, &incl_e);
+              expr(ls, &rhs);
+              luaK_exp2nextreg(fs, &rhs);
+              init_exp(v, VCALL,
+                       luaK_codeABC(fs, OP_CALL, base2, 7, 1));
+              fs->freereg = cast_byte(base2);
+            }
+            else {
+              /* Range read: arr[start..end] */
+              buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice"), &fn_e);
+              luaK_exp2nextreg(fs, &fn_e);
+              base2 = fn_e.u.info;
+              luaK_exp2nextreg(fs, v);
+              luaK_exp2nextreg(fs, &start_e);
+              luaK_exp2nextreg(fs, &end_e);
+              init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
+              luaK_exp2nextreg(fs, &incl_e);
+              init_exp(v, VCALL,
+                       luaK_codeABC(fs, OP_CALL, base2, 5, 2));
+              fs->freereg = cast_byte(base2 + 1);
+            }
+          }
+          else {
+            /* Normal subscript: arr[expr] */
+            luaK_exp2val(fs, &start_e);
+            checknext(ls, ']');
+            luaK_indexed(fs, v, &start_e);
+          }
+        }
         break;
       }
       case ':': {  /* ':' NAME funcargs */
