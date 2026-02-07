@@ -797,3 +797,31 @@ int luaB_named_call (lua_State *L) {
   lua_call(L, total_params, LUA_MULTRET);
   return lua_gettop(L) - nargs;
 }
+
+
+/*
+** Array<Type>(size, init) constructor.
+** Creates a 0-based array table with __n = size.
+** If init is a function, calls init(i) for each index.
+** Otherwise uses init as the value for all elements.
+*/
+int luaB_array_init (lua_State *L) {
+  int size = (int)luaL_checkinteger(L, 1);
+  int tbl, i;
+  luaL_checkany(L, 2);
+  lua_newtable(L);
+  tbl = lua_gettop(L);
+  for (i = 0; i < size; i++) {
+    if (lua_isfunction(L, 2)) {
+      lua_pushvalue(L, 2);      /* push init function */
+      lua_pushinteger(L, i);    /* push index (0-based) */
+      lua_call(L, 1, 1);        /* call init(i) */
+    } else {
+      lua_pushvalue(L, 2);      /* push init value */
+    }
+    lua_rawseti(L, tbl, i);     /* arr[i] = value */
+  }
+  lua_pushinteger(L, size);
+  lua_setfield(L, tbl, "__n");
+  return 1;
+}

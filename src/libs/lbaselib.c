@@ -561,6 +561,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_overload", luaB_overload},
   {"__cangjie_setup_enum", luaB_setup_enum},
   {"__cangjie_tuple", luaB_tuple},
+  {"Array", luaB_array_init},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},

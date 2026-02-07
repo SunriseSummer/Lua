@@ -66,6 +66,7 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
+static void skip_generic_params (LexState *ls);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -1790,7 +1791,13 @@ static void primaryexp (LexState *ls, expdesc *v) {
       return;
     }
     case TK_NAME: {
+      TString *vname = ls->t.seminfo.ts;
       singlevar(ls, v);
+      /* Skip generic type params for Array<Type>(...) constructor calls */
+      if (ls->t.token == '<' && vname != NULL &&
+          strcmp(getstr(vname), "Array") == 0) {
+        skip_generic_params(ls);
+      }
       return;
     }
     case TK_THIS: {
@@ -3186,9 +3193,10 @@ static void skip_generic_params (LexState *ls) {
     while (depth > 0 && ls->t.token != TK_EOS) {
       if (ls->t.token == '<') depth++;
       else if (ls->t.token == '>') depth--;
+      else if (ls->t.token == TK_SHR) depth -= 2;  /* >> counts as two > */
       if (depth > 0) luaX_next(ls);
     }
-    luaX_next(ls);  /* skip final '>' */
+    luaX_next(ls);  /* skip final '>' or '>>' */
   }
 }
 
