@@ -81,48 +81,49 @@
 #define LUAI_DDEF	static
 
 /* core -- used by all */
-#include "lzio.c"
-#include "lctype.c"
-#include "lopcodes.c"
-#include "lmem.c"
-#include "lundump.c"
-#include "ldump.c"
-#include "lstate.c"
-#include "lgc.c"
-#include "llex.c"
-#include "lcode.c"
-#include "lparser.c"
-#include "ldebug.c"
-#include "lfunc.c"
-#include "lobject.c"
-#include "ltm.c"
-#include "lstring.c"
-#include "ltable.c"
-#include "ldo.c"
-#include "lvm.c"
-#include "lapi.c"
+#include "../core/runtime/lzio.c"
+#include "../core/object/lctype.c"
+#include "../core/runtime/lopcodes.c"
+#include "../core/memory/lmem.c"
+#include "../compiler/lundump.c"
+#include "../compiler/ldump.c"
+#include "../core/runtime/lstate.c"
+#include "../core/memory/lgc.c"
+#include "../compiler/llex.c"
+#include "../compiler/lcode.c"
+#include "../compiler/lparser.c"
+#include "../core/runtime/ldebug.c"
+#include "../core/runtime/lfunc.c"
+#include "../core/object/lobject.c"
+#include "../core/object/ltm.c"
+#include "../core/object/lstring.c"
+#include "../core/object/ltable.c"
+#include "../core/runtime/ldo.c"
+#include "../core/runtime/lvm.c"
+#include "../core/runtime/lapi.c"
 
 /* auxiliary library -- used by all */
-#include "lauxlib.c"
+#include "../libs/lauxlib.c"
 
 /* standard library  -- not used by luac */
 #ifndef MAKE_LUAC
-#include "lbaselib.c"
-#include "lcorolib.c"
-#include "ldblib.c"
-#include "liolib.c"
-#include "lmathlib.c"
-#include "loadlib.c"
-#include "loslib.c"
-#include "lstrlib.c"
-#include "ltablib.c"
-#include "lutf8lib.c"
-#include "linit.c"
+#include "../libs/lbaselib.c"
+#include "../libs/lbaselib_cj.c"
+#include "../libs/lcorolib.c"
+#include "../libs/ldblib.c"
+#include "../libs/liolib.c"
+#include "../libs/lmathlib.c"
+#include "../libs/loadlib.c"
+#include "../libs/loslib.c"
+#include "../libs/lstrlib.c"
+#include "../libs/ltablib.c"
+#include "../libs/lutf8lib.c"
+#include "../libs/linit.c"
 #endif
 
 /* test library -- used only for internal development */
 #if defined(LUA_DEBUG)
-#include "ltests.c"
+#include "../tests/ltests.c"
 #endif
 
 /* lua */

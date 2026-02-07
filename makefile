@@ -1,7 +1,18 @@
 # Developer's makefile for building Lua
-# see luaconf.h for further customization
+# see src/include/luaconf.h for further customization
 
 # == CHANGE THE SETTINGS BELOW TO SUIT YOUR ENVIRONMENT =======================
+
+# Source directories
+SRCDIR= src
+RUNTIME_DIR= $(SRCDIR)/core/runtime
+MEMORY_DIR= $(SRCDIR)/core/memory
+OBJECT_DIR= $(SRCDIR)/core/object
+COMPILER_DIR= $(SRCDIR)/compiler
+LIBS_DIR= $(SRCDIR)/libs
+APP_DIR= $(SRCDIR)/app
+TESTS_DIR= $(SRCDIR)/tests
+INCLUDE_DIR= $(SRCDIR)/include
 
 # Warnings valid for both C and C++
 CWARNSCPP= \
@@ -71,7 +82,7 @@ LOCAL = $(TESTS) $(CWARNS)
 # To enable Linux goodies, -DLUA_USE_LINUX
 # For C89, "-std=c89 -DLUA_USE_C89"
 # Note that Linux/Posix options are not compatible with C89
-MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX
+MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX -I$(INCLUDE_DIR) -I$(TESTS_DIR)
 MYLDFLAGS= -Wl,-E
 MYLIBS= -ldl
 
@@ -83,30 +94,40 @@ RANLIB= ranlib
 RM= rm -f
 
 
+# Build output directory
+BUILDDIR= build
 
 # == END OF USER SETTINGS. NO NEED TO CHANGE ANYTHING BELOW THIS LINE =========
 
 
 LIBS = -lm
 
-CORE_T=	liblua.a
-CORE_O=	lapi.o lcode.o lctype.o ldebug.o ldo.o ldump.o lfunc.o lgc.o llex.o \
-	lmem.o lobject.o lopcodes.o lparser.o lstate.o lstring.o ltable.o \
-	ltm.o lundump.o lvm.o lzio.o ltests.o
-AUX_O=	lauxlib.o
-LIB_O=	lbaselib.o ldblib.o liolib.o lmathlib.o loslib.o ltablib.o lstrlib.o \
-	lutf8lib.o loadlib.o lcorolib.o linit.o
+CORE_T=	$(BUILDDIR)/liblua.a
+CORE_O=	$(BUILDDIR)/lapi.o $(BUILDDIR)/lcode.o $(BUILDDIR)/lctype.o \
+	$(BUILDDIR)/ldebug.o $(BUILDDIR)/ldo.o $(BUILDDIR)/ldump.o \
+	$(BUILDDIR)/lfunc.o $(BUILDDIR)/lgc.o $(BUILDDIR)/llex.o \
+	$(BUILDDIR)/lmem.o $(BUILDDIR)/lobject.o $(BUILDDIR)/lopcodes.o \
+	$(BUILDDIR)/lparser.o $(BUILDDIR)/lstate.o $(BUILDDIR)/lstring.o \
+	$(BUILDDIR)/ltable.o $(BUILDDIR)/ltm.o $(BUILDDIR)/lundump.o \
+	$(BUILDDIR)/lvm.o $(BUILDDIR)/lzio.o $(BUILDDIR)/ltests.o
+AUX_O=	$(BUILDDIR)/lauxlib.o
+LIB_O=	$(BUILDDIR)/lbaselib.o $(BUILDDIR)/lbaselib_cj.o $(BUILDDIR)/ldblib.o \
+	$(BUILDDIR)/liolib.o $(BUILDDIR)/lmathlib.o $(BUILDDIR)/loslib.o \
+	$(BUILDDIR)/ltablib.o $(BUILDDIR)/lstrlib.o $(BUILDDIR)/lutf8lib.o \
+	$(BUILDDIR)/loadlib.o $(BUILDDIR)/lcorolib.o $(BUILDDIR)/linit.o
 
 LUA_T=	lua
-LUA_O=	lua.o
+LUA_O=	$(BUILDDIR)/lua.o
 
 
 ALL_T= $(CORE_T) $(LUA_T)
 ALL_O= $(CORE_O) $(LUA_O) $(AUX_O) $(LIB_O)
 ALL_A= $(CORE_T)
 
-all:	$(ALL_T)
-	touch all
+all:	$(BUILDDIR) $(ALL_T)
+
+$(BUILDDIR):
+	mkdir -p $(BUILDDIR)
 
 o:	$(ALL_O)
 
@@ -121,10 +142,10 @@ $(LUA_T): $(LUA_O) $(CORE_T)
 
 
 clean:
-	$(RM) $(ALL_T) $(ALL_O)
+	$(RM) -r $(BUILDDIR) $(LUA_T)
 
 depend:
-	@$(CC) $(CFLAGS) -MM *.c
+	@$(CC) $(CFLAGS) -MM $(RUNTIME_DIR)/*.c $(MEMORY_DIR)/*.c $(OBJECT_DIR)/*.c $(COMPILER_DIR)/*.c $(LIBS_DIR)/*.c $(APP_DIR)/*.c $(TESTS_DIR)/*.c
 
 echo:
 	@echo "CC = $(CC)"
@@ -137,83 +158,28 @@ echo:
 	@echo "MYLIBS = $(MYLIBS)"
 	@echo "DL = $(DL)"
 
-$(ALL_O): makefile ltests.h
+$(ALL_O): makefile $(TESTS_DIR)/ltests.h
 
-# DO NOT EDIT
-# automatically made with 'gcc -MM l*.c'
+# Compile rules for each source directory
+$(BUILDDIR)/%.o: $(RUNTIME_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
-lapi.o: lapi.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lstring.h \
- ltable.h lundump.h lvm.h
-lauxlib.o: lauxlib.c lprefix.h lua.h luaconf.h lauxlib.h llimits.h
-lbaselib.o: lbaselib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lcode.o: lcode.c lprefix.h lua.h luaconf.h lcode.h llex.h lobject.h \
- llimits.h lzio.h lmem.h lopcodes.h lparser.h ldebug.h lstate.h ltm.h \
- ldo.h lgc.h lstring.h ltable.h lvm.h lopnames.h
-lcorolib.o: lcorolib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lctype.o: lctype.c lprefix.h lctype.h lua.h luaconf.h llimits.h
-ldblib.o: ldblib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-ldebug.o: ldebug.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lcode.h llex.h lopcodes.h lparser.h \
- ldebug.h ldo.h lfunc.h lstring.h lgc.h ltable.h lvm.h
-ldo.o: ldo.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lopcodes.h \
- lparser.h lstring.h ltable.h lundump.h lvm.h
-ldump.o: ldump.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lgc.h ltable.h lundump.h
-lfunc.o: lfunc.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lgc.h
-lgc.o: lgc.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lgc.h lstring.h ltable.h
-linit.o: linit.c lprefix.h lua.h luaconf.h lualib.h lauxlib.h llimits.h
-liolib.o: liolib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-llex.o: llex.c lprefix.h lua.h luaconf.h lctype.h llimits.h ldebug.h \
- lstate.h lobject.h ltm.h lzio.h lmem.h ldo.h lgc.h llex.h lparser.h \
- lstring.h ltable.h
-lmathlib.o: lmathlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lmem.o: lmem.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h
-loadlib.o: loadlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lobject.o: lobject.c lprefix.h lua.h luaconf.h lctype.h llimits.h \
- ldebug.h lstate.h lobject.h ltm.h lzio.h lmem.h ldo.h lstring.h lgc.h \
- lvm.h
-lopcodes.o: lopcodes.c lprefix.h lopcodes.h llimits.h lua.h luaconf.h \
- lobject.h
-loslib.o: loslib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-lparser.o: lparser.c lprefix.h lua.h luaconf.h lcode.h llex.h lobject.h \
- llimits.h lzio.h lmem.h lopcodes.h lparser.h ldebug.h lstate.h ltm.h \
- ldo.h lfunc.h lstring.h lgc.h ltable.h
-lstate.o: lstate.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h llex.h \
- lstring.h ltable.h
-lstring.o: lstring.c lprefix.h lua.h luaconf.h ldebug.h lstate.h \
- lobject.h llimits.h ltm.h lzio.h lmem.h ldo.h lstring.h lgc.h
-lstrlib.o: lstrlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-ltable.o: ltable.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h lstring.h ltable.h lvm.h
-ltablib.o: ltablib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-ltests.o: ltests.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lauxlib.h lcode.h llex.h lopcodes.h \
- lparser.h lctype.h ldebug.h ldo.h lfunc.h lopnames.h lstring.h lgc.h \
- ltable.h lualib.h
-ltm.o: ltm.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h lstring.h ltable.h lvm.h
-lua.o: lua.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-lundump.o: lundump.c lprefix.h lua.h luaconf.h ldebug.h lstate.h \
- lobject.h llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lstring.h lgc.h \
- ltable.h lundump.h
-lutf8lib.o: lutf8lib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lvm.o: lvm.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lopcodes.h \
- lstring.h ltable.h lvm.h ljumptab.h
-lzio.o: lzio.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h
+$(BUILDDIR)/%.o: $(MEMORY_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILDDIR)/%.o: $(OBJECT_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILDDIR)/%.o: $(COMPILER_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILDDIR)/%.o: $(LIBS_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILDDIR)/%.o: $(APP_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILDDIR)/%.o: $(TESTS_DIR)/%.c | $(BUILDDIR)
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 # (end of Makefile)
