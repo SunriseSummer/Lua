@@ -1519,7 +1519,10 @@ static int has_named_args (LexState *ls) {
   }
   while (ch != EOZ) {
     if (ch == '(' || ch == '{' || ch == '[') depth++;
-    else if (ch == '}' || ch == ']') depth--;
+    else if (ch == '}' || ch == ']') {
+      depth--;
+      if (depth < 0) break;  /* left the call scope */
+    }
     else if (ch == ')') {
       if (depth <= 0) break;
       depth--;
