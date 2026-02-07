@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Auto-generated constructors for classes and structs
 // Validates auto-constructor field assignment, no-arg defaults, and explicit init
 
@@ -7,8 +9,8 @@ class A {
   var y: Int64 = 1
 }
 let a = A(2, 4)
-if (a.x != 2) { println("FAIL: a.x expected 2, got ${a.x}"); return () }
-if (a.y != 4) { println("FAIL: a.y expected 4, got ${a.y}"); return () }
+expectEq(a.x, 2, "a.x")
+expectEq(a.y, 4, "a.y")
 
 // --- Auto constructor for struct ---
 struct B {
@@ -16,12 +18,12 @@ struct B {
   var y: String = ""
 }
 let b = B(1, "hello")
-if (b.x != 1) { println("FAIL: b.x expected 1, got ${b.x}"); return () }
-if (b.y != "hello") { println("FAIL: b.y expected 'hello', got '${b.y}'"); return () }
+expectEq(b.x, 1, "b.x")
+expectEq(b.y, "hello", "b.y")
 
 // --- No args: fields remain unset (nil) ---
 let c = A()
-if (c.x != nil) { println("FAIL: c.x expected nil, got ${tostring(c.x)}"); return () }
+expectNil(c.x, "c.x")
 
 // --- Class with explicit init ---
 class C {
@@ -31,6 +33,8 @@ class C {
   }
 }
 let d = C(5)
-if (d.x != 10) { println("FAIL: d.x expected 10, got ${d.x}"); return () }
+expectEq(d.x, 10, "d.x")
 
-println("PASS: 22_auto_constructor")
+if (!__test_failed) {
+    println("PASS: 22_auto_constructor")
+}

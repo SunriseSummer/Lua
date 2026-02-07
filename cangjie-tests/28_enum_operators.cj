@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Enum Operator Overloading
 // Validates +, -, == operators on enums, toString, and combined operators with methods
 
@@ -40,18 +42,18 @@ enum Money {
 let m1 = Yuan(100)
 let m2 = Yuan(200)
 let m3 = m1 + m2
-if (m3.value() != 300) { println("FAIL: m3.value() expected 300, got ${m3.value()}"); return () }
+expectEq(m3.value(), 300, "m3.value()")
 
 // --- Test - operator ---
 let m4 = m3 - m1
-if (m4.value() != 200) { println("FAIL: m4.value() expected 200, got ${m4.value()}"); return () }
+expectEq(m4.value(), 200, "m4.value()")
 
 // --- Test == operator ---
 let m5 = Yuan(200)
 let eqTrue = m2 == m5
-if (eqTrue != true) { println("FAIL: m2==m5 expected true, got ${eqTrue}"); return () }
+expectTrue(eqTrue, "m2==m5")
 let eqFalse = m1 == m2
-if (eqFalse != false) { println("FAIL: m1==m2 expected false, got ${eqFalse}"); return () }
+expectFalse(eqFalse, "m1==m2")
 
 // --- Enum with toString operator ---
 enum Color {
@@ -70,7 +72,7 @@ enum Color {
 
 let c = Red
 let colorStr = tostring(c)
-if (colorStr != "Red") { println("FAIL: Color toString expected 'Red', got '${colorStr}'"); return () }
+expectEq(colorStr, "Red", "Color toString")
 
 // --- Enum with multiple operators and methods combined ---
 enum Vec2 {
@@ -100,7 +102,9 @@ enum Vec2 {
 let v1 = V(1, 2)
 let v2 = V(3, 4)
 let v3 = v1 + v2
-if (v3.x() != 4) { println("FAIL: Vec2 v3.x() expected 4, got ${v3.x()}"); return () }
-if (v3.y() != 6) { println("FAIL: Vec2 v3.y() expected 6, got ${v3.y()}"); return () }
+expectEq(v3.x(), 4, "Vec2 v3.x()")
+expectEq(v3.y(), 6, "Vec2 v3.y()")
 
-println("PASS: 28_enum_operators")
+if (!__test_failed) {
+    println("PASS: 28_enum_operators")
+}

@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: if-let and while-let pattern matching
 // Validates conditional pattern matching with Some/None, &&, ||, and while-let loops
 
@@ -9,18 +11,19 @@ if (let Some(v) <- opt1) {
   ifLetVal = v
   ifLetMatched = true
 }
-if (ifLetMatched != true) { println("FAIL: if-let Some(42) should match"); return () }
-if (ifLetVal != 42) { println("FAIL: if-let v expected 42, got ${ifLetVal}"); return () }
+expectTrue(ifLetMatched, "if-let Some(42) should match")
+expectEq(ifLetVal, 42, "if-let v")
 
 // --- if let with None ---
 let opt2 = None
 var elseHit = false
 if (let Some(v) <- opt2) {
-  println("FAIL: should not match None"); return ()
+  __test_failed = true
+  println("FAIL: should not match None")
 } else {
   elseHit = true
 }
-if (elseHit != true) { println("FAIL: else branch should be taken for None"); return () }
+expectTrue(elseHit, "else branch should be taken for None")
 
 // --- if-let with && logical condition (match and condition true) ---
 let opt3 = Some(42)
@@ -28,27 +31,29 @@ var andOk = false
 if (let Some(v) <- opt3 && v > 10) {
   andOk = true
 }
-if (andOk != true) { println("FAIL: && with v=42 > 10 should match"); return () }
+expectTrue(andOk, "&& with v=42 > 10 should match")
 
 // --- if-let with && logical condition (match but condition false) ---
 let opt4 = Some(3)
 var andFalse = false
 if (let Some(v) <- opt4 && v > 10) {
-  println("FAIL: && with v=3 > 10 should not match"); return ()
+  __test_failed = true
+  println("FAIL: && with v=3 > 10 should not match")
 } else {
   andFalse = true
 }
-if (andFalse != true) { println("FAIL: && false branch should be taken"); return () }
+expectTrue(andFalse, "&& false branch should be taken")
 
 // --- if-let with && but None ---
 let opt5 = None
 var andNoMatch = false
 if (let Some(v) <- opt5 && true) {
-  println("FAIL: && with None should not match"); return ()
+  __test_failed = true
+  println("FAIL: && with None should not match")
 } else {
   andNoMatch = true
 }
-if (andNoMatch != true) { println("FAIL: && no match branch should be taken"); return () }
+expectTrue(andNoMatch, "&& no match branch should be taken")
 
 // --- if-let with || (match succeeds) ---
 let opt6 = Some(5)
@@ -56,7 +61,7 @@ var orMatchOk = false
 if (let Some(v) <- opt6 || false) {
   orMatchOk = true
 }
-if (orMatchOk != true) { println("FAIL: || match should succeed"); return () }
+expectTrue(orMatchOk, "|| match should succeed")
 
 // --- if-let with || (no match but fallback true) ---
 let opt7 = None
@@ -64,17 +69,18 @@ var orFallback = false
 if (let Some(v) <- opt7 || true) {
   orFallback = true
 }
-if (orFallback != true) { println("FAIL: || fallback true should enter body"); return () }
+expectTrue(orFallback, "|| fallback true should enter body")
 
 // --- if-let with || (both false) ---
 let opt8 = None
 var orBothFalse = false
 if (let Some(v) <- opt8 || false) {
-  println("FAIL: || both false should not match"); return ()
+  __test_failed = true
+  println("FAIL: || both false should not match")
 } else {
   orBothFalse = true
 }
-if (orBothFalse != true) { println("FAIL: || both false else should be taken"); return () }
+expectTrue(orBothFalse, "|| both false else should be taken")
 
 // --- while let pattern matching ---
 var count = 3
@@ -90,6 +96,8 @@ var whileLetResult: String = ""
 while (let Some(v) <- getNext()) {
   whileLetResult = whileLetResult + tostring(v)
 }
-if (whileLetResult != "210") { println("FAIL: while-let expected '210', got '${whileLetResult}'"); return () }
+expectEq(whileLetResult, "210", "while-let result")
 
-println("PASS: 27_if_let_while_let")
+if (!__test_failed) {
+    println("PASS: 27_if_let_while_let")
+}

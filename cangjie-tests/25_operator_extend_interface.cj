@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Operator overloading via extend blocks and interfaces
 // Validates operator +, == on user-defined structs and interface syntax
 
@@ -24,12 +26,12 @@ extend Vec2 {
 let v1 = Vec2(1, 2)
 let v2 = Vec2(3, 4)
 let v3 = v1 + v2
-if (v3.x != 4) { println("FAIL: v3.x expected 4, got ${v3.x}"); return () }
-if (v3.y != 6) { println("FAIL: v3.y expected 6, got ${v3.y}"); return () }
+expectEq(v3.x, 4, "v3.x")
+expectEq(v3.y, 6, "v3.y")
 let eqFalse = v1 == v2
-if (eqFalse != false) { println("FAIL: v1==v2 expected false, got ${eqFalse}"); return () }
+expectFalse(eqFalse, "v1==v2")
 let eqTrue = v1 == Vec2(1, 2)
-if (eqTrue != true) { println("FAIL: v1==Vec2(1,2) expected true, got ${eqTrue}"); return () }
+expectTrue(eqTrue, "v1==Vec2(1,2)")
 
 // --- Operator func in extend for built-in type ---
 extend Int64 {
@@ -41,4 +43,6 @@ extend Int64 {
 // how Lua handles arithmetic on numbers. This is a known limitation.
 // The key test is that the syntax parses correctly.
 
-println("PASS: 25_operator_extend_interface")
+if (!__test_failed) {
+    println("PASS: 25_operator_extend_interface")
+}
