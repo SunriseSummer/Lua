@@ -462,28 +462,110 @@ func eval(e) {
 
 ## 构建与测试
 
+### 构建
+
+项目使用 GNU Make 构建系统，编译产物输出到 `build/` 目录。
+
 ```bash
-# 构建
+# 标准构建（生成 lua 可执行文件）
 make
 
-# 运行所有测试
-bash run_tests.sh
+# 带内部测试支持的构建（启用断言和调试信息）
+make TESTS='-DLUA_USER_H="ltests.h" -Og -g'
 
-# 运行单个仓颉文件
-./lua example.cj
+# 清理构建产物
+make clean
 ```
+
+构建成功后，`lua` 可执行文件生成在项目根目录下。
+
+### 运行
+
+```bash
+# 运行仓颉源文件
+./lua example.cj
+
+# 交互式模式
+./lua
+```
+
+### 测试
+
+```bash
+# 运行所有仓颉测试用例（包括基础测试、扩展特性、用法示例和诊断测试）
+bash run_tests.sh
+```
+
+测试脚本会自动发现并执行 `cangjie-tests/` 下所有子目录中的 `.cj` 测试文件，并汇总结果。
 
 ## 项目结构
 
-- `llex.c/h` - 词法分析器，定义仓颉关键字和运算符（`&&`、`||`、`!`、`**`、`^`、`&`、`|` 等），支持字符串插值和 `//`/`/* */` 注释
-- `lparser.c/h` - 语法分析器，实现仓颉语法到 Lua 字节码的编译（struct/class、enum、match、Lambda 表达式、函数类型、命名参数、continue 等）
-- `lbaselib.c` - 基础运行时库，包含类/结构体构造支持、类型扩展、继承链、枚举支持和模式匹配
-- `cangjie-tests/` - 仓颉语言特性测试用例（严格仓颉语法，18 个测试）
-- `cangjie-tests/ext-features/` - 融合 Lua 动态特性的扩展测试（仓颉语言超集，4 个测试）
-- `cangjie-tests/usages/` - 综合应用案例（4 个测试）
-- `cangjie-tests/diagnosis/` - 错误检测和诊断测试（2 个测试，共 23 个错误场景）
-- `run_tests.sh` - 测试运行脚本，自动执行所有测试目录
-- `lvm.c` - Lua 虚拟机，执行编译后的字节码
+```
+.
+├── makefile                      # 构建脚本
+├── run_tests.sh                  # 测试运行脚本
+├── readme.md                     # 项目文档
+├── src/                          # 源代码目录
+│   ├── core/                     # Lua 核心引擎
+│   │   ├── runtime/              # 运行时执行引擎
+│   │   │   ├── lapi.c            #   C API 接口
+│   │   │   ├── ldebug.c          #   调试接口与钩子
+│   │   │   ├── ldo.c             #   函数调用与栈管理
+│   │   │   ├── lfunc.c           #   函数原型与闭包
+│   │   │   ├── lopcodes.c        #   操作码定义
+│   │   │   ├── lstate.c          #   全局状态与线程状态
+│   │   │   ├── lvm.c             #   虚拟机执行引擎
+│   │   │   └── lzio.c            #   缓冲流 I/O
+│   │   ├── memory/               # 内存管理
+│   │   │   ├── lgc.c             #   垃圾收集器
+│   │   │   └── lmem.c            #   内存分配器
+│   │   └── object/               # 对象与类型系统
+│   │       ├── lctype.c          #   字符类型工具
+│   │       ├── lobject.c         #   对象/值操作
+│   │       ├── lstring.c         #   字符串驻留
+│   │       ├── ltable.c          #   表（哈希表）实现
+│   │       └── ltm.c             #   元方法（标签方法）
+│   ├── compiler/                 # 编译器
+│   │   ├── lcode.c               #   代码生成器
+│   │   ├── ldump.c               #   字节码序列化
+│   │   ├── llex.c                #   词法分析器（支持仓颉关键字、运算符、字符串插值）
+│   │   ├── lparser.c             #   语法分析器（支持仓颉语法：struct/class/enum/match/lambda 等）
+│   │   └── lundump.c             #   字节码反序列化
+│   ├── libs/                     # 标准库与运行时库
+│   │   ├── lauxlib.c             #   辅助库
+│   │   ├── lbaselib.c            #   基础库（Lua 标准函数）
+│   │   ├── lbaselib_cj.c         #   仓颉运行时支持（类/结构体/枚举/元组/继承/模式匹配）
+│   │   ├── lcorolib.c            #   协程库
+│   │   ├── ldblib.c              #   调试库
+│   │   ├── linit.c               #   库初始化
+│   │   ├── liolib.c              #   I/O 库
+│   │   ├── lmathlib.c            #   数学库
+│   │   ├── loadlib.c             #   动态加载库
+│   │   ├── loslib.c              #   操作系统库
+│   │   ├── lstrlib.c             #   字符串库
+│   │   ├── ltablib.c             #   表操作库
+│   │   └── lutf8lib.c            #   UTF-8 库
+│   ├── include/                  # 头文件
+│   │   ├── lua.h                 #   Lua 公共 API
+│   │   ├── luaconf.h             #   编译配置
+│   │   ├── lualib.h              #   标准库接口
+│   │   ├── lauxlib.h             #   辅助库接口
+│   │   ├── lbaselib_cj.h         #   仓颉运行时接口
+│   │   └── ...                   #   其他内部头文件
+│   ├── app/                      # 应用程序
+│   │   ├── lua.c                 #   Lua/仓颉解释器入口
+│   │   └── onelua.c              #   单文件编译版本
+│   └── tests/                    # 内部测试支持
+│       ├── ltests.c              #   内部测试框架
+│       └── ltests.h              #   测试头文件
+├── cangjie-tests/                # 仓颉语言测试用例
+│   ├── *.cj                      #   基础语言特性测试（18 个）
+│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（4 个）
+│   ├── usages/                   #   综合应用案例（4 个）
+│   └── diagnosis/                #   错误检测和诊断测试（2 个，23 个错误场景）
+├── testes/                       # Lua 原生测试套件
+└── manual/                       # Lua 参考手册
+```
 
 ## 参考
 
