@@ -22,6 +22,7 @@
 - Array
 - Range
 - Unit
+- Option（`?Type` 语法糖）
 
 ### 运算符
 
@@ -38,6 +39,7 @@
   - `!`: 按位求反，也支持 Lua 风格的 `~`
   - `<<`: 循环左移
   - `>>`: 循环右移
+- **空值合并**：`??`（Option 类型的默认值运算符）
 
 ### 字符串
 
@@ -108,6 +110,24 @@ struct Point {
 }
 ```
 
+#### 自动构造函数
+
+当 struct 或 class 的 `var` 字段有默认值但未定义显式 `init` 构造函数时，支持按字段顺序传参构造：
+
+```cangjie
+class A {
+  var x: Int64 = 0
+  var y: Int64 = 1
+}
+let a = A(2, 4)    // a.x == 2, a.y == 4
+
+struct B {
+  var x: Int64 = 0
+  var y: String = ""
+}
+let b = B(1, "hello")  // b.x == 1, b.y == "hello"
+```
+
 #### static func（静态成员函数）
 
 静态成员函数属于类型本身，不需要实例即可调用，也没有 `this`/`self` 参数：
@@ -131,7 +151,8 @@ MathUtils.add(3, 4)  // 通过类型名调用，结果为 7
 
 #### operator func（操作符函数重载）
 
-在 struct/class 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作：
+在 struct/class 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作。
+在 `interface` 和 `extend` 中也支持 `operator func` 声明和实现：
 
 ```cangjie
 struct Vector {
@@ -339,6 +360,32 @@ enum Expr {
 - **成员函数**：枚举类型内可定义 `func`，通过 `this` 引用当前枚举实例
 - **直接访问**：无命名冲突时可直接使用枚举项名字 `Red`，也可使用限定名 `Color.Red`
 
+### Option 类型
+
+内建支持 `Option<T>` 类型，提供 `?Type` 语法糖：
+
+```cangjie
+// ?Int64 等价于 Option<Int64>
+let a: ?Int64 = Some(42)
+let b: ?Int64 = None
+
+// 方法
+a.isSome()          // true
+a.isNone()          // false
+a.getOrThrow()      // 42（None 时抛错）
+b.getOrDefault({ => 0 })   // 0（参数为 () -> T 类型函数）
+
+// 模式匹配
+match (a) {
+  case Some(v) => println(v)
+  case None => println("none")
+}
+
+// 空值合并运算符 ??
+let x = a ?? 0      // 42（从 Some 中取值）
+let y = b ?? 99     // 99（None 使用默认值）
+```
+
 ### 模式匹配
 
 ```cangjie
@@ -400,6 +447,40 @@ func eval(e) {
 - **参数绑定**：在枚举/元组模式中绑定解构值到局部变量
 - **多分支**：按顺序匹配，命中第一个匹配的分支
 - **无大括号语法**：`=>` 后直接写多行语句，由下一个 `case` 或 `}` 分隔
+- **if-let 模式匹配**：`if (let Pattern <- expr) { ... }` 解构并判断
+- **while-let 模式匹配**：`while (let Pattern <- expr) { ... }` 循环解构
+
+#### if-let 和 while-let
+
+```cangjie
+// if-let：解构 Option 值
+let opt = Some(42)
+if (let Some(v) <- opt) {
+  println("got: ${v}")    // got: 42
+}
+
+// while-let：循环解构
+while (let Some(v) <- getNext()) {
+  println(v)
+}
+```
+
+### 多维数组与 Array 初始化
+
+```cangjie
+// 多维数组
+let matrix = [[1, 2, 3], [4, 5, 6]]
+println(matrix[0][1])    // 2
+
+// Array 初始化（指定大小和初始值）
+let zeros = Array<Int64>(5, 0)           // [0, 0, 0, 0, 0]
+let squares = Array<Int64>(4, { i: Int64 => i * i })  // [0, 1, 4, 9]
+
+// 多维 Array 初始化
+let grid = Array<Array<Int64>>(3, { i: Int64 =>
+  Array<Int64>(3, { j: Int64 => i * 3 + j })
+})
+```
 
 ### 集合类型
 
@@ -490,6 +571,8 @@ func eval(e) {
 - **let 缺少初始化**：`let` 声明必须提供初始值
 - **循环外 break**：`break` 只能在循环体内使用
 - **循环外 continue**：`continue` 只能在循环体内使用
+- **同名变量重定义**：同一作用域内重复定义同名变量（不同作用域允许遮蔽）
+- **同名类型重定义**：同一作用域内重复定义同名 struct/class/enum/interface
 - **运行时类型错误**：通过 Lua VM 检测算术、比较等操作的类型不匹配
 
 ## 使用限制
@@ -611,10 +694,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（21 个）
+│   ├── *.cj                      #   基础语言特性测试（28 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（4 个）
 │   ├── usages/                   #   综合应用案例（4 个）
-│   └── diagnosis/                #   错误检测和诊断测试（2 个，23 个错误场景）
+│   └── diagnosis/                #   错误检测和诊断测试（4 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```

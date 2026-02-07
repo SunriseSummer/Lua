@@ -11,9 +11,9 @@ println(b.isNone())   // true
 // getOrThrow
 println(a.getOrThrow())  // 42
 
-// getOrDefault
-println(a.getOrDefault(0))  // 42
-println(b.getOrDefault(0))  // 0
+// getOrDefault (takes () -> T function)
+println(a.getOrDefault({ => 0 }))  // 42
+println(b.getOrDefault({ => 0 }))  // 0
 
 // Pattern matching with Option
 match (a) {
