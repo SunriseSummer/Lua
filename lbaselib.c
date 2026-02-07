@@ -1059,6 +1059,64 @@ static int luaB_tostring (lua_State *L) {
 }
 
 
+/*
+** __cangjie_named_call(func, pos1, ..., posN, npos, named_table)
+** Call 'func' with positional args and named args mapped to correct
+** parameter positions using the function's debug info (parameter names).
+** - func: the function to call
+** - pos1..posN: positional arguments
+** - npos: number of positional arguments
+** - named_table: table { paramName = value, ... }
+*/
+static int luaB_named_call (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int npos, total_params, i;
+  lua_Debug ar;
+
+  /* Stack: func, pos1, ..., posN, npos, named_table */
+  if (nargs < 3) {
+    return luaL_error(L, "__cangjie_named_call: requires at least 3 arguments");
+  }
+
+  npos = (int)lua_tointeger(L, nargs - 1);
+
+  /* Get function's parameter count using debug API */
+  lua_pushvalue(L, 1);  /* push func for getinfo */
+  if (!lua_getinfo(L, ">u", &ar)) {
+    return luaL_error(L, "__cangjie_named_call: cannot get function info");
+  }
+  total_params = ar.nparams;
+
+  /* Build the call: push func, then all args in parameter order */
+  lua_pushvalue(L, 1);  /* push func */
+
+  for (i = 1; i <= total_params; i++) {
+    if (i <= npos) {
+      /* Use the positional argument (at stack position 1 + i) */
+      lua_pushvalue(L, 1 + i);
+    }
+    else {
+      /* Look up this parameter's name and find it in named_table */
+      const char *pname;
+      lua_pushvalue(L, 1);  /* push func on top for lua_getlocal */
+      pname = lua_getlocal(L, NULL, i);
+      lua_pop(L, 1);  /* pop the func we pushed */
+      if (pname != NULL) {
+        /* Look up pname in the named_table (last argument) */
+        lua_getfield(L, nargs, pname);
+      }
+      else {
+        lua_pushnil(L);
+      }
+    }
+  }
+
+  /* Call func with total_params arguments, returning all results */
+  lua_call(L, total_params, LUA_MULTRET);
+  return lua_gettop(L) - nargs;
+}
+
+
 static const luaL_Reg base_funcs[] = {
   {"assert", luaB_assert},
   {"collectgarbage", luaB_collectgarbage},
@@ -1087,6 +1145,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_is_instance", luaB_is_instance},
   {"__cangjie_match_tag", luaB_match_tag},
   {"__cangjie_match_tuple", luaB_match_tuple},
+  {"__cangjie_named_call", luaB_named_call},
   {"__cangjie_setup_enum", luaB_setup_enum},
   {"__cangjie_tuple", luaB_tuple},
   {"tonumber", luaB_tonumber},

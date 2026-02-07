@@ -1125,6 +1125,13 @@ static void parlist (LexState *ls) {
 #define MAX_DEFAULT_PARAMS 32
   int def_param[MAX_DEFAULT_PARAMS];     /* parameter index (0-based) */
   expdesc def_val[MAX_DEFAULT_PARAMS];   /* default value expression */
+  int def_is_complex[MAX_DEFAULT_PARAMS]; /* 1 if default needs deferred parse */
+  /* Saved lexer state for deferred parsing of complex defaults */
+  const char *def_saved_p[MAX_DEFAULT_PARAMS];
+  size_t def_saved_n[MAX_DEFAULT_PARAMS];
+  int def_saved_current[MAX_DEFAULT_PARAMS];
+  Token def_saved_token[MAX_DEFAULT_PARAMS];
+  int def_saved_line[MAX_DEFAULT_PARAMS];
   int ndef = 0;          /* number of params with defaults */
   if (ls->t.token != ')') {  /* is 'parlist' not empty? */
     do {
@@ -1177,45 +1184,77 @@ static void parlist (LexState *ls) {
               luaX_syntaxerror(ls, "too many parameters with default values");
             }
             def_param[ndef] = nparams;
-            /* Parse the default value as a simple constant expression */
+            /* Parse the default value expression */
             switch (ls->t.token) {
               case TK_INT:
                 init_exp(&def_val[ndef], VKINT, 0);
                 def_val[ndef].u.ival = ls->t.seminfo.i;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_FLT:
                 init_exp(&def_val[ndef], VKFLT, 0);
                 def_val[ndef].u.nval = ls->t.seminfo.r;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_STRING:
                 init_exp(&def_val[ndef], VKSTR, 0);
                 def_val[ndef].u.strval = ls->t.seminfo.ts;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_TRUE:
                 init_exp(&def_val[ndef], VTRUE, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_FALSE:
                 init_exp(&def_val[ndef], VFALSE, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_NIL:
                 init_exp(&def_val[ndef], VNIL, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               default: {
-                /* For complex expressions, parse and discard */
-                expdesc defval;
-                expr(ls, &defval);
+                /* Complex expression (lambda, function call, etc.)
+                ** Save lexer state for deferred parsing after register setup */
+                def_is_complex[ndef] = 1;
+                def_saved_p[ndef] = ls->z->p;
+                def_saved_n[ndef] = ls->z->n;
+                def_saved_current[ndef] = ls->current;
+                def_saved_token[ndef] = ls->t;
+                def_saved_line[ndef] = ls->linenumber;
+                init_exp(&def_val[ndef], VNIL, 0);  /* placeholder */
+                /* Skip over the expression tokens without parsing */
+                {
+                  int depth = 0;
+                  while (ls->t.token != TK_EOS) {
+                    if (ls->t.token == '(' || ls->t.token == '{' ||
+                        ls->t.token == '[') {
+                      depth++;
+                    }
+                    else if (ls->t.token == ')' || ls->t.token == '}' ||
+                             ls->t.token == ']') {
+                      if (depth <= 0) break;
+                      depth--;
+                    }
+                    else if (ls->t.token == ',' && depth == 0) {
+                      break;  /* next parameter */
+                    }
+                    luaX_next(ls);
+                  }
+                }
+                ndef++;
                 break;
               }
             }
@@ -1269,7 +1308,44 @@ static void parlist (LexState *ls) {
       /* Patch false-list to here (default assignment) */
       luaK_patchtohere(fs, cond_e.f);
       /* Default value assignment: R[reg] = default */
-      defv = def_val[i];
+      if (def_is_complex[i]) {
+        /* Complex default: restore lexer state and parse expression now.
+        ** At this point registers are properly set up (freereg > nparams),
+        ** so emitted code (closures, calls, etc.) won't conflict. */
+        const char *cur_p = ls->z->p;
+        size_t cur_n = ls->z->n;
+        int cur_current = ls->current;
+        Token cur_token = ls->t;
+        int cur_line = ls->linenumber;
+        /* Restore to saved position */
+        ls->z->p = def_saved_p[i];
+        ls->z->n = def_saved_n[i];
+        ls->current = def_saved_current[i];
+        ls->t = def_saved_token[i];
+        ls->linenumber = def_saved_line[i];
+        /* Parse the default value expression */
+        expr(ls, &defv);
+        /* Save current position (after parsing) for continuation */
+        {
+          const char *after_p = ls->z->p;
+          size_t after_n = ls->z->n;
+          int after_current = ls->current;
+          Token after_token = ls->t;
+          int after_line = ls->linenumber;
+          /* Restore the original lexer state (continue parsing from where
+          ** we were before the preamble) */
+          ls->z->p = cur_p;
+          ls->z->n = cur_n;
+          ls->current = cur_current;
+          ls->t = cur_token;
+          ls->linenumber = cur_line;
+          (void)after_p; (void)after_n; (void)after_current;
+          (void)after_token; (void)after_line;
+        }
+      }
+      else {
+        defv = def_val[i];
+      }
       init_exp(&var_e, VLOCAL, reg);
       var_e.u.var.ridx = cast_byte(reg);
       var_e.u.var.vidx = cast(short, firstparam + def_param[i]);
@@ -1408,6 +1484,99 @@ static int explist (LexState *ls, expdesc *v) {
 }
 
 
+/*
+** Check if the current argument list contains named parameters.
+** Scans raw characters (without consuming tokens) to detect 'NAME :' pattern
+** after a comma in the argument list.
+*/
+static int has_named_args (LexState *ls) {
+  const char *saved_p = ls->z->p;
+  size_t saved_n = ls->z->n;
+  int saved_current = ls->current;
+  int depth = 0;
+  int ch = ls->current;
+  int found = 0;
+  /* Special case: if the CURRENT token is TK_NAME and ls->current is ':'
+  ** (or whitespace before ':'), the first argument is a named arg */
+  if (ls->t.token == TK_NAME) {
+    int tc = ch;
+    const char *tp = ls->z->p;
+    size_t tn = ls->z->n;
+    /* Skip whitespace */
+    while ((tc == ' ' || tc == '\t') && tn > 0) {
+      tc = *(tp); tp++; tn--;
+    }
+    if (tc == ':') {
+      /* Make sure it's not '::' */
+      if (tn > 0 && *tp != ':') {
+        found = 1;
+        ls->z->p = saved_p;
+        ls->z->n = saved_n;
+        ls->current = saved_current;
+        return found;
+      }
+    }
+  }
+  while (ch != EOZ) {
+    if (ch == '(' || ch == '{' || ch == '[') depth++;
+    else if (ch == '}' || ch == ']') depth--;
+    else if (ch == ')') {
+      if (depth <= 0) break;
+      depth--;
+    }
+    else if (ch == ',' && depth == 0) {
+      /* After comma, skip whitespace and check for NAME ':' */
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while ((ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') && ls->z->n > 0) {
+        ch = *(ls->z->p); ls->z->p++; ls->z->n--;
+      }
+      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+        /* Scan past the identifier */
+        while (ls->z->n > 0) {
+          char nc = *(ls->z->p);
+          if (!((nc >= 'a' && nc <= 'z') || (nc >= 'A' && nc <= 'Z') ||
+                (nc >= '0' && nc <= '9') || nc == '_'))
+            break;
+          ls->z->p++; ls->z->n--;
+        }
+        /* Skip whitespace */
+        while (ls->z->n > 0 && (*(ls->z->p) == ' ' || *(ls->z->p) == '\t')) {
+          ls->z->p++; ls->z->n--;
+        }
+        /* Check for ':' NOT followed by ':' (which would be '::') */
+        if (ls->z->n > 0 && *(ls->z->p) == ':') {
+          if (ls->z->n > 1 && *(ls->z->p + 1) != ':') {
+            found = 1;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+    else if (ch == '"' || ch == '\'') {
+      int delim = ch;
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while (ch != delim && ch != EOZ) {
+        if (ch == '\\') {
+          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+        }
+        if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+        else break;
+      }
+    }
+    if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+    else break;
+  }
+  ls->z->p = saved_p;
+  ls->z->n = saved_n;
+  ls->current = saved_current;
+  return found;
+}
+
+
 static void funcargs (LexState *ls, expdesc *f) {
   FuncState *fs = ls->fs;
   expdesc args;
@@ -1418,6 +1587,115 @@ static void funcargs (LexState *ls, expdesc *f) {
       luaX_next(ls);
       if (ls->t.token == ')')  /* arg list is empty? */
         args.k = VVOID;
+      else if (has_named_args(ls)) {
+        /*
+        ** Named argument call detected.
+        ** Compile as: __cangjie_named_call(func, pos1, ..., posN, npos, named_table)
+        ** The runtime helper uses the function's debug info to map named
+        ** args to correct parameter positions.
+        **
+        ** Register layout: f is at base_reg (set by suffixedexp).
+        ** We need: helper at base_reg, f at base_reg+1, args at base_reg+2+.
+        ** Strategy: save f to temp, load helper to base, push f, push args.
+        */
+        expdesc helper_fn;
+        int npos = 0;
+        int base_reg = f->u.info;  /* f is VNONRELOC from suffixedexp */
+        int helper_base;
+
+        /* Step 1: Move f to a temp register (freereg) via MOVE */
+        luaK_codeABC(fs, OP_MOVE, fs->freereg, base_reg, 0);
+        {
+          int f_saved_reg = fs->freereg;
+          luaK_reserveregs(fs, 1);  /* freereg++ */
+
+          /* Step 2: Load helper into base_reg (overwrite f's slot) */
+          buildvar(ls, luaX_newstring(ls, "__cangjie_named_call", 20),
+                   &helper_fn);
+          /* Use exp2anyreg then MOVE to target base_reg */
+          {
+            int hr = luaK_exp2anyreg(fs, &helper_fn);
+            if (hr != base_reg) {
+              luaK_codeABC(fs, OP_MOVE, base_reg, hr, 0);
+            }
+          }
+          helper_base = base_reg;
+
+          /* Reset freereg to base_reg + 1, since we only need the helper
+          ** at base_reg and everything else will be pushed after it */
+          fs->freereg = cast_byte(base_reg + 1);
+
+          /* Step 3: Push saved f as arg 1 */
+          luaK_codeABC(fs, OP_MOVE, fs->freereg, f_saved_reg, 0);
+          luaK_reserveregs(fs, 1);
+
+          /* Step 4: Parse and push positional args */
+          while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+            if (ls->t.token == TK_NAME && luaX_lookahead(ls) == ':') {
+              break;
+            }
+            {
+              expdesc arg;
+              expr(ls, &arg);
+              luaK_exp2nextreg(fs, &arg);
+              npos++;
+            }
+            if (!testnext(ls, ',')) break;
+          }
+
+          /* Step 5: Emit npos count */
+          {
+            expdesc npos_exp;
+            init_exp(&npos_exp, VKINT, 0);
+            npos_exp.u.ival = npos;
+            luaK_exp2nextreg(fs, &npos_exp);
+          }
+
+          /* Step 6: Build named args table */
+          {
+            int tab_reg = fs->freereg;
+            int pc2 = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+            luaK_code(fs, 0);
+            luaK_reserveregs(fs, 1);
+            luaK_settablesize(fs, pc2, tab_reg, 0, 0);
+
+            while (ls->t.token == TK_NAME) {
+              int next_is_colon;
+              if (ls->lookahead.token != TK_EOS) {
+                next_is_colon = (ls->lookahead.token == ':');
+              }
+              else {
+                next_is_colon = (luaX_lookahead(ls) == ':');
+              }
+              if (!next_is_colon) break;
+
+              {
+                TString *pname = ls->t.seminfo.ts;
+                expdesc tab_ref, key, val;
+                luaX_next(ls);
+                luaX_next(ls);
+                init_exp(&tab_ref, VNONRELOC, tab_reg);
+                luaK_exp2anyregup(fs, &tab_ref);
+                codestring(&key, pname);
+                luaK_indexed(fs, &tab_ref, &key);
+                expr(ls, &val);
+                luaK_storevar(fs, &tab_ref, &val);
+                testnext(ls, ',');
+              }
+            }
+          }
+
+          check_match(ls, ')', '(', line);
+
+          /* Step 7: Emit the call */
+          nparams = fs->freereg - (helper_base + 1);
+          init_exp(f, VCALL,
+                   luaK_codeABC(fs, OP_CALL, helper_base, nparams + 1, 2));
+          luaK_fixline(fs, line);
+          fs->freereg = cast_byte(helper_base + 1);
+        }
+        return;
+      }
       else {
         explist(ls, &args);
         if (hasmultret(args.k))
@@ -1620,12 +1898,20 @@ static int scan_brace_block (LexState *ls, int mode) {
   int depth = 0;
   int ch = ls->current;
   int found = 0;
+  int prev_was_close = 0;  /* tracks if previous token ended an expression */
   while (ch != EOZ) {
-    if (ch == '{' || ch == '(' || ch == '[') depth++;
-    else if (ch == ')' || ch == ']') depth--;
+    if (ch == '{' || ch == '(' || ch == '[') {
+      depth++;
+      prev_was_close = 0;
+    }
+    else if (ch == ')' || ch == ']') {
+      depth--;
+      prev_was_close = (depth == 0) ? 1 : 0;
+    }
     else if (ch == '}') {
       if (depth <= 0) break;
       depth--;
+      prev_was_close = 0;
     }
     else if (ch == '=' && depth == 0) {
       if (ls->z->n > 0) {
@@ -1649,6 +1935,12 @@ static int scan_brace_block (LexState *ls, int mode) {
         found = 1;
         break;
       }
+      prev_was_close = 0;
+    }
+    else if (ch == ';' && depth == 0 && mode == 1) {
+      /* Semicolons at top level indicate multiple statements */
+      found = 1;
+      break;
     }
     else if (ch == '"' || ch == '\'') {
       /* Skip string literals */
@@ -1663,6 +1955,29 @@ static int scan_brace_block (LexState *ls, int mode) {
         if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
         else break;
       }
+      prev_was_close = 0;
+    }
+    else if (mode == 1 && depth == 0 && prev_was_close) {
+      /* After a complete expression (ending with ')'), if we see
+      ** a letter (start of identifier) or '(' (start of sub-expression),
+      ** this indicates a second statement in the block. */
+      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+        found = 1;
+        break;
+      }
+      if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') {
+        prev_was_close = 0;  /* non-whitespace, non-letter: not a new statement */
+      }
+      /* whitespace: keep prev_was_close = 1 and continue scanning */
+      if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+        /* Keep scanning whitespace */
+      }
+      else {
+        prev_was_close = 0;
+      }
+    }
+    else {
+      prev_was_close = 0;
     }
     /* Advance to next character */
     if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
