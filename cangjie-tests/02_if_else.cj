@@ -1,42 +1,53 @@
 // Test: Control flow - if, else if, else
+// Validates basic if, if-else, if-else if-else chains, nested if, and equality checks.
 
 let x = 15
 
-// Basic if (parentheses required)
+// -- Section: basic if --
+var result = ""
 if (x > 10) {
-  println("x > 10")
+  result = "x > 10"
 }
+if (result != "x > 10") { println("FAIL: basic if expected 'x > 10', got '${result}'"); return () }
 
-// if-else
+// -- Section: if-else --
+var result2 = ""
 if (x > 20) {
-  println("big")
+  result2 = "big"
 } else {
-  println("not big")
+  result2 = "not big"
 }
+if (result2 != "not big") { println("FAIL: if-else expected 'not big', got '${result2}'"); return () }
 
-// if-else if-else
+// -- Section: if-else if-else chain --
+var result3 = ""
 if (x > 100) {
-  println("huge")
+  result3 = "huge"
 } else if (x > 50) {
-  println("large")
+  result3 = "large"
 } else if (x > 10) {
-  println("medium")
+  result3 = "medium"
 } else {
-  println("small")
+  result3 = "small"
 }
+if (result3 != "medium") { println("FAIL: else-if chain expected 'medium', got '${result3}'"); return () }
 
-// Nested if
+// -- Section: nested if --
+var result4 = ""
 if (x > 0) {
   if (x > 10) {
-    println("positive and > 10")
+    result4 = "positive and > 10"
   } else {
-    println("positive and <= 10")
+    result4 = "positive and <= 10"
   }
 }
+if (result4 != "positive and > 10") { println("FAIL: nested if expected 'positive and > 10', got '${result4}'"); return () }
 
-// if with equality check
+// -- Section: equality check --
+var result5 = ""
 if (x == 15) {
-  println("x is 15")
+  result5 = "x is 15"
 }
+if (result5 != "x is 15") { println("FAIL: equality check expected 'x is 15', got '${result5}'"); return () }
 
 println("PASS: 02_if_else")
