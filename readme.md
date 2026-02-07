@@ -63,6 +63,13 @@
 - **一等公民**：函数可以用作参数、返回值、变量赋值
 - **函数类型标注**：`func apply(fn: (Int64, Int64) -> Int64, a: Int64, b: Int64)`
 - **嵌套函数**与**闭包**：嵌套函数和其捕获的外层变量一起封装为闭包
+- **函数重载**：支持同名函数定义不同参数个数的多个版本，运行时按参数个数自动派发
+  ```cangjie
+  func describe(a: Int64): String { return "one" }
+  func describe(a: Int64, b: Int64): String { return "two" }
+  describe(1)     // 调用第一个版本
+  describe(1, 2)  // 调用第二个版本
+  ```
 - **Lambda 表达式**：
   - 带参数：`{ x: Int64, y: Int64 => x + y }`
   - 无参数：`{ => println("hello") }`
@@ -100,6 +107,51 @@ struct Point {
   }
 }
 ```
+
+#### static func（静态成员函数）
+
+静态成员函数属于类型本身，不需要实例即可调用，也没有 `this`/`self` 参数：
+
+```cangjie
+struct MathUtils {
+  var value: Int64
+  init(v: Int64) { this.value = v }
+
+  static func add(a: Int64, b: Int64): Int64 {
+    return a + b
+  }
+
+  func addToValue(n: Int64): Int64 {
+    return add(value, n)  // 成员函数中可直接调用静态函数
+  }
+}
+
+MathUtils.add(3, 4)  // 通过类型名调用，结果为 7
+```
+
+#### operator func（操作符函数重载）
+
+在 struct/class 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作：
+
+```cangjie
+struct Vector {
+  var x: Int64
+  var y: Int64
+  init(x: Int64, y: Int64) { this.x = x; this.y = y }
+
+  operator func +(other: Vector): Vector {
+    return Vector(x + other.x, y + other.y)
+  }
+
+  operator func ==(other: Vector): Bool {
+    return x == other.x && y == other.y
+  }
+}
+
+let v = Vector(1, 2) + Vector(3, 4)  // Vector(4, 6)
+```
+
+支持的可重载运算符：`+`、`-`、`*`、`/`、`%`、`**`、`==`、`<`、`<=`、`<<`、`>>`、`&`、`|`、`~`、`#`
 
 #### class（引用类型）与继承
 ```cangjie
@@ -429,7 +481,7 @@ func eval(e) {
 - **缺失箭头**：`match` 的 `case` 分支必须使用 `=>`
 - **缺失名称**：`struct`/`class`/`func` 后必须有名称
 - **空类型注解**：`let x: = 10` 等冒号后缺少类型名的情况
-- **非法成员**：`struct`/`class` 体内只允许 `func`、`init`、`let`、`var`
+- **非法成员**：`struct`/`class` 体内允许 `func`、`init`、`let`、`var`、`static func`、`operator func`
 - **非法枚举内容**：`enum` 体内只允许 `|`、构造器名或 `func`
 - **非法接口内容**：`interface` 体内只允许 `func` 声明
 
@@ -454,10 +506,10 @@ func eval(e) {
 10. **模式匹配**：支持枚举模式、常量模式、通配符模式、类型模式和元组模式，但不支持守卫条件（where）
 11. **异常处理**：不支持 `try/catch/finally`，使用 Lua 的 `pcall` 替代
 12. **文件模块**：不支持仓颉的 `package`/`import` 模块系统，使用 Lua 的 `require` 替代
-13. **命名参数**：支持 `param!: Type = default` 声明形式，未传参时自动使用默认值；调用时按位置传参，暂不支持 `name: value` 命名调用语法
+13. **命名参数**：支持 `param!: Type = default` 声明形式，未传参时自动使用默认值；支持 `name: value` 命名调用语法
 14. **Lambda 表达式**：花括号 Lambda `{ x => expr }` 中，如果 body 包含赋值语句则使用 `statlist` 解析（需显式 `return`），否则自动返回表达式值
 15. **幂运算**：`**` 运算结果为浮点数（遵循 Lua 底层实现），如 `2 ** 10` 返回 `1024.0`
-16. **默认值与 false**：默认值检测基于 Lua 的真值判断（nil/false 均视为"未传参"），因此 `func f(flag!: Bool = true)` 调用 `f(false)` 会错误地使用默认值 `true`
+16. **默认值检测**：默认值检测基于 nil 判断（仅当参数为 nil 时使用默认值），传递 `false` 不会被错误地替换为默认值
 17. **Unit 类型**：`()` 映射为 nil，可用作表达式或空操作语句
 
 ## 构建与测试
@@ -485,7 +537,7 @@ make clean
 # 运行仓颉源文件
 ./lua example.cj
 
-# 交互式模式
+# 交互式模式（let/var 声明在行间保持有效）
 ./lua
 ```
 
@@ -559,7 +611,7 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（18 个）
+│   ├── *.cj                      #   基础语言特性测试（21 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（4 个）
 │   ├── usages/                   #   综合应用案例（4 个）
 │   └── diagnosis/                #   错误检测和诊断测试（2 个，23 个错误场景）

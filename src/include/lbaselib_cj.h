@@ -22,5 +22,6 @@ LUAI_FUNC int luaB_match_tuple (lua_State *L);
 LUAI_FUNC int luaB_setup_enum (lua_State *L);
 LUAI_FUNC int luaB_tuple (lua_State *L);
 LUAI_FUNC int luaB_named_call (lua_State *L);
+LUAI_FUNC int luaB_overload (lua_State *L);
 
 #endif

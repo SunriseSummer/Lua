@@ -51,7 +51,7 @@ func check_runtime_error(test_name: String, code: String, expected: String) {
 // 1. Invalid member in struct body
 check_load_error("invalid member in struct",
   "struct Foo { return 42 }",
-  "expected 'func', 'init', 'let', or 'var' in struct/class body")
+  "expected 'func', 'init', 'let', 'var', 'static', or 'operator' in struct/class body")
 
 // 2. Missing func name
 check_load_error("missing func name",

@@ -558,6 +558,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_match_tag", luaB_match_tag},
   {"__cangjie_match_tuple", luaB_match_tuple},
   {"__cangjie_named_call", luaB_named_call},
+  {"__cangjie_overload", luaB_overload},
   {"__cangjie_setup_enum", luaB_setup_enum},
   {"__cangjie_tuple", luaB_tuple},
   {"tonumber", luaB_tonumber},

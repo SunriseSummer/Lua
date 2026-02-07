@@ -1284,8 +1284,8 @@ static void parlist (LexState *ls) {
   /* reserve registers for parameters (plus vararg parameter, if present) */
   luaK_reserveregs(fs, fs->nactvar);
   /* Emit default value preamble: if param == nil then param = default end
-  ** Note: uses truthiness test, so `false` as param value is treated as nil.
-  ** This is a known limitation for Bool parameters with default values. */
+  ** Uses nil-equality check (OP_EQ with a nil register) so that passing
+  ** 'false' explicitly is not confused with an omitted parameter. */
   {
     int i;
     /* firstparam: the register index of the first parameter.
@@ -1296,17 +1296,19 @@ static void parlist (LexState *ls) {
     for (i = 0; i < ndef; i++) {
       int reg = firstparam + def_param[i];
       int skip_jmp;
-      expdesc defv, var_e, cond_e;
-      /* Build condition: test if param register is truthy */
-      init_exp(&cond_e, VNONRELOC, reg);
-      /* goiftrue: emit code that falls through if true, jumps if false.
-      ** After goiftrue, the false list (cond_e.f) contains jumps to the
-      ** code that should execute when the param is nil/false. */
-      luaK_goiftrue(fs, &cond_e);
-      /* Skip past default when param is truthy */
+      expdesc defv, var_e;
+      int nil_reg;
+      /* Load nil into a temporary register for comparison */
+      nil_reg = fs->freereg;
+      luaK_reserveregs(fs, 1);
+      luaK_nil(fs, nil_reg, 1);
+      /* OP_EQ: if ((R[reg] == R[nil_reg]) ~= k) then pc++
+      ** With k=0: if param IS nil, cond(1)!=k(0) → pc++ (skip jump, execute default).
+      **           if param is NOT nil, cond(0)==k(0) → donextjump (skip default). */
+      luaK_codeABCk(fs, OP_EQ, reg, nil_reg, 0, 0);
       skip_jmp = luaK_jump(fs);
-      /* Patch false-list to here (default assignment) */
-      luaK_patchtohere(fs, cond_e.f);
+      /* Free the temporary nil register */
+      fs->freereg = cast_byte(nil_reg);
       /* Default value assignment: R[reg] = default */
       if (def_is_complex[i]) {
         /* Complex default: restore lexer state and parse expression now.
@@ -2914,90 +2916,127 @@ static void checktoclose (FuncState *fs, int level) {
 ** Supports optional type annotations: let x: Int64 = 42
 ** ============================================================
 */
+/*
+** Check whether we are at the top level of a REPL (interactive) chunk.
+** In REPL mode the source name is "=stdin" and the function is the main
+** chunk (no enclosing function) at the outermost block scope.
+*/
+static int is_repl_toplevel (LexState *ls) {
+  FuncState *fs = ls->fs;
+  const char *src = getstr(ls->source);
+  return (strcmp(src, "=stdin") == 0 &&
+          fs->prev == NULL && fs->bl->previous == NULL);
+}
+
+/*
+** Skip a type annotation after ':' in let/var declarations.
+** This is shared between the local and global paths of letvarstat.
+*/
+static void skip_letvar_type (LexState *ls) {
+  int depth = 0;
+  int has_type = 0;
+  if (ls->t.token == '(') {
+    has_type = 1;
+    depth++;
+    luaX_next(ls);
+    while (depth > 0 && ls->t.token != TK_EOS) {
+      if (ls->t.token == '(') depth++;
+      else if (ls->t.token == ')') depth--;
+      if (depth > 0) luaX_next(ls);
+    }
+    if (ls->t.token == ')') luaX_next(ls);
+    if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+      luaX_next(ls);
+      luaX_next(ls);
+      while (ls->t.token == TK_NAME ||
+             (ls->t.token == '<') ||
+             (ls->t.token == '>' && depth > 0) ||
+             (ls->t.token == ',' && depth > 0)) {
+        if (ls->t.token == '<') depth++;
+        else if (ls->t.token == '>') depth--;
+        luaX_next(ls);
+      }
+    }
+  }
+  else {
+    while (ls->t.token == TK_NAME ||
+           (ls->t.token == '<') ||
+           (ls->t.token == '>' && depth > 0) ||
+           (ls->t.token == ',' && depth > 0)) {
+      has_type = 1;
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') depth--;
+      luaX_next(ls);
+    }
+  }
+  if (!has_type) {
+    luaX_syntaxerror(ls, "type name expected after ':'");
+  }
+}
+
 static void letvarstat (LexState *ls, int isconst) {
   /* stat -> LET|VAR NAME [':' type] ['=' explist] */
   FuncState *fs = ls->fs;
-  int toclose = -1;
-  Vardesc *var;
-  int vidx;
-  int nvars = 0;
-  int nexps;
-  expdesc e;
-  lu_byte defkind = isconst ? RDKCONST : VDKREG;
-  do {
-    TString *vname = str_checkname(ls);  /* get variable name */
-    /* optional type annotation ': Type' - parse and validate */
-    if (testnext(ls, ':')) {
-      int depth = 0;
-      int has_type = 0;  /* track if at least one type token was consumed */
-      /* Also accept '(' for function types like (Int64, Int64) -> Bool */
-      if (ls->t.token == '(') {
-        has_type = 1;
-        depth++;
-        luaX_next(ls);
-        while (depth > 0 && ls->t.token != TK_EOS) {
-          if (ls->t.token == '(') depth++;
-          else if (ls->t.token == ')') depth--;
-          if (depth > 0) luaX_next(ls);
-        }
-        if (ls->t.token == ')') luaX_next(ls);
-        /* Check for function return type: -> Type */
-        if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
-          luaX_next(ls);  /* skip '-' */
-          luaX_next(ls);  /* skip '>' */
-          /* consume the return type */
-          while (ls->t.token == TK_NAME ||
-                 (ls->t.token == '<') ||
-                 (ls->t.token == '>' && depth > 0) ||
-                 (ls->t.token == ',' && depth > 0)) {
-            if (ls->t.token == '<') depth++;
-            else if (ls->t.token == '>') depth--;
-            luaX_next(ls);
-          }
-        }
-      }
-      else {
-        while (ls->t.token == TK_NAME ||
-               (ls->t.token == '<') ||
-               (ls->t.token == '>' && depth > 0) ||
-               (ls->t.token == ',' && depth > 0)) {
-          has_type = 1;
-          if (ls->t.token == '<') depth++;
-          else if (ls->t.token == '>') depth--;
-          luaX_next(ls);
-        }
-      }
-      if (!has_type) {
-        luaX_syntaxerror(ls, "type name expected after ':'");
-      }
+  /* In REPL mode at top level, generate global assignments so that
+  ** variables survive across interactive lines. */
+  if (is_repl_toplevel(ls)) {
+    TString *vname = str_checkname(ls);
+    if (testnext(ls, ':'))
+      skip_letvar_type(ls);
+    if (testnext(ls, '=')) {
+      expdesc v, e;
+      buildvar(ls, vname, &v);
+      expr(ls, &e);
+      luaK_storevar(fs, &v, &e);
     }
-    vidx = new_varkind(ls, vname, defkind);
-    nvars++;
-  } while (testnext(ls, ','));
-  if (testnext(ls, '='))
-    nexps = explist(ls, &e);
-  else {
-    /* In Cangjie, 'let' declarations must have an initializer */
-    if (isconst) {
-      luaX_syntaxerror(ls,
-          "'let' declaration requires an initializer ('= expression')");
+    else {
+      if (isconst)
+        luaX_syntaxerror(ls,
+            "'let' declaration requires an initializer ('= expression')");
     }
-    e.k = VVOID;
-    nexps = 0;
+    return;
   }
-  var = getlocalvardesc(fs, vidx);
-  if (nvars == nexps &&
-      var->vd.kind == RDKCONST &&
-      luaK_exp2const(fs, &e, &var->k)) {
-    var->vd.kind = RDKCTC;
-    adjustlocalvars(ls, nvars - 1);
-    fs->nactvar++;
+  {
+    int toclose = -1;
+    Vardesc *var;
+    int vidx;
+    int nvars = 0;
+    int nexps;
+    expdesc e;
+    lu_byte defkind = isconst ? RDKCONST : VDKREG;
+    do {
+      TString *vname = str_checkname(ls);  /* get variable name */
+      /* optional type annotation ': Type' - parse and validate */
+      if (testnext(ls, ':'))
+        skip_letvar_type(ls);
+      vidx = new_varkind(ls, vname, defkind);
+      nvars++;
+    } while (testnext(ls, ','));
+    if (testnext(ls, '='))
+      nexps = explist(ls, &e);
+    else {
+      /* In Cangjie, 'let' declarations must have an initializer */
+      if (isconst) {
+        luaX_syntaxerror(ls,
+            "'let' declaration requires an initializer ('= expression')");
+      }
+      e.k = VVOID;
+      nexps = 0;
+    }
+    var = getlocalvardesc(fs, vidx);
+    if (nvars == nexps &&
+        var->vd.kind == RDKCONST &&
+        luaK_exp2const(fs, &e, &var->k)) {
+      var->vd.kind = RDKCTC;
+      adjustlocalvars(ls, nvars - 1);
+      fs->nactvar++;
+    }
+    else {
+      adjust_assign(ls, nvars, nexps, &e);
+      adjustlocalvars(ls, nvars);
+    }
+    checktoclose(fs, toclose);
   }
-  else {
-    adjust_assign(ls, nvars, nexps, &e);
-    adjustlocalvars(ls, nvars);
-  }
-  checktoclose(fs, toclose);
 }
 
 
@@ -3020,9 +3059,13 @@ static int funcname (LexState *ls, expdesc *v) {
 
 
 static void funcstat (LexState *ls, int line) {
-  /* funcstat -> FUNC NAME ['<' typeparams '>'] body */
+  /* funcstat -> FUNC NAME ['<' typeparams '>'] body
+  ** Supports function overloading: if NAME already has a value,
+  ** wraps both into an overload dispatcher via __cangjie_overload. */
+  FuncState *fs = ls->fs;
   expdesc v, b;
   TString *fname;
+  int func_nparams;
   luaX_next(ls);  /* skip FUNC */
   fname = str_checkname(ls);
   /* skip generic type parameters <T, U, ...> if present */
@@ -3036,11 +3079,42 @@ static void funcstat (LexState *ls, int line) {
     }
     luaX_next(ls);  /* skip final '>' */
   }
-  buildvar(ls, fname, &v);
-  check_readonly(ls, &v);
   body(ls, &b, 0, line);
-  luaK_storevar(ls->fs, &v, &b);
-  luaK_fixline(ls->fs, line);  /* definition "happens" in the first line */
+  /* Get parameter count from the just-parsed function prototype */
+  lua_assert(fs->np > 0);
+  func_nparams = fs->f->p[fs->np - 1]->numparams;
+  /* Generate: fname = __cangjie_overload(fname, new_func, nparams) */
+  {
+    expdesc fn_ov, arg_old;
+    int base2, func_reg;
+    /* The closure from body() is already in a register (b.u.info) */
+    func_reg = b.u.info;
+    /* Ensure it's fixed in a register */
+    luaK_exp2nextreg(fs, &b);
+    func_reg = b.u.info;  /* update after exp2nextreg */
+    /* Now build the __cangjie_overload call */
+    buildvar(ls, luaX_newstring(ls, "__cangjie_overload", 18), &fn_ov);
+    luaK_exp2nextreg(fs, &fn_ov);
+    base2 = fn_ov.u.info;
+    /* Push old value of fname (may be nil if first definition) */
+    buildvar(ls, fname, &arg_old);
+    luaK_exp2nextreg(fs, &arg_old);
+    /* Copy closure from its saved register */
+    luaK_codeABC(fs, OP_MOVE, fs->freereg, func_reg, 0);
+    luaK_reserveregs(fs, 1);
+    /* Push parameter count */
+    luaK_int(fs, fs->freereg, func_nparams);
+    luaK_reserveregs(fs, 1);
+    init_exp(&fn_ov, VCALL,
+             luaK_codeABC(fs, OP_CALL, base2, 4, 2));
+    /* Store result back to fname */
+    buildvar(ls, fname, &v);
+    check_readonly(ls, &v);
+    luaK_storevar(fs, &v, &fn_ov);
+    /* Free all temp registers */
+    fs->freereg = cast_byte(func_reg);
+  }
+  luaK_fixline(fs, line);  /* definition "happens" in the first line */
 }
 
 
@@ -3259,6 +3333,130 @@ static void structstat (LexState *ls, int line) {
       luaK_fixline(fs, line);
     }
     else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "static")) {
+      /* Static function: static func name(...) { ... } */
+      expdesc mv, mb;
+      TString *mname;
+      luaX_next(ls);  /* skip 'static' */
+      checknext(ls, TK_FUNC);  /* expect 'func' */
+      mname = str_checkname(ls);
+      skip_generic_params(ls);
+      /* Build NAME.methodname (same storage, but no self) */
+      buildvar(ls, sname, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, mname);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      /* Parse as regular function (no self) but with implicit this for field access */
+      ls->in_struct_method = 1;
+      body(ls, &mb, 0, ls->linenumber);  /* ismethod=0: no self param */
+      ls->in_struct_method = 0;
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+      /* Mark as static: NAME["__static_funcname"] = true */
+      {
+        expdesc tab2, key2, val2;
+        const char *prefix = "__static_";
+        const char *namestr = getstr(mname);
+        size_t plen = strlen(prefix);
+        size_t nlen = strlen(namestr);
+        char markerkey[128];
+        if (plen + nlen + 1 < sizeof(markerkey)) {
+          memcpy(markerkey, prefix, plen);
+          memcpy(markerkey + plen, namestr, nlen);
+          markerkey[plen + nlen] = '\0';
+          buildvar(ls, sname, &tab2);
+          luaK_exp2anyregup(fs, &tab2);
+          codestring(&key2, luaX_newstring(ls, markerkey, plen + nlen));
+          luaK_indexed(fs, &tab2, &key2);
+          init_exp(&val2, VTRUE, 0);
+          luaK_storevar(fs, &tab2, &val2);
+        }
+      }
+      /* Track for implicit resolution within member methods */
+      if (ls->nfields < 64) {
+        ls->struct_fields[ls->nfields++] = mname;
+      }
+    }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+      /* Operator overload: operator func +(other: Type): Type { ... } */
+      expdesc mv, mb;
+      TString *metamethod_name;
+      int op_token;
+      luaX_next(ls);  /* skip 'operator' */
+      checknext(ls, TK_FUNC);  /* expect 'func' */
+      /* Read operator token */
+      op_token = ls->t.token;
+      /* Map operator to Lua metamethod name */
+      switch (op_token) {
+        case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+        case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+        case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+        case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+        case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+        case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+        case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+        case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+        case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+        case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+        case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+        case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+        case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+        case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+        case TK_IDIV: {
+          metamethod_name = luaS_new(ls->L, "__idiv"); break;
+        }
+        case '[': {
+          /* operator func [](index: Int64) for __index/__newindex */
+          luaX_next(ls);  /* skip '[' */
+          checknext(ls, ']');
+          /* Check if it's assignment (has '=') - simplified, treat as __index */
+          metamethod_name = luaS_new(ls->L, "__index");
+          goto parse_operator_body;
+        }
+        default: {
+          /* Try to handle func name like "toString" */
+          if (ls->t.token == TK_NAME) {
+            const char *opname = getstr(ls->t.seminfo.ts);
+            if (strcmp(opname, "toString") == 0) {
+              metamethod_name = luaS_new(ls->L, "__tostring");
+            }
+            else {
+              char mm[64];
+              snprintf(mm, sizeof(mm), "__%s", opname);
+              metamethod_name = luaS_new(ls->L, mm);
+            }
+          }
+          else {
+            luaX_syntaxerror(ls, "unsupported operator for overloading");
+            metamethod_name = NULL;  /* unreachable */
+          }
+          break;
+        }
+      }
+      luaX_next(ls);  /* skip operator token */
+parse_operator_body:
+      skip_generic_params(ls);
+      /* Build NAME.metamethod_name */
+      buildvar(ls, sname, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, metamethod_name);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      /* Parse operator method body (with 'self' parameter) */
+      ls->in_struct_method = 1;
+      body(ls, &mb, 1, ls->linenumber);
+      ls->in_struct_method = 0;
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+    }
+    else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "init")) {
       /* Constructor: init(...) { ... } -- no 'func' keyword needed */
       expdesc mv, mb;
@@ -3297,7 +3495,7 @@ static void structstat (LexState *ls, int line) {
       }
     }
     else {
-      luaX_syntaxerror(ls, "expected 'func', 'init', 'let', or 'var' in struct/class body");
+      luaX_syntaxerror(ls, "expected 'func', 'init', 'let', 'var', 'static', or 'operator' in struct/class body");
     }
     testnext(ls, ';');  /* optional semicolons */
   }
