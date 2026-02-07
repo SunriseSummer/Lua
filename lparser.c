@@ -55,6 +55,7 @@ typedef struct BlockCnt {
   short nactvar;  /* number of active declarations at block entry */
   lu_byte upval;  /* true if some variable in the block is an upvalue */
   lu_byte isloop;  /* 1 if 'block' is a loop; 2 if it has pending breaks */
+  lu_byte hascont;  /* true if block has pending continue gotos */
   lu_byte insidetbc;  /* true if inside the scope of a to-be-closed var. */
 } BlockCnt;
 
@@ -530,9 +531,9 @@ static int is_struct_field (LexState *ls, TString *name) {
 
 
 /*
-** Find a variable with the given name 'n', handling global variables
-** too. If we're inside a struct/class method and the name matches
-** a struct field, resolve it as self.name (implicit 'this').
+** Build a variable reference, handling implicit 'this' for struct/class
+** member access. When inside a struct/class method, if the name matches
+** a declared field, it is automatically resolved as self.fieldname.
 */
 static void buildvar (LexState *ls, TString *varname, expdesc *var) {
   FuncState *fs = ls->fs;
@@ -753,6 +754,7 @@ static void solvegotos (FuncState *fs, BlockCnt *bl) {
 
 static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isloop) {
   bl->isloop = isloop;
+  bl->hascont = 0;
   bl->nactvar = fs->nactvar;
   bl->firstlabel = fs->ls->dyd->label.n;
   bl->firstgoto = fs->ls->dyd->gt.n;
@@ -769,8 +771,9 @@ static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isloop) {
 ** generates an error for an undefined 'goto'.
 */
 static l_noret undefgoto (LexState *ls, Labeldesc *gt) {
-  /* breaks are checked when created, cannot be undefined */
+  /* breaks and continues are checked when created, cannot be undefined */
   lua_assert(!eqstr(gt->name, ls->brkn));
+  lua_assert(!eqstr(gt->name, ls->contn));
   luaK_semerror(ls, "no visible label '%s' for <goto> at line %d",
                     getstr(gt->name), gt->line);
 }
@@ -1060,6 +1063,12 @@ static int maxtostore (FuncState *fs) {
 }
 
 
+/*
+** ============================================================
+** Table/Array constructor
+** Handles both Lua-style tables and Cangjie-style 0-based arrays.
+** ============================================================
+*/
 static void constructor (LexState *ls, expdesc *t) {
   /* constructor -> '{' [ field { sep field } [sep] ] '}'
      sep -> ',' | ';' */
@@ -1097,6 +1106,15 @@ static void setvararg (FuncState *fs) {
 }
 
 
+/*
+** ============================================================
+** Function parameter list parsing
+** Handles Cangjie-style typed parameters:
+**   func name(param: Type, param2: Type) : ReturnType
+** Also supports named parameters with '!' suffix and defaults:
+**   func name(base: Int64, exponent!: Int64 = 2)
+** ============================================================
+*/
 static void parlist (LexState *ls) {
   /* parlist -> [ {NAME ['!'] ':' TYPE ['=' expr] ','} (NAME ['!'] ':' TYPE | '...') ] */
   FuncState *fs = ls->fs;
@@ -1107,6 +1125,13 @@ static void parlist (LexState *ls) {
 #define MAX_DEFAULT_PARAMS 32
   int def_param[MAX_DEFAULT_PARAMS];     /* parameter index (0-based) */
   expdesc def_val[MAX_DEFAULT_PARAMS];   /* default value expression */
+  int def_is_complex[MAX_DEFAULT_PARAMS]; /* 1 if default needs deferred parse */
+  /* Saved lexer state for deferred parsing of complex defaults */
+  const char *def_saved_p[MAX_DEFAULT_PARAMS];
+  size_t def_saved_n[MAX_DEFAULT_PARAMS];
+  int def_saved_current[MAX_DEFAULT_PARAMS];
+  Token def_saved_token[MAX_DEFAULT_PARAMS];
+  int def_saved_line[MAX_DEFAULT_PARAMS];
   int ndef = 0;          /* number of params with defaults */
   if (ls->t.token != ')') {  /* is 'parlist' not empty? */
     do {
@@ -1159,45 +1184,77 @@ static void parlist (LexState *ls) {
               luaX_syntaxerror(ls, "too many parameters with default values");
             }
             def_param[ndef] = nparams;
-            /* Parse the default value as a simple constant expression */
+            /* Parse the default value expression */
             switch (ls->t.token) {
               case TK_INT:
                 init_exp(&def_val[ndef], VKINT, 0);
                 def_val[ndef].u.ival = ls->t.seminfo.i;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_FLT:
                 init_exp(&def_val[ndef], VKFLT, 0);
                 def_val[ndef].u.nval = ls->t.seminfo.r;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_STRING:
                 init_exp(&def_val[ndef], VKSTR, 0);
                 def_val[ndef].u.strval = ls->t.seminfo.ts;
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_TRUE:
                 init_exp(&def_val[ndef], VTRUE, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_FALSE:
                 init_exp(&def_val[ndef], VFALSE, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               case TK_NIL:
                 init_exp(&def_val[ndef], VNIL, 0);
+                def_is_complex[ndef] = 0;
                 luaX_next(ls);
                 ndef++;
                 break;
               default: {
-                /* For complex expressions, parse and discard */
-                expdesc defval;
-                expr(ls, &defval);
+                /* Complex expression (lambda, function call, etc.)
+                ** Save lexer state for deferred parsing after register setup */
+                def_is_complex[ndef] = 1;
+                def_saved_p[ndef] = ls->z->p;
+                def_saved_n[ndef] = ls->z->n;
+                def_saved_current[ndef] = ls->current;
+                def_saved_token[ndef] = ls->t;
+                def_saved_line[ndef] = ls->linenumber;
+                init_exp(&def_val[ndef], VNIL, 0);  /* placeholder */
+                /* Skip over the expression tokens without parsing */
+                {
+                  int depth = 0;
+                  while (ls->t.token != TK_EOS) {
+                    if (ls->t.token == '(' || ls->t.token == '{' ||
+                        ls->t.token == '[') {
+                      depth++;
+                    }
+                    else if (ls->t.token == ')' || ls->t.token == '}' ||
+                             ls->t.token == ']') {
+                      if (depth <= 0) break;
+                      depth--;
+                    }
+                    else if (ls->t.token == ',' && depth == 0) {
+                      break;  /* next parameter */
+                    }
+                    luaX_next(ls);
+                  }
+                }
+                ndef++;
                 break;
               }
             }
@@ -1251,7 +1308,33 @@ static void parlist (LexState *ls) {
       /* Patch false-list to here (default assignment) */
       luaK_patchtohere(fs, cond_e.f);
       /* Default value assignment: R[reg] = default */
-      defv = def_val[i];
+      if (def_is_complex[i]) {
+        /* Complex default: restore lexer state and parse expression now.
+        ** At this point registers are properly set up (freereg > nparams),
+        ** so emitted code (closures, calls, etc.) won't conflict. */
+        const char *cur_p = ls->z->p;
+        size_t cur_n = ls->z->n;
+        int cur_current = ls->current;
+        Token cur_token = ls->t;
+        int cur_line = ls->linenumber;
+        /* Restore to saved position to re-parse the default expression */
+        ls->z->p = def_saved_p[i];
+        ls->z->n = def_saved_n[i];
+        ls->current = def_saved_current[i];
+        ls->t = def_saved_token[i];
+        ls->linenumber = def_saved_line[i];
+        /* Parse the default value expression */
+        expr(ls, &defv);
+        /* Restore the original lexer state */
+        ls->z->p = cur_p;
+        ls->z->n = cur_n;
+        ls->current = cur_current;
+        ls->t = cur_token;
+        ls->linenumber = cur_line;
+      }
+      else {
+        defv = def_val[i];
+      }
       init_exp(&var_e, VLOCAL, reg);
       var_e.u.var.ridx = cast_byte(reg);
       var_e.u.var.vidx = cast(short, firstparam + def_param[i]);
@@ -1390,6 +1473,102 @@ static int explist (LexState *ls, expdesc *v) {
 }
 
 
+/*
+** Check if the current argument list contains named parameters.
+** Scans raw characters (without consuming tokens) to detect 'NAME :' pattern
+** after a comma in the argument list.
+*/
+static int has_named_args (LexState *ls) {
+  const char *saved_p = ls->z->p;
+  size_t saved_n = ls->z->n;
+  int saved_current = ls->current;
+  int depth = 0;
+  int ch = ls->current;
+  int found = 0;
+  /* Special case: if the CURRENT token is TK_NAME and ls->current is ':'
+  ** (or whitespace before ':'), the first argument is a named arg */
+  if (ls->t.token == TK_NAME) {
+    int tc = ch;
+    const char *tp = ls->z->p;
+    size_t tn = ls->z->n;
+    /* Skip whitespace */
+    while ((tc == ' ' || tc == '\t') && tn > 0) {
+      tc = *(tp); tp++; tn--;
+    }
+    if (tc == ':') {
+      /* Make sure it's not '::' */
+      if (tn > 0 && *tp != ':') {
+        found = 1;
+        ls->z->p = saved_p;
+        ls->z->n = saved_n;
+        ls->current = saved_current;
+        return found;
+      }
+    }
+  }
+  while (ch != EOZ) {
+    if (ch == '(' || ch == '{' || ch == '[') depth++;
+    else if (ch == '}' || ch == ']') {
+      depth--;
+      if (depth < 0) break;  /* left the call scope */
+    }
+    else if (ch == ')') {
+      if (depth <= 0) break;
+      depth--;
+    }
+    else if (ch == ',' && depth == 0) {
+      /* After comma, skip whitespace and check for NAME ':' */
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while ((ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') && ls->z->n > 0) {
+        ch = *(ls->z->p); ls->z->p++; ls->z->n--;
+      }
+      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+        /* Scan past the identifier */
+        while (ls->z->n > 0) {
+          char nc = *(ls->z->p);
+          if (!((nc >= 'a' && nc <= 'z') || (nc >= 'A' && nc <= 'Z') ||
+                (nc >= '0' && nc <= '9') || nc == '_'))
+            break;
+          ls->z->p++; ls->z->n--;
+        }
+        /* Skip whitespace */
+        while (ls->z->n > 0 && (*(ls->z->p) == ' ' || *(ls->z->p) == '\t')) {
+          ls->z->p++; ls->z->n--;
+        }
+        /* Check for ':' NOT followed by ':' (which would be '::') */
+        if (ls->z->n > 0 && *(ls->z->p) == ':') {
+          if (ls->z->n > 1 && *(ls->z->p + 1) != ':') {
+            found = 1;
+            break;
+          }
+        }
+      }
+      continue;
+    }
+    else if (ch == '"' || ch == '\'') {
+      int delim = ch;
+      if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+      else break;
+      while (ch != delim && ch != EOZ) {
+        if (ch == '\\') {
+          if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+          else break;
+        }
+        if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+        else break;
+      }
+    }
+    if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
+    else break;
+  }
+  ls->z->p = saved_p;
+  ls->z->n = saved_n;
+  ls->current = saved_current;
+  return found;
+}
+
+
 static void funcargs (LexState *ls, expdesc *f) {
   FuncState *fs = ls->fs;
   expdesc args;
@@ -1400,6 +1579,115 @@ static void funcargs (LexState *ls, expdesc *f) {
       luaX_next(ls);
       if (ls->t.token == ')')  /* arg list is empty? */
         args.k = VVOID;
+      else if (has_named_args(ls)) {
+        /*
+        ** Named argument call detected.
+        ** Compile as: __cangjie_named_call(func, pos1, ..., posN, npos, named_table)
+        ** The runtime helper uses the function's debug info to map named
+        ** args to correct parameter positions.
+        **
+        ** Register layout: f is at base_reg (set by suffixedexp).
+        ** We need: helper at base_reg, f at base_reg+1, args at base_reg+2+.
+        ** Strategy: save f to temp, load helper to base, push f, push args.
+        */
+        expdesc helper_fn;
+        int npos = 0;
+        int base_reg = f->u.info;  /* f is VNONRELOC from suffixedexp */
+        int helper_base;
+
+        /* Step 1: Move f to a temp register (freereg) via MOVE */
+        luaK_codeABC(fs, OP_MOVE, fs->freereg, base_reg, 0);
+        {
+          int f_saved_reg = fs->freereg;
+          luaK_reserveregs(fs, 1);  /* freereg++ */
+
+          /* Step 2: Load helper into base_reg (overwrite f's slot) */
+          buildvar(ls, luaX_newstring(ls, "__cangjie_named_call", 20),
+                   &helper_fn);
+          /* Use exp2anyreg then MOVE to target base_reg */
+          {
+            int hr = luaK_exp2anyreg(fs, &helper_fn);
+            if (hr != base_reg) {
+              luaK_codeABC(fs, OP_MOVE, base_reg, hr, 0);
+            }
+          }
+          helper_base = base_reg;
+
+          /* Reset freereg to base_reg + 1, since we only need the helper
+          ** at base_reg and everything else will be pushed after it */
+          fs->freereg = cast_byte(base_reg + 1);
+
+          /* Step 3: Push saved f as arg 1 */
+          luaK_codeABC(fs, OP_MOVE, fs->freereg, f_saved_reg, 0);
+          luaK_reserveregs(fs, 1);
+
+          /* Step 4: Parse and push positional args */
+          while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+            if (ls->t.token == TK_NAME && luaX_lookahead(ls) == ':') {
+              break;
+            }
+            {
+              expdesc arg;
+              expr(ls, &arg);
+              luaK_exp2nextreg(fs, &arg);
+              npos++;
+            }
+            if (!testnext(ls, ',')) break;
+          }
+
+          /* Step 5: Emit npos count */
+          {
+            expdesc npos_exp;
+            init_exp(&npos_exp, VKINT, 0);
+            npos_exp.u.ival = npos;
+            luaK_exp2nextreg(fs, &npos_exp);
+          }
+
+          /* Step 6: Build named args table */
+          {
+            int tab_reg = fs->freereg;
+            int pc2 = luaK_codevABCk(fs, OP_NEWTABLE, 0, 0, 0, 0);
+            luaK_code(fs, 0);
+            luaK_reserveregs(fs, 1);
+            luaK_settablesize(fs, pc2, tab_reg, 0, 0);
+
+            while (ls->t.token == TK_NAME) {
+              int next_is_colon;
+              if (ls->lookahead.token != TK_EOS) {
+                next_is_colon = (ls->lookahead.token == ':');
+              }
+              else {
+                next_is_colon = (luaX_lookahead(ls) == ':');
+              }
+              if (!next_is_colon) break;
+
+              {
+                TString *pname = ls->t.seminfo.ts;
+                expdesc tab_ref, key, val;
+                luaX_next(ls);
+                luaX_next(ls);
+                init_exp(&tab_ref, VNONRELOC, tab_reg);
+                luaK_exp2anyregup(fs, &tab_ref);
+                codestring(&key, pname);
+                luaK_indexed(fs, &tab_ref, &key);
+                expr(ls, &val);
+                luaK_storevar(fs, &tab_ref, &val);
+                testnext(ls, ',');
+              }
+            }
+          }
+
+          check_match(ls, ')', '(', line);
+
+          /* Step 7: Emit the call */
+          nparams = fs->freereg - (helper_base + 1);
+          init_exp(f, VCALL,
+                   luaK_codeABC(fs, OP_CALL, helper_base, nparams + 1, 2));
+          luaK_fixline(fs, line);
+          fs->freereg = cast_byte(helper_base + 1);
+        }
+        return;
+      }
       else {
         explist(ls, &args);
         if (hasmultret(args.k))
@@ -1602,12 +1890,20 @@ static int scan_brace_block (LexState *ls, int mode) {
   int depth = 0;
   int ch = ls->current;
   int found = 0;
+  int prev_was_close = 0;  /* tracks if previous token ended an expression */
   while (ch != EOZ) {
-    if (ch == '{' || ch == '(' || ch == '[') depth++;
-    else if (ch == ')' || ch == ']') depth--;
+    if (ch == '{' || ch == '(' || ch == '[') {
+      depth++;
+      prev_was_close = 0;
+    }
+    else if (ch == ')' || ch == ']') {
+      depth--;
+      prev_was_close = (depth == 0) ? 1 : 0;
+    }
     else if (ch == '}') {
       if (depth <= 0) break;
       depth--;
+      prev_was_close = 0;
     }
     else if (ch == '=' && depth == 0) {
       if (ls->z->n > 0) {
@@ -1631,6 +1927,12 @@ static int scan_brace_block (LexState *ls, int mode) {
         found = 1;
         break;
       }
+      prev_was_close = 0;
+    }
+    else if (ch == ';' && depth == 0 && mode == 1) {
+      /* Semicolons at top level indicate multiple statements */
+      found = 1;
+      break;
     }
     else if (ch == '"' || ch == '\'') {
       /* Skip string literals */
@@ -1645,6 +1947,23 @@ static int scan_brace_block (LexState *ls, int mode) {
         if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
         else break;
       }
+      prev_was_close = 0;
+    }
+    else if (mode == 1 && depth == 0 && prev_was_close) {
+      /* After a complete expression (ending with ')'), if we see
+      ** a letter (start of identifier), this indicates a second
+      ** statement in the block. Whitespace is skipped (prev_was_close
+      ** remains 1); any other char clears prev_was_close. */
+      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+        found = 1;
+        break;
+      }
+      if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') {
+        prev_was_close = 0;
+      }
+    }
+    else {
+      prev_was_close = 0;
     }
     /* Advance to next character */
     if (ls->z->n > 0) { ch = *(ls->z->p); ls->z->p++; ls->z->n--; }
@@ -1659,9 +1978,12 @@ static int scan_brace_block (LexState *ls, int mode) {
 
 
 /*
-** Lambda body: => expr or => { block }
-** Creates an anonymous function that returns the expression
-** Used for () => expr syntax
+** ============================================================
+** Lambda expression support
+** Cangjie supports two lambda syntaxes:
+**   Arrow: (params) => expr  or  (params) => { stmts }
+**   Brace: { params => expr }  or  { params => stmts }
+** ============================================================
 */
 static void lambdabody (LexState *ls, expdesc *e, int line) {
   /* lambdabody -> '=>' expr | '=>' '{' block '}' */
@@ -1780,6 +2102,16 @@ static void bracelambda (LexState *ls, expdesc *e, int line) {
 }
 
 
+/*
+** ============================================================
+** Expression parsing
+** Handles Cangjie expression syntax including:
+**   - Tuple literals: (a, b, c)
+**   - String interpolation: "text ${expr} text"
+**   - Lambda expressions: { x => x + 1 }
+**   - Constructor calls, array indexing, etc.
+** ============================================================
+*/
 static void simpleexp (LexState *ls, expdesc *v) {
   /* simpleexp -> FLT | INT | STRING | NIL | TRUE | FALSE |
                   constructor | FUNC body | suffixedexp */
@@ -2197,6 +2529,25 @@ static void breakstat (LexState *ls, int line) {
 
 
 /*
+** Continue statement. Jumps to the continue label at the end of
+** the current loop body, skipping remaining statements and
+** proceeding to the next iteration.
+*/
+static void continuestat (LexState *ls, int line) {
+  BlockCnt *bl;  /* to look for an enclosing loop */
+  for (bl = ls->fs->bl; bl != NULL; bl = bl->previous) {
+    if (bl->isloop)  /* found one? */
+      goto ok;
+  }
+  luaX_syntaxerror(ls, "continue outside loop");
+ ok:
+  bl->hascont = 1;  /* signal that block has pending continues */
+  luaX_next(ls);  /* skip continue */
+  newgotoentry(ls, ls->contn, line);
+}
+
+
+/*
 ** Check whether there is already a label with the given 'name' at
 ** current function.
 */
@@ -2233,6 +2584,8 @@ static void whilestat (LexState *ls, int line) {
   enterblock(fs, &bl, 1);
   checknext(ls, '{' /*}*/);
   block(ls);
+  /* Create continue label here: continue jumps to re-check condition */
+  createlabel(ls, ls->contn, 0, 0);
   luaK_jumpto(fs, whileinit);
   check_match(ls, /*{*/ '}', TK_WHILE, line);
   leaveblock(fs);
@@ -2289,6 +2642,8 @@ static void forbody (LexState *ls, int base, int line, int nvars, int isgen) {
   adjustlocalvars(ls, nvars);
   luaK_reserveregs(fs, nvars);
   block(ls);
+  /* Create continue label here (before leaveblock resolves gotos) */
+  createlabel(ls, ls->contn, 0, 0);
   leaveblock(fs);  /* end of scope for declared variables */
   check_match(ls, /*{*/ '}', TK_FOR, line);
   fixforjump(fs, prep, luaK_getlabel(fs), 0);
@@ -2552,6 +2907,13 @@ static void checktoclose (FuncState *fs, int level) {
 }
 
 
+/*
+** ============================================================
+** Variable declaration (let/var)
+** Cangjie uses 'let' for immutable and 'var' for mutable variables.
+** Supports optional type annotations: let x: Int64 = 42
+** ============================================================
+*/
 static void letvarstat (LexState *ls, int isconst) {
   /* stat -> LET|VAR NAME [':' type] ['=' explist] */
   FuncState *fs = ls->fs;
@@ -2564,16 +2926,49 @@ static void letvarstat (LexState *ls, int isconst) {
   lu_byte defkind = isconst ? RDKCONST : VDKREG;
   do {
     TString *vname = str_checkname(ls);  /* get variable name */
-    /* optional type annotation ': Type' - skip it */
+    /* optional type annotation ': Type' - parse and validate */
     if (testnext(ls, ':')) {
       int depth = 0;
-      while (ls->t.token == TK_NAME ||
-             (ls->t.token == '<') ||
-             (ls->t.token == '>' && depth > 0) ||
-             (ls->t.token == ',' && depth > 0)) {
-        if (ls->t.token == '<') depth++;
-        else if (ls->t.token == '>') depth--;
+      int has_type = 0;  /* track if at least one type token was consumed */
+      /* Also accept '(' for function types like (Int64, Int64) -> Bool */
+      if (ls->t.token == '(') {
+        has_type = 1;
+        depth++;
         luaX_next(ls);
+        while (depth > 0 && ls->t.token != TK_EOS) {
+          if (ls->t.token == '(') depth++;
+          else if (ls->t.token == ')') depth--;
+          if (depth > 0) luaX_next(ls);
+        }
+        if (ls->t.token == ')') luaX_next(ls);
+        /* Check for function return type: -> Type */
+        if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+          luaX_next(ls);  /* skip '-' */
+          luaX_next(ls);  /* skip '>' */
+          /* consume the return type */
+          while (ls->t.token == TK_NAME ||
+                 (ls->t.token == '<') ||
+                 (ls->t.token == '>' && depth > 0) ||
+                 (ls->t.token == ',' && depth > 0)) {
+            if (ls->t.token == '<') depth++;
+            else if (ls->t.token == '>') depth--;
+            luaX_next(ls);
+          }
+        }
+      }
+      else {
+        while (ls->t.token == TK_NAME ||
+               (ls->t.token == '<') ||
+               (ls->t.token == '>' && depth > 0) ||
+               (ls->t.token == ',' && depth > 0)) {
+          has_type = 1;
+          if (ls->t.token == '<') depth++;
+          else if (ls->t.token == '>') depth--;
+          luaX_next(ls);
+        }
+      }
+      if (!has_type) {
+        luaX_syntaxerror(ls, "type name expected after ':'");
       }
     }
     vidx = new_varkind(ls, vname, defkind);
@@ -2582,6 +2977,11 @@ static void letvarstat (LexState *ls, int isconst) {
   if (testnext(ls, '='))
     nexps = explist(ls, &e);
   else {
+    /* In Cangjie, 'let' declarations must have an initializer */
+    if (isconst) {
+      luaX_syntaxerror(ls,
+          "'let' declaration requires an initializer ('= expression')");
+    }
     e.k = VVOID;
     nexps = 0;
   }
@@ -2645,8 +3045,12 @@ static void funcstat (LexState *ls, int line) {
 
 
 /*
-** Parse struct/class body members (fields and methods)
-** Generates table construction and method definitions
+** ============================================================
+** Type annotation handling
+** Parses and skips Cangjie type annotations after ':'.
+** Handles: simple types, generic types, function types.
+** Examples: Int64, Array<String>, (Int64, Int64) -> Bool
+** ============================================================
 */
 static void skip_type_annotation (LexState *ls) {
   /* skip optional type annotation after ':'
@@ -2654,6 +3058,7 @@ static void skip_type_annotation (LexState *ls) {
   ** and function types ((Int64, Int64) -> Int64) */
   if (testnext(ls, ':')) {
     int depth = 0;
+    int has_type = 0;  /* validate at least one type token */
     for (;;) {
       if (ls->t.token == TK_NAME) {
         if (depth == 0) {
@@ -2662,9 +3067,11 @@ static void skip_type_annotation (LexState *ls) {
           ** Stop consuming here. */
           if (luaX_lookahead(ls) == '(') break;
         }
+        has_type = 1;
         luaX_next(ls);
       }
       else if (ls->t.token == '<' || ls->t.token == '(') {
+        if (ls->t.token == '(') has_type = 1;  /* function type */
         depth++;
         luaX_next(ls);
       }
@@ -2691,6 +3098,9 @@ static void skip_type_annotation (LexState *ls) {
         break;
       }
     }
+    if (!has_type) {
+      luaX_syntaxerror(ls, "type name expected after ':'");
+    }
   }
 }
 
@@ -2709,6 +3119,14 @@ static void skip_generic_params (LexState *ls) {
 }
 
 
+/*
+** ============================================================
+** Struct/Class definition
+** Compiles Cangjie struct/class declarations to Lua table+metatable
+** patterns. Supports: fields, methods, constructors, inheritance,
+** interface implementation, generic type parameters, implicit this.
+** ============================================================
+*/
 static void structstat (LexState *ls, int line) {
   /*
   ** struct NAME ['<' typeparams '>'] ['<:' PARENT ['&' IFACE]*] '{' members '}'
@@ -2978,7 +3396,7 @@ static void interfacestat (LexState *ls, int line) {
       }
     }
     else {
-      luaX_next(ls);  /* skip unknown tokens */
+      luaX_syntaxerror(ls, "expected 'func' declaration in interface body");
     }
     testnext(ls, ';');
   }
@@ -3159,6 +3577,15 @@ static void extendstat (LexState *ls, int line) {
 }
 
 
+/*
+** ============================================================
+** Enum type definition
+** Compiles Cangjie enum declarations. Each enum variant becomes
+** either a static table (no-arg) or a factory function (with args).
+** Supports: parameterized constructors, member functions,
+** recursive enums, generic enums.
+** ============================================================
+*/
 static void enumstat (LexState *ls, int line) {
   /*
   ** enum NAME '{' '|' CTOR ['(' types ')'] ... '}'
@@ -3495,7 +3922,8 @@ static void enumstat (LexState *ls, int line) {
       luaK_fixline(fs, line);
     }
     else {
-      luaX_next(ls);  /* skip unknown tokens */
+      luaX_syntaxerror(ls,
+          "expected '|', constructor name, or 'func' in enum body");
     }
     testnext(ls, ';');
   }
@@ -3727,6 +4155,14 @@ static int match_emit_tuple_subpattern (LexState *ls, TString *match_var_name,
 }
 
 
+/*
+** ============================================================
+** Pattern matching (match expression)
+** Compiles Cangjie match expressions to if-elseif chains.
+** Supports: enum patterns, constant patterns, wildcard,
+** type patterns, tuple patterns, nested patterns.
+** ============================================================
+*/
 static void matchstat (LexState *ls, int line) {
   /*
   ** match '(' expr ')' '{' case_clauses '}'
@@ -4021,6 +4457,13 @@ static void retstat (LexState *ls) {
 }
 
 
+/*
+** ============================================================
+** Main statement dispatcher
+** Routes each statement to its corresponding parser function
+** based on the current token (keyword).
+** ============================================================
+*/
 static void statement (LexState *ls) {
   int line = ls->linenumber;  /* may be needed for error messages */
   enterlevel(ls);
@@ -4067,6 +4510,10 @@ static void statement (LexState *ls) {
     }
     case TK_BREAK: {  /* stat -> breakstat */
       breakstat(ls, line);
+      break;
+    }
+    case TK_CONTINUE: {  /* stat -> continuestat */
+      continuestat(ls, line);
       break;
     }
     case TK_STRUCT: case TK_CLASS: {  /* stat -> struct/class definition */

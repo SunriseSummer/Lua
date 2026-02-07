@@ -56,6 +56,10 @@ static const char *const luaX_tokens [] = {
 };
 
 
+/* ============================================================
+** Lexer utility functions
+** ============================================================ */
+
 #define save_and_next(ls) (save(ls, ls->current), next(ls))
 
 
@@ -191,6 +195,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
      so they cannot be collected */
   ls->envn = luaS_newliteral(L, LUA_ENV);  /* get env string */
   ls->brkn = luaS_newliteral(L, "break");  /* get "break" string */
+  ls->contn = luaS_newliteral(L, "continue");  /* get "continue" string */
   ls->interp_depth = 0;  /* not inside string interpolation */
   ls->nfields = 0;  /* no struct fields */
   ls->in_struct_method = 0;  /* not inside a struct method */
@@ -413,6 +418,15 @@ static int readdecesc (LexState *ls) {
 }
 
 
+/*
+** ============================================================
+** String reading with interpolation support
+** Read a Cangjie/Lua string literal. Supports:
+**   - Standard escape sequences (\n, \t, etc.)
+**   - String interpolation: ${expr} within double-quoted strings
+**   - Unicode escapes: \u{XXXX}
+** ============================================================
+*/
 static void read_string (LexState *ls, int del, SemInfo *seminfo) {
   save_and_next(ls);  /* keep delimiter (for error messages) */
   while (ls->current != del) {
@@ -493,7 +507,11 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
 }
 
 
-/* Read the continuation of an interpolated string after '}' */
+/*
+** Continue reading an interpolated string after '}' closes
+** an interpolation expression. Called from the parser when
+** it finishes parsing the expression inside ${...}.
+*/
 void luaX_read_interp_string (LexState *ls, SemInfo *seminfo) {
   luaZ_resetbuffer(ls->buff);
   save(ls, '"');  /* fake opening delimiter for consistency */
@@ -563,6 +581,19 @@ void luaX_read_interp_string (LexState *ls, SemInfo *seminfo) {
 }
 
 
+/*
+** ============================================================
+** Main lexer function
+** Reads the next token from the input stream.
+** Handles Cangjie-specific tokens:
+**   - // and block comments (instead of Lua's --)
+**   - && || ! operators (instead of Lua's and/or/not)
+**   - ** power operator (instead of Lua's ^)
+**   - .. and ..= range operators
+**   - => arrow for lambda/match
+**   - :: scope resolution
+** ============================================================
+*/
 static int llex (LexState *ls, SemInfo *seminfo) {
   luaZ_resetbuffer(ls->buff);
   for (;;) {
@@ -726,6 +757,11 @@ static int llex (LexState *ls, SemInfo *seminfo) {
 }
 
 
+/*
+** ============================================================
+** Public lexer API
+** ============================================================
+*/
 void luaX_next (LexState *ls) {
   ls->lastline = ls->linenumber;
   if (ls->lookahead.token != TK_EOS) {  /* is there a look-ahead token? */
