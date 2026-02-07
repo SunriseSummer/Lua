@@ -172,6 +172,26 @@ static int cangjie_call_handler (lua_State *L) {
   }
   else {
     lua_pop(L, 1);  /* pop nil */
+    /* Auto-constructor: assign args to fields if __nfields is set */
+    lua_getfield(L, 1, "__nfields");
+    if (lua_isinteger(L, -1)) {
+      int nf = (int)lua_tointeger(L, -1);
+      int fi;
+      lua_pop(L, 1);
+      for (fi = 1; fi <= nf && fi <= nargs; fi++) {
+        char fieldkey[32];  /* "__field_" + up to 20 digits + NUL */
+        snprintf(fieldkey, sizeof(fieldkey), "__field_%d", fi);
+        lua_getfield(L, 1, fieldkey);  /* get field name */
+        if (lua_isstring(L, -1)) {
+          const char *fname = lua_tostring(L, -1);
+          lua_pushvalue(L, fi + 1);  /* push arg value */
+          lua_setfield(L, obj, fname);  /* obj.fieldname = arg */
+        }
+        lua_pop(L, 1);  /* pop field name string */
+      }
+    } else {
+      lua_pop(L, 1);
+    }
   }
   lua_pushvalue(L, obj);        /* return obj */
   return 1;
@@ -776,4 +796,198 @@ int luaB_named_call (lua_State *L) {
   /* Call func with total_params arguments, returning all results */
   lua_call(L, total_params, LUA_MULTRET);
   return lua_gettop(L) - nargs;
+}
+
+
+/*
+** Array<Type>(size, init) constructor.
+** Creates a 0-based array table with __n = size.
+** If init is a function, calls init(i) for each index.
+** Otherwise uses init as the value for all elements.
+*/
+int luaB_array_init (lua_State *L) {
+  int size = (int)luaL_checkinteger(L, 1);
+  int tbl, i;
+  luaL_checkany(L, 2);
+  luaL_argcheck(L, size >= 0, 1, "size must be non-negative");
+  lua_newtable(L);
+  tbl = lua_gettop(L);
+  for (i = 0; i < size; i++) {
+    if (lua_isfunction(L, 2)) {
+      lua_pushvalue(L, 2);      /* push init function */
+      lua_pushinteger(L, i);    /* push index (0-based) */
+      lua_call(L, 1, 1);        /* call init(i) */
+    } else {
+      lua_pushvalue(L, 2);      /* push init value */
+    }
+    lua_rawseti(L, tbl, i);     /* arr[i] = value */
+  }
+  lua_pushinteger(L, size);
+  lua_setfield(L, tbl, "__n");
+  return 1;
+}
+
+
+/*
+** ============================================================
+** Built-in Option type support
+** ============================================================
+*/
+
+/* Some(value) constructor - creates {__tag="Some", [1]=value} with metatable */
+static int cangjie_some (lua_State *L) {
+  lua_newtable(L);
+  lua_pushliteral(L, "Some");
+  lua_setfield(L, -2, "__tag");
+  lua_pushvalue(L, 1);
+  lua_rawseti(L, -2, 1);
+  /* Set Option metatable */
+  lua_getglobal(L, "__option_mt");
+  if (!lua_isnil(L, -1))
+    lua_setmetatable(L, -2);
+  else
+    lua_pop(L, 1);
+  return 1;
+}
+
+/* Option.getOrThrow() - unwrap Some value or error on None */
+static int cangjie_option_getOrThrow (lua_State *L) {
+  lua_getfield(L, 1, "__tag");
+  if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0) {
+    lua_pop(L, 1);
+    lua_rawgeti(L, 1, 1);
+    return 1;
+  }
+  return luaL_error(L, "Option is None: cannot getOrThrow");
+}
+
+/* Option.isSome() */
+static int cangjie_option_isSome (lua_State *L) {
+  int result;
+  lua_getfield(L, 1, "__tag");
+  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0;
+  lua_pop(L, 1);
+  lua_pushboolean(L, result);
+  return 1;
+}
+
+/* Option.isNone() */
+static int cangjie_option_isNone (lua_State *L) {
+  int result;
+  lua_getfield(L, 1, "__tag");
+  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "None") == 0;
+  lua_pop(L, 1);
+  lua_pushboolean(L, result);
+  return 1;
+}
+
+/* Option.getOrDefault(defaultFn: () -> T) */
+static int cangjie_option_getOrDefault (lua_State *L) {
+  lua_getfield(L, 1, "__tag");
+  if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0) {
+    lua_pop(L, 1);
+    lua_rawgeti(L, 1, 1);
+    return 1;
+  }
+  lua_pop(L, 1);
+  /* Call the default-value function: defaultFn() */
+  lua_pushvalue(L, 2);
+  lua_call(L, 0, 1);
+  return 1;
+}
+
+/* __index handler for Option values */
+static int cangjie_option_index (lua_State *L) {
+  const char *key = luaL_checkstring(L, 2);
+  /* Check raw access first */
+  lua_pushvalue(L, 2);
+  lua_rawget(L, 1);
+  if (!lua_isnil(L, -1)) return 1;
+  lua_pop(L, 1);
+  /* Method dispatch */
+  if (strcmp(key, "getOrThrow") == 0) {
+    lua_pushcfunction(L, cangjie_option_getOrThrow);
+    lua_pushvalue(L, 1);
+    lua_pushcclosure(L, cangjie_bound_method, 2);
+    return 1;
+  }
+  if (strcmp(key, "isSome") == 0) {
+    lua_pushcfunction(L, cangjie_option_isSome);
+    lua_pushvalue(L, 1);
+    lua_pushcclosure(L, cangjie_bound_method, 2);
+    return 1;
+  }
+  if (strcmp(key, "isNone") == 0) {
+    lua_pushcfunction(L, cangjie_option_isNone);
+    lua_pushvalue(L, 1);
+    lua_pushcclosure(L, cangjie_bound_method, 2);
+    return 1;
+  }
+  if (strcmp(key, "getOrDefault") == 0) {
+    lua_pushcfunction(L, cangjie_option_getOrDefault);
+    lua_pushvalue(L, 1);
+    lua_pushcclosure(L, cangjie_bound_method, 2);
+    return 1;
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+/* __cangjie_coalesce(opt, default) - ?? operator runtime */
+int luaB_coalesce (lua_State *L) {
+  /* If opt is nil, return default */
+  if (lua_isnil(L, 1)) {
+    lua_pushvalue(L, 2);
+    return 1;
+  }
+  /* If opt is a table with __tag */
+  if (lua_istable(L, 1)) {
+    lua_getfield(L, 1, "__tag");
+    if (lua_isstring(L, -1)) {
+      const char *tag = lua_tostring(L, -1);
+      if (strcmp(tag, "None") == 0) {
+        lua_pop(L, 1);
+        lua_pushvalue(L, 2);  /* return default */
+        return 1;
+      }
+      if (strcmp(tag, "Some") == 0) {
+        lua_pop(L, 1);
+        lua_rawgeti(L, 1, 1);  /* unwrap Some */
+        return 1;
+      }
+    }
+    lua_pop(L, 1);
+  }
+  /* Otherwise return opt as-is */
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+/*
+** luaB_option_init(L) - Register built-in Some/None globals with metatables.
+** Called during library initialization.
+*/
+int luaB_option_init (lua_State *L) {
+  /* Create Option metatable */
+  lua_newtable(L);  /* mt */
+  lua_pushcfunction(L, cangjie_option_index);
+  lua_setfield(L, -2, "__index");
+  /* Store as global __option_mt */
+  lua_pushvalue(L, -1);
+  lua_setglobal(L, "__option_mt");
+
+  /* Create Some function */
+  lua_pushcfunction(L, cangjie_some);
+  lua_setglobal(L, "Some");
+
+  /* Create None value: {__tag="None"} with metatable */
+  lua_newtable(L);
+  lua_pushliteral(L, "None");
+  lua_setfield(L, -2, "__tag");
+  lua_pushvalue(L, -2);  /* push mt */
+  lua_setmetatable(L, -2);
+  lua_setglobal(L, "None");
+
+  lua_pop(L, 1);  /* pop mt */
+  return 0;
 }

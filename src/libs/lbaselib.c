@@ -561,6 +561,8 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_overload", luaB_overload},
   {"__cangjie_setup_enum", luaB_setup_enum},
   {"__cangjie_tuple", luaB_tuple},
+  {"__cangjie_coalesce", luaB_coalesce},
+  {"Array", luaB_array_init},
   {"tonumber", luaB_tonumber},
   {"tostring", luaB_tostring},
   {"type", luaB_type},
@@ -582,6 +584,8 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   /* set global _VERSION */
   lua_pushliteral(L, LUA_VERSION);
   lua_setfield(L, -2, "_VERSION");
+  /* Initialize built-in Option type (Some, None) */
+  luaB_option_init(L);
   return 1;
 }
 

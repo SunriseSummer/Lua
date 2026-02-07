@@ -40,7 +40,7 @@ enum RESERVED {
   TK_IDIV, TK_CONCAT, TK_DOTS, TK_EQ, TK_GE, TK_LE, TK_NE,
   TK_SHL, TK_SHR,
   TK_DBCOLON, TK_ARROW, TK_DOTDOTEQ,
-  TK_AND, TK_OR, TK_NOT, TK_POW,
+  TK_AND, TK_OR, TK_NOT, TK_POW, TK_COALESCE,
   TK_EOS,
   TK_FLT, TK_INT, TK_NAME, TK_STRING
 };
@@ -86,6 +86,9 @@ typedef struct LexState {
   TString *struct_fields[64];  /* field names of current struct/class */
   int nfields;  /* number of fields in current struct/class */
   int in_struct_method;  /* nonzero if parsing inside a struct/class method */
+  /* Cangjie type definition tracking for redefinition detection */
+  TString *defined_types[128];  /* type names defined at current scope level */
+  int ndefined_types;  /* number of defined type names */
 } LexState;
 
 

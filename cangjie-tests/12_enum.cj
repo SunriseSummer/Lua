@@ -154,8 +154,8 @@ match (leaf) {
 }
 
 // Unit type literal () used in match
-let empty = Empty
-match (empty) {
+let empty_tree = Empty
+match (empty_tree) {
     case Empty =>
         ()  // no-op, Unit literal
         println("empty tree")

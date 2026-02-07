@@ -66,6 +66,8 @@ typedef struct BlockCnt {
 */
 static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
+static void skip_generic_params (LexState *ls);
+static void exp1 (LexState *ls);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -1147,6 +1149,7 @@ static void parlist (LexState *ls) {
             /* skip type name (possibly generic like Array<Int64> or
             ** function type like (Int64, Int64) -> Int64) */
             int depth = 0;
+            if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
             for (;;) {
               if (ls->t.token == TK_NAME) {
                 luaX_next(ls);
@@ -1171,6 +1174,9 @@ static void parlist (LexState *ls) {
               }
               else if (ls->t.token == TK_NOT && depth > 0) {
                 luaX_next(ls);  /* '!' in named params in function types */
+              }
+              else if (ls->t.token == '?' && depth > 0) {
+                luaX_next(ls);  /* '?' in nested Option types */
               }
               else {
                 break;
@@ -1365,6 +1371,7 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   /* optional return type annotation ': Type' - skip it */
   if (testnext(ls, ':')) {
     int depth = 0;
+    if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
     for (;;) {
       if (ls->t.token == TK_NAME) {
         luaX_next(ls);
@@ -1384,6 +1391,9 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
         }
       }
       else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '?' && depth > 0) {
         luaX_next(ls);
       }
       else {
@@ -1420,6 +1430,7 @@ static void body_init (LexState *ls, expdesc *e, int line) {
   /* skip optional return type annotation */
   if (testnext(ls, ':')) {
     int depth = 0;
+    if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
     for (;;) {
       if (ls->t.token == TK_NAME) {
         luaX_next(ls);
@@ -1439,6 +1450,9 @@ static void body_init (LexState *ls, expdesc *e, int line) {
         }
       }
       else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '?' && depth > 0) {
         luaX_next(ls);
       }
       else {
@@ -1790,7 +1804,13 @@ static void primaryexp (LexState *ls, expdesc *v) {
       return;
     }
     case TK_NAME: {
+      TString *vname = ls->t.seminfo.ts;
       singlevar(ls, v);
+      /* Skip generic type params for Array<Type>(...) constructor calls */
+      if (ls->t.token == '<' && vname != NULL &&
+          strcmp(getstr(vname), "Array") == 0) {
+        skip_generic_params(ls);
+      }
       return;
     }
     case TK_THIS: {
@@ -2375,6 +2395,31 @@ static BinOpr subexpr (LexState *ls, expdesc *v, int limit) {
 
 static void expr (LexState *ls, expdesc *v) {
   subexpr(ls, v, 0);
+  /* Handle ?? coalescing operator */
+  while (ls->t.token == TK_COALESCE) {
+    FuncState *fs = ls->fs;
+    expdesc fn, v2;
+    int base2, save_freereg;
+    luaX_next(ls);  /* skip '??' */
+    /* Discharge left operand to a known register first */
+    luaK_exp2anyreg(fs, v);
+    save_freereg = fs->freereg;
+    /* Build function call: __cangjie_coalesce(left, right) */
+    buildvar(ls, luaS_new(ls->L, "__cangjie_coalesce"), &fn);
+    luaK_exp2nextreg(fs, &fn);
+    base2 = fn.u.info;
+    /* Push left as arg 1 */
+    lua_assert(v->k == VNONRELOC);
+    luaK_codeABC(fs, OP_MOVE, fs->freereg, v->u.info, 0);
+    luaK_reserveregs(fs, 1);
+    /* Parse and push right as arg 2 */
+    subexpr(ls, &v2, 0);
+    luaK_exp2nextreg(fs, &v2);
+    /* Call */
+    init_exp(v, VCALL,
+      luaK_codeABC(fs, OP_CALL, base2, 3, 2));
+    fs->freereg = cast_byte(base2 + 1);
+  }
 }
 
 /* }==================================================================== */
@@ -2572,26 +2617,142 @@ static void labelstat (LexState *ls, TString *name, int line) {
 
 
 static void whilestat (LexState *ls, int line) {
-  /* whilestat -> WHILE '(' cond ')' '{' block '}' */
+  /* whilestat -> WHILE '(' cond ')' '{' block '}'
+  ** Also handles: WHILE '(' LET Pattern '<-' expr ')' '{' block '}' */
   FuncState *fs = ls->fs;
   int whileinit;
   int condexit;
   BlockCnt bl;
   luaX_next(ls);  /* skip WHILE */
   whileinit = luaK_getlabel(fs);
-  /* Cangjie requires parentheses around condition */
   checknext(ls, '(');
-  condexit = cond(ls);
-  checknext(ls, ')');
-  enterblock(fs, &bl, 1);
-  checknext(ls, '{' /*}*/);
-  block(ls);
-  /* Create continue label here: continue jumps to re-check condition */
-  createlabel(ls, ls->contn, 0, 0);
-  luaK_jumpto(fs, whileinit);
-  check_match(ls, /*{*/ '}', TK_WHILE, line);
-  leaveblock(fs);
-  luaK_patchtohere(fs, condexit);  /* false conditions finish the loop */
+  if (ls->t.token == TK_LET) {
+    /* while-let pattern matching: while (let Some(x) <- expr [&& extra]) { body } */
+    TString *pattern_name;
+    TString *bound_vars[16];
+    int nbounds = 0;
+    int tmp_reg;
+    int has_extra_cond = 0;
+    BlockCnt bl2;
+    expdesc fn, tag_str;
+    int base2, i;
+    luaX_next(ls);  /* skip 'let' */
+    pattern_name = str_checkname(ls);
+    if (testnext(ls, '(')) {
+      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        if (nbounds >= 16)
+          luaX_syntaxerror(ls, "too many variables in pattern (maximum 16)");
+        bound_vars[nbounds++] = str_checkname(ls);
+        if (!testnext(ls, ',')) break;
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '<');
+    checknext(ls, '-');
+    enterblock(fs, &bl, 1);  /* loop block */
+    enterblock(fs, &bl2, 0);  /* scope for temp + bound vars */
+    /* Create temp local and evaluate source expression.
+    ** Use subexpr with limit 2 so that '&&' (priority 2) is NOT consumed */
+    new_localvarliteral(ls, "(whilelet_tmp)");
+    {
+      expdesc src;
+      subexpr(ls, &src, 2);
+      luaK_exp2nextreg(fs, &src);
+    }
+    adjustlocalvars(ls, 1);
+    tmp_reg = fs->nactvar - 1;
+    /* Check for optional && or || extra_condition before ')' */
+    has_extra_cond = (ls->t.token == TK_AND || ls->t.token == TK_OR);
+    if (!has_extra_cond)
+      checknext(ls, ')');
+    /* Generate condition: __cangjie_match_tag(tmp, "pattern_name") */
+    buildvar(ls, luaS_new(ls->L, "__cangjie_match_tag"), &fn);
+    luaK_exp2nextreg(fs, &fn);
+    base2 = fn.u.info;
+    {
+      expdesc tmp_e;
+      init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+      luaK_exp2nextreg(fs, &tmp_e);
+    }
+    codestring(&tag_str, pattern_name);
+    luaK_exp2nextreg(fs, &tag_str);
+    init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 2));
+    fs->freereg = cast_byte(base2 + 1);
+    if (!has_extra_cond || ls->t.token == TK_AND) {
+      luaK_goiftrue(fs, &fn);
+      condexit = fn.f;
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      if (has_extra_cond) {
+        expdesc extra;
+        luaX_next(ls);  /* skip '&&' */
+        expr(ls, &extra);
+        if (extra.k == VNIL) extra.k = VFALSE;
+        luaK_goiftrue(fs, &extra);
+        luaK_concat(fs, &condexit, extra.f);
+        checknext(ls, ')');
+      }
+    }
+    else {
+      /* || case: match succeeds OR extra condition is true */
+      luaK_goiftrue(fs, &fn);
+      condexit = fn.f;
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      {
+        int skip_or = luaK_jump(fs);
+        luaK_patchtohere(fs, condexit);
+        {
+          expdesc extra;
+          luaX_next(ls);  /* skip '||' */
+          expr(ls, &extra);
+          if (extra.k == VNIL) extra.k = VFALSE;
+          luaK_goiftrue(fs, &extra);
+          condexit = extra.f;
+        }
+        luaK_patchtohere(fs, skip_or);
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '{' /*}*/);
+    block(ls);
+    createlabel(ls, ls->contn, 0, 0);
+    leaveblock(fs);  /* close inner scope */
+    luaK_jumpto(fs, whileinit);
+    check_match(ls, /*{*/ '}', TK_WHILE, line);
+    leaveblock(fs);  /* close loop block */
+    luaK_patchtohere(fs, condexit);
+  }
+  else {
+    condexit = cond(ls);
+    checknext(ls, ')');
+    enterblock(fs, &bl, 1);
+    checknext(ls, '{' /*}*/);
+    block(ls);
+    createlabel(ls, ls->contn, 0, 0);
+    luaK_jumpto(fs, whileinit);
+    check_match(ls, /*{*/ '}', TK_WHILE, line);
+    leaveblock(fs);
+    luaK_patchtohere(fs, condexit);
+  }
 }
 
 
@@ -2837,20 +2998,146 @@ static void forstat (LexState *ls, int line) {
 
 
 static void test_then_block (LexState *ls, int *escapelist) {
-  /* test_then_block -> [IF | ELSE IF] '(' cond ')' '{' block '}' */
+  /* test_then_block -> [IF | ELSE IF] '(' cond ')' '{' block '}'
+  ** Also handles: IF '(' LET Pattern '<-' expr ')' '{' block '}' */
   FuncState *fs = ls->fs;
   int condtrue;
   luaX_next(ls);  /* skip IF */
-  /* Cangjie requires parentheses around condition */
   checknext(ls, '(');
-  condtrue = cond(ls);
-  checknext(ls, ')');
-  checknext(ls, '{' /*}*/);
-  block(ls);  /* 'then' part */
-  checknext(ls, /*{*/ '}');
-  if (ls->t.token == TK_ELSE)  /* followed by 'else'? */
-    luaK_concat(fs, escapelist, luaK_jump(fs));  /* must jump over it */
-  luaK_patchtohere(fs, condtrue);
+  if (ls->t.token == TK_LET) {
+    /* if-let pattern matching: if (let Some(x) <- expr [&& extra]) { body }
+    ** Also supports: if (let Some(x) <- expr) { body }
+    ** Desugars to: temp = expr; if match_tag(temp, "Some") [&& extra] then
+    **   local x = temp[1]; body end */
+    TString *pattern_name;
+    TString *bound_vars[16];
+    int nbounds = 0;
+    int tmp_reg;
+    int has_extra_cond = 0;
+    BlockCnt bl;
+    expdesc fn, tag_str;
+    int base2, i;
+    luaX_next(ls);  /* skip 'let' */
+    pattern_name = str_checkname(ls);
+    if (testnext(ls, '(')) {
+      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        if (nbounds >= 16)
+          luaX_syntaxerror(ls, "too many variables in pattern (maximum 16)");
+        bound_vars[nbounds++] = str_checkname(ls);
+        if (!testnext(ls, ',')) break;
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '<');
+    checknext(ls, '-');
+    enterblock(fs, &bl, 0);
+    /* Create temp local and evaluate source expression.
+    ** Use subexpr with limit 2 so that '&&' (priority 2) is NOT consumed */
+    new_localvarliteral(ls, "(iflet_tmp)");
+    {
+      expdesc src;
+      subexpr(ls, &src, 2);
+      luaK_exp2nextreg(fs, &src);
+    }
+    adjustlocalvars(ls, 1);
+    tmp_reg = fs->nactvar - 1;
+    /* Check for optional && or || extra_condition before ')' */
+    has_extra_cond = (ls->t.token == TK_AND || ls->t.token == TK_OR);
+    if (!has_extra_cond)
+      checknext(ls, ')');
+    /* Generate condition: __cangjie_match_tag(tmp, "pattern_name") */
+    buildvar(ls, luaS_new(ls->L, "__cangjie_match_tag"), &fn);
+    luaK_exp2nextreg(fs, &fn);
+    base2 = fn.u.info;
+    {
+      expdesc tmp_e;
+      init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+      luaK_exp2nextreg(fs, &tmp_e);
+    }
+    codestring(&tag_str, pattern_name);
+    luaK_exp2nextreg(fs, &tag_str);
+    init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 2));
+    fs->freereg = cast_byte(base2 + 1);
+    if (!has_extra_cond || ls->t.token == TK_AND) {
+      /* Simple case or &&: match must succeed */
+      luaK_goiftrue(fs, &fn);
+      condtrue = fn.f;
+      /* Tag matched: bind variables from matched value */
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      /* Handle && extra_condition if present */
+      if (has_extra_cond) {
+        expdesc extra;
+        luaX_next(ls);  /* skip '&&' */
+        expr(ls, &extra);
+        if (extra.k == VNIL) extra.k = VFALSE;
+        luaK_goiftrue(fs, &extra);
+        luaK_concat(fs, &condtrue, extra.f);
+        checknext(ls, ')');
+      }
+    }
+    else {
+      /* || case: match succeeds OR extra condition is true
+      ** Generate: if match_tag(tmp, pattern) or extra_cond then ... */
+      luaK_goiftrue(fs, &fn);
+      condtrue = fn.f;
+      /* Bind variables (may be nil if match fails and || branch taken) */
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      /* Match succeeded: jump over the || fallback to body */
+      {
+        int skip_or = luaK_jump(fs);
+        /* Match failed: patch false exit to here to try || condition */
+        luaK_patchtohere(fs, condtrue);
+        {
+          expdesc extra;
+          luaX_next(ls);  /* skip '||' */
+          expr(ls, &extra);
+          if (extra.k == VNIL) extra.k = VFALSE;
+          luaK_goiftrue(fs, &extra);
+          condtrue = extra.f;
+        }
+        /* Patch skip_or to fall through to body */
+        luaK_patchtohere(fs, skip_or);
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '{' /*}*/);
+    block(ls);
+    checknext(ls, /*{*/ '}');
+    leaveblock(fs);
+    if (ls->t.token == TK_ELSE)
+      luaK_concat(fs, escapelist, luaK_jump(fs));
+    luaK_patchtohere(fs, condtrue);
+  }
+  else {
+    condtrue = cond(ls);
+    checknext(ls, ')');
+    checknext(ls, '{' /*}*/);
+    block(ls);
+    checknext(ls, /*{*/ '}');
+    if (ls->t.token == TK_ELSE)
+      luaK_concat(fs, escapelist, luaK_jump(fs));
+    luaK_patchtohere(fs, condtrue);
+  }
 }
 
 
@@ -2935,6 +3222,10 @@ static int is_repl_toplevel (LexState *ls) {
 static void skip_letvar_type (LexState *ls) {
   int depth = 0;
   int has_type = 0;
+  /* Handle leading '?' for ?Type sugar */
+  if (ls->t.token == '?') {
+    luaX_next(ls);  /* skip '?' */
+  }
   if (ls->t.token == '(') {
     has_type = 1;
     depth++;
@@ -2951,7 +3242,8 @@ static void skip_letvar_type (LexState *ls) {
       while (ls->t.token == TK_NAME ||
              (ls->t.token == '<') ||
              (ls->t.token == '>' && depth > 0) ||
-             (ls->t.token == ',' && depth > 0)) {
+             (ls->t.token == ',' && depth > 0) ||
+             (ls->t.token == '?')) {
         if (ls->t.token == '<') depth++;
         else if (ls->t.token == '>') depth--;
         luaX_next(ls);
@@ -2962,7 +3254,8 @@ static void skip_letvar_type (LexState *ls) {
     while (ls->t.token == TK_NAME ||
            (ls->t.token == '<') ||
            (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0)) {
+           (ls->t.token == ',' && depth > 0) ||
+           (ls->t.token == '?')) {
       has_type = 1;
       if (ls->t.token == '<') depth++;
       else if (ls->t.token == '>') depth--;
@@ -3006,6 +3299,19 @@ static void letvarstat (LexState *ls, int isconst) {
     lu_byte defkind = isconst ? RDKCONST : VDKREG;
     do {
       TString *vname = str_checkname(ls);  /* get variable name */
+      /* Check for redefinition in the same scope */
+      {
+        int i;
+        int block_first = fs->bl ? fs->bl->nactvar : 0;
+        for (i = block_first; i < fs->nactvar + nvars; i++) {
+          Vardesc *existing = getlocalvardesc(fs, i);
+          if (existing->vd.name == vname) {
+            luaX_syntaxerror(ls, luaO_pushfstring(ls->L,
+                "variable '%s' already defined in this scope",
+                getstr(vname)));
+          }
+        }
+      }
       /* optional type annotation ': Type' - parse and validate */
       if (testnext(ls, ':'))
         skip_letvar_type(ls);
@@ -3129,10 +3435,14 @@ static void funcstat (LexState *ls, int line) {
 static void skip_type_annotation (LexState *ls) {
   /* skip optional type annotation after ':'
   ** Handles simple types (Int64), generic types (Array<Int64>),
-  ** and function types ((Int64, Int64) -> Int64) */
+  ** function types ((Int64, Int64) -> Int64), and ?Type (Option sugar) */
   if (testnext(ls, ':')) {
     int depth = 0;
     int has_type = 0;  /* validate at least one type token */
+    /* Handle leading '?' for ?Type sugar (e.g., ?Int64 = Option<Int64>) */
+    if (ls->t.token == '?') {
+      luaX_next(ls);  /* skip '?' */
+    }
     for (;;) {
       if (ls->t.token == TK_NAME) {
         if (depth == 0) {
@@ -3168,6 +3478,10 @@ static void skip_type_annotation (LexState *ls) {
         /* '!' in parameter names for named params in function types */
         luaX_next(ls);
       }
+      else if (ls->t.token == '?' && depth > 0) {
+        /* '?' inside generic params for nested Option types */
+        luaX_next(ls);
+      }
       else {
         break;
       }
@@ -3186,9 +3500,34 @@ static void skip_generic_params (LexState *ls) {
     while (depth > 0 && ls->t.token != TK_EOS) {
       if (ls->t.token == '<') depth++;
       else if (ls->t.token == '>') depth--;
+      else if (ls->t.token == TK_SHR) {  /* >> counts as two > */
+        depth -= 2;
+        if (depth < 0) depth = 0;
+      }
       if (depth > 0) luaX_next(ls);
     }
-    luaX_next(ls);  /* skip final '>' */
+    luaX_next(ls);  /* skip final '>' or '>>' */
+  }
+}
+
+
+/*
+** Check for type redefinition in the same scope.
+** Types (struct/class/enum/interface) may not reuse the same name.
+*/
+static void check_type_redefine (LexState *ls, TString *name) {
+  int i;
+  for (i = 0; i < ls->ndefined_types; i++) {
+    if (ls->defined_types[i] == name) {
+      luaX_syntaxerror(ls, luaO_pushfstring(ls->L,
+          "type '%s' already defined in this scope", getstr(name)));
+    }
+  }
+  if (ls->ndefined_types < 128) {
+    ls->defined_types[ls->ndefined_types++] = name;
+  }
+  else {
+    luaX_syntaxerror(ls, "too many type definitions in one scope (limit 128)");
   }
 }
 
@@ -3217,6 +3556,10 @@ static void structstat (LexState *ls, int line) {
   int reg;
   int saved_nfields = ls->nfields;
   int saved_in_struct = ls->in_struct_method;
+  int has_init = 0;
+#define MAX_VAR_FIELDS 64
+  TString *var_fields[MAX_VAR_FIELDS];
+  int nvarfields = 0;
 
   /* Reset field tracking for this struct */
   ls->nfields = 0;
@@ -3224,6 +3567,7 @@ static void structstat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'struct' or 'class' */
   sname = str_checkname(ls);
+  check_type_redefine(ls, sname);
 
   /* Determine if '<' is generic params or '<:' inheritance */
   if (ls->t.token == '<') {
@@ -3459,6 +3803,7 @@ parse_operator_body:
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "init")) {
       /* Constructor: init(...) { ... } -- no 'func' keyword needed */
+      has_init = 1;
       expdesc mv, mb;
       TString *mname;
       luaX_next(ls);  /* skip 'init' */
@@ -3481,11 +3826,16 @@ parse_operator_body:
     else if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
       /* Field declaration - record field name for implicit this */
       TString *fname;
+      int is_var = (ls->t.token == TK_VAR);
       luaX_next(ls);  /* skip let/var */
       fname = str_checkname(ls);  /* field name */
       /* Track field name for implicit 'this' */
       if (ls->nfields < 64) {
         ls->struct_fields[ls->nfields++] = fname;
+      }
+      /* Track var fields for auto-constructor */
+      if (is_var && nvarfields < MAX_VAR_FIELDS) {
+        var_fields[nvarfields++] = fname;
       }
       skip_type_annotation(ls);
       /* optional default value */
@@ -3501,6 +3851,33 @@ parse_operator_body:
   }
 
   check_match(ls, /*{*/ '}', TK_STRUCT, line);
+
+  /* If no init was defined, store field metadata for auto-constructor */
+  if (!has_init && nvarfields > 0) {
+    int fi;
+    for (fi = 0; fi < nvarfields; fi++) {
+      expdesc tab2, key2, val2;
+      char fieldkey[32];
+      snprintf(fieldkey, sizeof(fieldkey), "__field_%d", fi + 1);
+      buildvar(ls, sname, &tab2);
+      luaK_exp2anyregup(fs, &tab2);
+      codestring(&key2, luaX_newstring(ls, fieldkey, strlen(fieldkey)));
+      luaK_indexed(fs, &tab2, &key2);
+      codestring(&val2, var_fields[fi]);
+      luaK_storevar(fs, &tab2, &val2);
+    }
+    /* Store __nfields count */
+    {
+      expdesc tab2, key2, val2;
+      buildvar(ls, sname, &tab2);
+      luaK_exp2anyregup(fs, &tab2);
+      codestring(&key2, luaX_newstring(ls, "__nfields", 9));
+      luaK_indexed(fs, &tab2, &key2);
+      init_exp(&val2, VKINT, 0);
+      val2.u.ival = nvarfields;
+      luaK_storevar(fs, &tab2, &val2);
+    }
+  }
 
   /* Generate: __cangjie_setup_class(NAME) to enable Point(x,y) constructor */
   {
@@ -3552,6 +3929,7 @@ static void interfacestat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'interface' */
   iname = str_checkname(ls);
+  check_type_redefine(ls, iname);
   skip_generic_params(ls);
 
   /* Create the interface table: NAME = {} */
@@ -3583,6 +3961,38 @@ static void interfacestat (LexState *ls, int line) {
       /* If there's a body, parse it */
       if (ls->t.token == '{') {
         /* skip the body - it's a default implementation */
+        int depth = 1;
+        luaX_next(ls);
+        while (depth > 0 && ls->t.token != TK_EOS) {
+          if (ls->t.token == '{') depth++;
+          else if (ls->t.token == '}') depth--;
+          if (depth > 0) luaX_next(ls);
+        }
+        luaX_next(ls);  /* skip final '}' */
+      }
+    }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+      luaX_next(ls);  /* skip 'operator' */
+      checknext(ls, TK_FUNC);  /* expect 'func' */
+      /* skip operator token(s) */
+      if (ls->t.token == '[') {
+        luaX_next(ls);  /* skip '[' */
+        checknext(ls, ']');
+      }
+      else {
+        luaX_next(ls);  /* skip operator token */
+      }
+      skip_generic_params(ls);
+      checknext(ls, '(');
+      /* skip parameter list */
+      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        luaX_next(ls);
+      }
+      checknext(ls, ')');
+      skip_type_annotation(ls);
+      /* skip body if present (default implementation) */
+      if (ls->t.token == '{') {
         int depth = 1;
         luaX_next(ls);
         while (depth > 0 && ls->t.token != TK_EOS) {
@@ -3714,6 +4124,68 @@ static void extendstat (LexState *ls, int line) {
         luaK_storevar(fs, &mv, &mb);
         luaK_fixline(fs, line);
       }
+      else if (ls->t.token == TK_NAME &&
+               ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+        expdesc mv, mb;
+        TString *metamethod_name;
+        int op_token;
+        luaX_next(ls);  /* skip 'operator' */
+        checknext(ls, TK_FUNC);  /* expect 'func' */
+        op_token = ls->t.token;
+        switch (op_token) {
+          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+          case '[': {
+            luaX_next(ls);  /* skip '[' */
+            checknext(ls, ']');
+            metamethod_name = luaS_new(ls->L, "__index");
+            goto parse_ext_b_opbody;
+          }
+          default: {
+            if (ls->t.token == TK_NAME) {
+              const char *opname = getstr(ls->t.seminfo.ts);
+              if (strcmp(opname, "toString") == 0) {
+                metamethod_name = luaS_new(ls->L, "__tostring");
+              } else {
+                char mm[64];
+                snprintf(mm, sizeof(mm), "__%s", opname);
+                metamethod_name = luaS_new(ls->L, mm);
+              }
+            } else {
+              luaX_syntaxerror(ls, "unsupported operator for overloading");
+              metamethod_name = NULL;
+            }
+            break;
+          }
+        }
+        luaX_next(ls);  /* skip operator token */
+parse_ext_b_opbody:
+        skip_generic_params(ls);
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, metamethod_name);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
+      }
       else {
         luaX_next(ls);
       }
@@ -3764,6 +4236,68 @@ static void extendstat (LexState *ls, int line) {
         luaK_storevar(fs, &mv, &mb);
         luaK_fixline(fs, line);
       }
+      else if (ls->t.token == TK_NAME &&
+               ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+        expdesc mv, mb;
+        TString *metamethod_name;
+        int op_token;
+        luaX_next(ls);  /* skip 'operator' */
+        checknext(ls, TK_FUNC);  /* expect 'func' */
+        op_token = ls->t.token;
+        switch (op_token) {
+          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+          case '[': {
+            luaX_next(ls);  /* skip '[' */
+            checknext(ls, ']');
+            metamethod_name = luaS_new(ls->L, "__index");
+            goto parse_ext_u_opbody;
+          }
+          default: {
+            if (ls->t.token == TK_NAME) {
+              const char *opname = getstr(ls->t.seminfo.ts);
+              if (strcmp(opname, "toString") == 0) {
+                metamethod_name = luaS_new(ls->L, "__tostring");
+              } else {
+                char mm[64];
+                snprintf(mm, sizeof(mm), "__%s", opname);
+                metamethod_name = luaS_new(ls->L, mm);
+              }
+            } else {
+              luaX_syntaxerror(ls, "unsupported operator for overloading");
+              metamethod_name = NULL;
+            }
+            break;
+          }
+        }
+        luaX_next(ls);  /* skip operator token */
+parse_ext_u_opbody:
+        skip_generic_params(ls);
+        buildvar(ls, tname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, metamethod_name);
+          luaK_indexed(fs, &mv, &mkey);
+        }
+        body(ls, &mb, 1, ls->linenumber);
+        luaK_storevar(fs, &mv, &mb);
+        luaK_fixline(fs, line);
+      }
       else {
         luaX_next(ls);
       }
@@ -3798,6 +4332,7 @@ static void enumstat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'enum' */
   ename = str_checkname(ls);
+  check_type_redefine(ls, ename);
 
   /* skip generic type parameters */
   skip_generic_params(ls);
@@ -4768,6 +5303,7 @@ static void statement (LexState *ls) {
 static void mainfunc (LexState *ls, FuncState *fs) {
   BlockCnt bl;
   Upvaldesc *env;
+  ls->ndefined_types = 0;  /* initialize type redefinition tracking */
   open_func(ls, fs, &bl);
   setvararg(fs);  /* main function is always vararg */
   env = allocupvalue(fs);  /* ...set environment upvalue */
