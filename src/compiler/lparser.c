@@ -1882,7 +1882,8 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         luaX_next(ls);  /* skip '[' */
         {
           expdesc start_e;
-          /* Use subexpr with limit 9 so '..' (priority 9) is NOT consumed */
+          /* Use subexpr with limit 9 so '..' is NOT consumed as concat
+          ** (OPR_CONCAT has left priority 9, see priority[] table) */
           subexpr(ls, &start_e, 9);
           if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ) {
             /* Range subscript: arr[start..end] or arr[start..=end] */
@@ -1906,6 +1907,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
               luaK_exp2nextreg(fs, &incl_e);
               expr(ls, &rhs);
               luaK_exp2nextreg(fs, &rhs);
+              /* 6 args (arr, start, end, inclusive, values) + 1 = 7 */
               init_exp(v, VCALL,
                        luaK_codeABC(fs, OP_CALL, base2, 7, 1));
               fs->freereg = cast_byte(base2);
@@ -1920,6 +1922,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
               luaK_exp2nextreg(fs, &end_e);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
               luaK_exp2nextreg(fs, &incl_e);
+              /* 4 args (arr, start, end, inclusive) + 1 = 5; 1 result + 1 = 2 */
               init_exp(v, VCALL,
                        luaK_codeABC(fs, OP_CALL, base2, 5, 2));
               fs->freereg = cast_byte(base2 + 1);
