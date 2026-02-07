@@ -14,7 +14,7 @@ expectEq(a % b, 1, "a % b")
 let pi: Float64 = 3.14159
 let r: Float64 = 5.0
 let area = pi * r * r
-expectEq(area, "78.53975", "float area")
+expectEq(area, 78.53975, "float area")
 
 // -- Section: boolean operations --
 let t: Bool = true
@@ -51,7 +51,7 @@ expectEq(arr.size, 5, "arr.size")
 
 // -- Section: Rune type --
 let ch: Rune = 'X'
-expectEq(ch, "X", "Rune ch")
+expectEq(ch, 'X', "Rune ch")
 
 if (!__test_failed) {
     println("PASS: 04_types_operations")

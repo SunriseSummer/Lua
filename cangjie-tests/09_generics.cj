@@ -79,5 +79,5 @@ expectEq(stack.pop(), 10, "third pop")
 expectTrue(stack.isEmpty(), "isEmpty after all pops")
 
 if (!__test_failed) {
-  println("PASS: 08_generics")
+  println("PASS: 09_generics")
 }
