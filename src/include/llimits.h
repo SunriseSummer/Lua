@@ -254,9 +254,10 @@ typedef unsigned long l_uint32;
 ** (as the result 'm' of 'fmod' has the same sign of 'a').
 */
 #if !defined(luai_nummod)
+/* Cangjie semantics: truncated modulo (like C/Java fmod).
+** Result sign follows the dividend. */
 #define luai_nummod(L,a,b,m)  \
-  { (void)L; (m) = l_mathop(fmod)(a,b); \
-    if (((m) > 0) ? (b) < 0 : ((m) < 0 && (b) > 0)) (m) += (b); }
+  { (void)L; (m) = l_mathop(fmod)(a,b); }
 #endif
 
 /* exponentiation */

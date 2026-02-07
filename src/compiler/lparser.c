@@ -2655,30 +2655,41 @@ static BinOpr subexpr (LexState *ls, expdesc *v, int limit) {
 
 static void expr (LexState *ls, expdesc *v) {
   subexpr(ls, v, 0);
-  /* Handle ?? coalescing operator */
-  while (ls->t.token == TK_COALESCE) {
+  /* Handle ?? coalescing operator: a ?? b → __cangjie_coalesce(a, b)
+  ** For chained expressions (a ?? b ?? c), each step calls coalesce
+  ** with the previous result as the first argument.
+  **
+  ** The result must end up at a consistent register so that enclosing
+  ** let/var assignments pick up the correct value. */
+  if (ls->t.token == TK_COALESCE) {
     FuncState *fs = ls->fs;
-    expdesc fn, v2;
-    int base2, save_freereg;
-    luaX_next(ls);  /* skip '??' */
-    /* Discharge left operand to a known register first */
-    luaK_exp2anyreg(fs, v);
-    save_freereg = fs->freereg;
-    /* Build function call: __cangjie_coalesce(left, right) */
-    buildvar(ls, luaS_new(ls->L, "__cangjie_coalesce"), &fn);
-    luaK_exp2nextreg(fs, &fn);
-    base2 = fn.u.info;
-    /* Push left as arg 1 */
-    lua_assert(v->k == VNONRELOC);
-    luaK_codeABC(fs, OP_MOVE, fs->freereg, v->u.info, 0);
-    luaK_reserveregs(fs, 1);
-    /* Parse and push right as arg 2 */
-    subexpr(ls, &v2, 0);
-    luaK_exp2nextreg(fs, &v2);
-    /* Call */
-    init_exp(v, VCALL,
-      luaK_codeABC(fs, OP_CALL, base2, 3, 2));
-    fs->freereg = cast_byte(base2 + 1);
+    /* All iterations must leave the result in the same register */
+    int result_reg;
+    luaK_exp2nextreg(fs, v);
+    result_reg = v->u.info;
+    while (ls->t.token == TK_COALESCE) {
+      expdesc fn, v2;
+      int base;
+      luaX_next(ls);  /* skip '??' */
+      /* Place __cangjie_coalesce function at next register (= call base) */
+      buildvar(ls, luaS_new(ls->L, "__cangjie_coalesce"), &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base = fn.u.info;
+      /* Copy left operand into arg1 slot (base+1) */
+      luaK_codeABC(fs, OP_MOVE, fs->freereg, result_reg, 0);
+      luaK_reserveregs(fs, 1);
+      /* Parse right operand into arg2 slot (base+2) */
+      subexpr(ls, &v2, 0);
+      luaK_exp2nextreg(fs, &v2);
+      /* Emit OP_CALL: func at base, 2 args (B=3), 1 result (C=2) */
+      luaK_codeABC(fs, OP_CALL, base, 3, 2);
+      /* Move result from base back to result_reg */
+      if (base != result_reg) {
+        luaK_codeABC(fs, OP_MOVE, result_reg, base, 0);
+      }
+      fs->freereg = cast_byte(result_reg + 1);
+    }
+    init_exp(v, VNONRELOC, result_reg);
   }
 }
 
