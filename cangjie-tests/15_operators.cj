@@ -1,61 +1,61 @@
-// Test: Operators (logical, power, bitwise)
+// Test: Operators — logical (&&, ||, !), short-circuit, power (**), bitwise (^, &, |, ~), shifts (<<, >>)
 
-// Logical AND (&&)
-println("true && true = ${true && true}")
-println("true && false = ${true && false}")
-println("false && true = ${false && true}")
-println("false && false = ${false && false}")
+// --- Logical AND (&&) ---
+if ((true && true) != true) { println("FAIL: true && true expected true"); return () }
+if ((true && false) != false) { println("FAIL: true && false expected false"); return () }
+if ((false && true) != false) { println("FAIL: false && true expected false"); return () }
+if ((false && false) != false) { println("FAIL: false && false expected false"); return () }
 
-// Logical OR (||)
-println("true || true = ${true || true}")
-println("true || false = ${true || false}")
-println("false || true = ${false || true}")
-println("false || false = ${false || false}")
+// --- Logical OR (||) ---
+if ((true || true) != true) { println("FAIL: true || true expected true"); return () }
+if ((true || false) != true) { println("FAIL: true || false expected true"); return () }
+if ((false || true) != true) { println("FAIL: false || true expected true"); return () }
+if ((false || false) != false) { println("FAIL: false || false expected false"); return () }
 
-// Logical NOT (!)
-println("!true = ${!true}")
-println("!false = ${!false}")
+// --- Logical NOT (!) ---
+if ((!true) != false) { println("FAIL: !true expected false"); return () }
+if ((!false) != true) { println("FAIL: !false expected true"); return () }
 
-// Short-circuit evaluation
+// --- Short-circuit evaluation ---
 var x = 0
 func sideEffect(): Bool {
   x = x + 1
   return true
 }
 let r1 = false && sideEffect()
-println("short-circuit &&: x = ${x}")  // x should be 0 (sideEffect not called)
+if (x != 0) { println("FAIL: short-circuit && expected x=0, got ${x}"); return () }
 let r2 = true || sideEffect()
-println("short-circuit ||: x = ${x}")  // x should be 0 (sideEffect not called)
+if (x != 0) { println("FAIL: short-circuit || expected x=0, got ${x}"); return () }
 
-// Power operator (**)
-println("2 ** 0 = ${2 ** 0}")
-println("2 ** 10 = ${2 ** 10}")
-println("3 ** 3 = ${3 ** 3}")
+// --- Power operator (**) ---
+if ((2 ** 0) != 1) { println("FAIL: 2**0 expected 1, got ${2 ** 0}"); return () }
+if ((2 ** 10) != 1024) { println("FAIL: 2**10 expected 1024, got ${2 ** 10}"); return () }
+if ((3 ** 3) != 27) { println("FAIL: 3**3 expected 27, got ${3 ** 3}"); return () }
 
-// Bitwise XOR (^)
-println("5 ^ 3 = ${5 ^ 3}")      // 101 XOR 011 = 110 = 6
-println("0xFF ^ 0x0F = ${0xFF ^ 0x0F}")  // 240
+// --- Bitwise XOR (^) ---
+if ((5 ^ 3) != 6) { println("FAIL: 5^3 expected 6, got ${5 ^ 3}"); return () }
+if ((0xFF ^ 0x0F) != 240) { println("FAIL: 0xFF^0x0F expected 240, got ${0xFF ^ 0x0F}"); return () }
 
-// Bitwise AND (&)
-println("5 & 3 = ${5 & 3}")      // 101 AND 011 = 001 = 1
-println("0xFF & 0x0F = ${0xFF & 0x0F}")  // 15
+// --- Bitwise AND (&) ---
+if ((5 & 3) != 1) { println("FAIL: 5&3 expected 1, got ${5 & 3}"); return () }
+if ((0xFF & 0x0F) != 15) { println("FAIL: 0xFF&0x0F expected 15, got ${0xFF & 0x0F}"); return () }
 
-// Bitwise OR (|)
-println("5 | 3 = ${5 | 3}")      // 101 OR 011 = 111 = 7
-println("0xF0 | 0x0F = ${0xF0 | 0x0F}")  // 255
+// --- Bitwise OR (|) ---
+if ((5 | 3) != 7) { println("FAIL: 5|3 expected 7, got ${5 | 3}"); return () }
+if ((0xF0 | 0x0F) != 255) { println("FAIL: 0xF0|0x0F expected 255, got ${0xF0 | 0x0F}"); return () }
 
-// Bitwise NOT (~)
-println("~0 = ${~0}")            // -1
+// --- Bitwise NOT (~) ---
+if ((~0) != -1) { println("FAIL: ~0 expected -1, got ${~0}"); return () }
 
-// Bit shift operators
-println("1 << 4 = ${1 << 4}")    // 16
-println("16 >> 2 = ${16 >> 2}")  // 4
+// --- Bit shift operators ---
+if ((1 << 4) != 16) { println("FAIL: 1<<4 expected 16, got ${1 << 4}"); return () }
+if ((16 >> 2) != 4) { println("FAIL: 16>>2 expected 4, got ${16 >> 2}"); return () }
 
-// Combined expressions
+// --- Combined expressions ---
 let a = 5
 let b = 3
-println("a > 0 && b > 0 = ${a > 0 && b > 0}")
-println("a > 10 || b > 0 = ${a > 10 || b > 0}")
-println("!(a == b) = ${!(a == b)}")
+if ((a > 0 && b > 0) != true) { println("FAIL: a>0 && b>0 expected true"); return () }
+if ((a > 10 || b > 0) != true) { println("FAIL: a>10 || b>0 expected true"); return () }
+if ((!(a == b)) != true) { println("FAIL: !(a==b) expected true"); return () }
 
 println("PASS: 15_operators")
