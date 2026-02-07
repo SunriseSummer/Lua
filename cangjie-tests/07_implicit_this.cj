@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Implicit this in struct and class
 // Validates that struct/class methods can access fields without explicit 'this'.
 
@@ -21,12 +23,9 @@ struct Point {
 
 let p1 = Point(3, 4)
 let p2 = Point(0, 0)
-let r_p1 = p1.toString()
-if (r_p1 != "(3, 4)") { println("FAIL: p1.toString() expected (3, 4), got ${r_p1}"); return () }
-let r_p2 = p2.toString()
-if (r_p2 != "(0, 0)") { println("FAIL: p2.toString() expected (0, 0), got ${r_p2}"); return () }
-let r_dist = tostring(p1.distanceTo(p2))
-if (r_dist != "5.0") { println("FAIL: distance expected 5.0, got ${r_dist}"); return () }
+expectEq(p1.toString(), "(3, 4)", "p1.toString()")
+expectEq(p2.toString(), "(0, 0)", "p2.toString()")
+expectEq(p1.distanceTo(p2), 5.0, "distance")
 
 // -- Section: Class with implicit this (Counter) --
 class Counter {
@@ -51,11 +50,9 @@ let c = Counter(5)
 c.increment()
 c.increment()
 c.increment()
-let r_count = c.getCount()
-if (r_count != 15) { println("FAIL: count after 3 increments expected 15, got ${r_count}"); return () }
+expectEq(c.getCount(), 15, "count after 3 increments")
 c.reset()
-let r_reset = c.getCount()
-if (r_reset != 0) { println("FAIL: count after reset expected 0, got ${r_reset}"); return () }
+expectEq(c.getCount(), 0, "count after reset")
 
 // -- Section: Mix implicit and explicit this (Rectangle) --
 struct Rectangle {
@@ -74,10 +71,8 @@ struct Rectangle {
 }
 
 let r = Rectangle(5, 3)
-let r_area = r.area()
-if (r_area != 15) { println("FAIL: area expected 15, got ${r_area}"); return () }
-let r_rect = r.toString()
-if (r_rect != "5x3") { println("FAIL: toString expected 5x3, got ${r_rect}"); return () }
+expectEq(r.area(), 15, "area")
+expectEq(r.toString(), "5x3", "toString")
 
 // -- Section: Class with string fields (Greeter) --
 class Greeter {
@@ -93,7 +88,8 @@ class Greeter {
 }
 
 let g = Greeter("Hello", "World")
-let r_greet = g.greet()
-if (r_greet != "Hello, World!") { println("FAIL: greet expected 'Hello, World!', got ${r_greet}"); return () }
+expectEq(g.greet(), "Hello, World!", "greet")
 
-println("PASS: 12_implicit_this")
+if (!__test_failed) {
+  println("PASS: 12_implicit_this")
+}

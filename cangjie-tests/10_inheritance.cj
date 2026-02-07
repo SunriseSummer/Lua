@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Class Inheritance and Polymorphism
 // Validates single and multi-level inheritance, method overriding,
 // polymorphic dispatch, and interface implementation on classes.
@@ -50,34 +52,25 @@ let a = Animal("Bird", "Tweet")
 let d = Dog("Rex", "Labrador")
 let c = Cat("Whiskers")
 
-let r_a = a.speak()
-if (r_a != "Bird says Tweet") { println("FAIL: a.speak() expected 'Bird says Tweet', got ${r_a}"); return () }
-let r_d = d.speak()
-if (r_d != "Rex barks: Woof!") { println("FAIL: d.speak() expected 'Rex barks: Woof!', got ${r_d}"); return () }
-let r_c = c.speak()
-if (r_c != "Whiskers purrs: Meow") { println("FAIL: c.speak() expected 'Whiskers purrs: Meow', got ${r_c}"); return () }
+expectEq(a.speak(), "Bird says Tweet", "a.speak()")
+expectEq(d.speak(), "Rex barks: Woof!", "d.speak()")
+expectEq(c.speak(), "Whiskers purrs: Meow", "c.speak()")
 
 // -- Section: Inherited methods --
-let r_dtype = d.getType()
-if (r_dtype != "Animal") { println("FAIL: d.getType() expected 'Animal', got ${r_dtype}"); return () }
-let r_ctype = c.getType()
-if (r_ctype != "Animal") { println("FAIL: c.getType() expected 'Animal', got ${r_ctype}"); return () }
+expectEq(d.getType(), "Animal", "d.getType()")
+expectEq(c.getType(), "Animal", "c.getType()")
 
 // -- Section: Child-specific methods --
-let r_fetch = d.fetch()
-if (r_fetch != "Rex fetches the ball") { println("FAIL: d.fetch() expected 'Rex fetches the ball', got ${r_fetch}"); return () }
+expectEq(d.fetch(), "Rex fetches the ball", "d.fetch()")
 
 // -- Section: Polymorphic dispatch --
 func makeSpeak(animal) {
   return animal.speak()
 }
 
-let r_ma = makeSpeak(a)
-if (r_ma != "Bird says Tweet") { println("FAIL: makeSpeak(a) expected 'Bird says Tweet', got ${r_ma}"); return () }
-let r_md = makeSpeak(d)
-if (r_md != "Rex barks: Woof!") { println("FAIL: makeSpeak(d) expected 'Rex barks: Woof!', got ${r_md}"); return () }
-let r_mc = makeSpeak(c)
-if (r_mc != "Whiskers purrs: Meow") { println("FAIL: makeSpeak(c) expected 'Whiskers purrs: Meow', got ${r_mc}"); return () }
+expectEq(makeSpeak(a), "Bird says Tweet", "makeSpeak(a)")
+expectEq(makeSpeak(d), "Rex barks: Woof!", "makeSpeak(d)")
+expectEq(makeSpeak(c), "Whiskers purrs: Meow", "makeSpeak(c)")
 
 // -- Section: Multi-level inheritance --
 class GuideDog <: Dog {
@@ -94,14 +87,10 @@ class GuideDog <: Dog {
 }
 
 let gd = GuideDog("Buddy", "Alice")
-let r_gdspeak = gd.speak()
-if (r_gdspeak != "Buddy barks: Woof!") { println("FAIL: gd.speak() expected 'Buddy barks: Woof!', got ${r_gdspeak}"); return () }
-let r_gdtype = gd.getType()
-if (r_gdtype != "Animal") { println("FAIL: gd.getType() expected 'Animal', got ${r_gdtype}"); return () }
-let r_gdfetch = gd.fetch()
-if (r_gdfetch != "Buddy fetches the ball") { println("FAIL: gd.fetch() expected 'Buddy fetches the ball', got ${r_gdfetch}"); return () }
-let r_gdguide = gd.guide()
-if (r_gdguide != "Buddy guides Alice") { println("FAIL: gd.guide() expected 'Buddy guides Alice', got ${r_gdguide}"); return () }
+expectEq(gd.speak(), "Buddy barks: Woof!", "gd.speak()")
+expectEq(gd.getType(), "Animal", "gd.getType()")
+expectEq(gd.fetch(), "Buddy fetches the ball", "gd.fetch()")
+expectEq(gd.guide(), "Buddy guides Alice", "gd.guide()")
 
 // -- Section: Class implementing interface --
 interface Printable {
@@ -121,7 +110,8 @@ class Point <: Printable {
 }
 
 let p = Point(3, 4)
-let r_pts = p.toString()
-if (r_pts != "(3, 4)") { println("FAIL: p.toString() expected '(3, 4)', got ${r_pts}"); return () }
+expectEq(p.toString(), "(3, 4)", "p.toString()")
 
-println("PASS: 10_inheritance")
+if (!__test_failed) {
+  println("PASS: 10_inheritance")
+}

@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Interface-based Extension (extend A <: I { ... })
 // Validates extending structs/classes/built-in types with interface implementations.
 
@@ -35,10 +37,8 @@ extend Point <: Describable {
 }
 
 let p = Point(3, 4)
-let r_pts = p.toString()
-if (r_pts != "(3, 4)") { println("FAIL: p.toString() expected (3, 4), got ${r_pts}"); return () }
-let r_pdesc = p.describe()
-if (r_pdesc != "Point at (3, 4)") { println("FAIL: p.describe() expected 'Point at (3, 4)', got ${r_pdesc}"); return () }
+expectEq(p.toString(), "(3, 4)", "p.toString()")
+expectEq(p.describe(), "Point at (3, 4)", "p.describe()")
 
 // -- Section: Extend class with interface --
 class Animal {
@@ -55,8 +55,7 @@ extend Animal <: Printable {
 }
 
 let a = Animal("Cat")
-let r_animal = a.toString()
-if (r_animal != "Animal(Cat)") { println("FAIL: animal.toString() expected 'Animal(Cat)', got ${r_animal}"); return () }
+expectEq(a.toString(), "Animal(Cat)", "animal.toString()")
 
 // -- Section: Extend built-in Int64 --
 extend Int64 <: Printable {
@@ -69,12 +68,9 @@ extend Int64 <: Printable {
 }
 
 let n = 42
-let r_dbl = n.double()
-if (r_dbl != 84) { println("FAIL: n.double() expected 84, got ${r_dbl}"); return () }
-let r_pos = n.isPositive()
-if (r_pos != true) { println("FAIL: n.isPositive() expected true, got ${r_pos}"); return () }
-let r_neg = (-5).isPositive()
-if (r_neg != false) { println("FAIL: (-5).isPositive() expected false, got ${r_neg}"); return () }
+expectEq(n.double(), 84, "n.double()")
+expectTrue(n.isPositive(), "n.isPositive()")
+expectFalse((-5).isPositive(), "(-5).isPositive()")
 
 // -- Section: Extend built-in String --
 extend String <: Describable {
@@ -84,8 +80,7 @@ extend String <: Describable {
 }
 
 let s = "hello"
-let r_shout = s.shout()
-if (r_shout != "hello!!!") { println("FAIL: s.shout() expected 'hello!!!', got ${r_shout}"); return () }
+expectEq(s.shout(), "hello!!!", "s.shout()")
 
 // -- Section: Extend without interface --
 extend Point {
@@ -95,7 +90,8 @@ extend Point {
 }
 
 let p2 = p.translate(10, 20)
-let r_trans = p2.toString()
-if (r_trans != "(13, 24)") { println("FAIL: translated point expected (13, 24), got ${r_trans}"); return () }
+expectEq(p2.toString(), "(13, 24)", "translated point")
 
-println("PASS: 11_extend_interface")
+if (!__test_failed) {
+  println("PASS: 11_extend_interface")
+}
