@@ -92,7 +92,7 @@ extend Point <: Moveable {
     }
 }
 let pt = Point(1.0, 1.0)
-let distance = p.move(3.0, 4.0)
+let distance = pt.move(3.0, 4.0)
 println(distance)
 
 extend Int64 {
