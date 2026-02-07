@@ -1,12 +1,13 @@
-// Comprehensive usage: Option + if-let/while-let + auto-constructor + Array
+dofile("cangjie-tests/_testing.cj")
 
-// Auto-constructor class with Option fields
+// Test: Option + if-let/while-let + auto-constructor + Array
+
+// -- Section: auto-constructor class with Option fields --
 class Config {
   var name: String = ""
   var maxRetries: Int64 = 0
 }
 
-// Function returning Option
 func findConfig(name: String): ?Config {
   if (name == "prod") {
     return Some(Config("production", 5))
@@ -17,48 +18,59 @@ func findConfig(name: String): ?Config {
   return None
 }
 
-// if-let basic usage
+// -- Section: if-let basic usage --
+var iflet_result = ""
 if (let Some(cfg) <- findConfig("prod")) {
-  println("found: ${cfg.name}, retries: ${cfg.maxRetries}")
+  iflet_result = cfg.name
 }
+expectEq(iflet_result, "production", "if-let prod")
 
-// if-let with && condition using bound variable
+// -- Section: if-let with && condition --
+var iflet_and = false
 if (let Some(cfg) <- findConfig("prod") && cfg.maxRetries > 3) {
-  println("prod retries > 3: true")
+  iflet_and = true
 }
+expectTrue(iflet_and, "if-let && retries > 3")
 
-// if-let with || fallback condition
+// -- Section: if-let with || fallback --
 var useFallback = true
+var iflet_or = false
 if (let Some(cfg) <- findConfig("unknown") || useFallback) {
-  println("fallback triggered")
+  iflet_or = true
 }
+expectTrue(iflet_or, "if-let || fallback")
 
-// Nested if-let
+// -- Section: nested if-let --
+var nested_result = ""
 if (let Some(cfg) <- findConfig("dev")) {
-  println("dev found: ${cfg.name}")
   if (let Some(prod) <- findConfig("prod")) {
-    println("both exist: ${cfg.name} and ${prod.name}")
+    nested_result = cfg.name + " and " + prod.name
   }
 }
+expectEq(nested_result, "development and production", "nested if-let")
 
-// Coalescing with default
+// -- Section: coalescing with default --
 let maybeConfig = findConfig("unknown")
 let cfg = maybeConfig ?? Config("default", 0)
-println("coalesce: ${cfg.name}")
+expectEq(cfg.name, "default", "coalesce default")
 
-// Array of Options
+// -- Section: array of Options --
 let results = [findConfig("prod"), findConfig("unknown"), findConfig("dev")]
+var found_names = ""
+var none_count = 0
 var i = 0
 while (i < results.size) {
   if (let Some(c) <- results[i]) {
-    println("result[${i}]: ${c.name}")
+    found_names = found_names + c.name + " "
   } else {
-    println("result[${i}]: None")
+    none_count = none_count + 1
   }
   i = i + 1
 }
+expectEq(found_names, "production development ", "array of Options names")
+expectEq(none_count, 1, "array of Options none count")
 
-// while-let with a generator
+// -- Section: while-let with generator --
 var attempts = 3
 func tryConnect(): ?String {
   if (attempts > 0) {
@@ -68,27 +80,32 @@ func tryConnect(): ?String {
   return None
 }
 
+var connections = ""
 while (let Some(conn) <- tryConnect()) {
-  println("connected: ${conn}")
+  connections = connections + conn + " "
 }
-println("no more connections")
+expectEq(connections, "connection_2 connection_1 connection_0 ", "while-let connections")
 
-// Option method usage
+// -- Section: Option method usage --
 let val = Some(100)
-println("isSome: ${val.isSome()}")
-println("getOrThrow: ${val.getOrThrow()}")
-println("getOrDefault: ${val.getOrDefault({ => 0 })}")
+expectTrue(val.isSome(), "Some isSome")
+expectEq(val.getOrThrow(), 100, "Some getOrThrow")
+expectEq(val.getOrDefault({ => 0 }), 100, "Some getOrDefault")
 
 let empty = None
-println("empty isSome: ${empty.isSome()}")
-println("empty getOrDefault: ${empty.getOrDefault({ => -1 })}")
+expectFalse(empty.isSome(), "None isSome")
+expectEq(empty.getOrDefault({ => -1 }), -1, "None getOrDefault")
 
-// Match on Option
+// -- Section: match on Option --
+var match_result = ""
 match (findConfig("prod")) {
   case Some(c) =>
-    println("matched config: ${c.name}")
+    match_result = c.name
   case None =>
-    println("no config")
+    match_result = "no config"
 }
+expectEq(match_result, "production", "match Option prod")
 
-println("PASS: option_iflet_usage")
+if (!__test_failed) {
+    println("PASS: usages/option_iflet_usage")
+}

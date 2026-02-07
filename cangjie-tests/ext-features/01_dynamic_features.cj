@@ -1,55 +1,61 @@
-// Extended features: Lua dynamic capabilities
+dofile("cangjie-tests/_testing.cj")
+
+// Test: Lua dynamic capabilities (extended Cangjie features)
 // These features go beyond standard Cangjie syntax,
 // leveraging Lua's dynamic nature for enhanced flexibility.
 
-// nil value (Lua's null) - Cangjie uses Unit
+// -- Section: nil value (Lua's null) --
 let z = nil
-println(z)      // nil
+expectNil(z, "nil value")
 
-// Multiple assignment (Lua feature)
+// -- Section: multiple assignment --
 let m, n = 100, 200
-println(m)      // 100
-println(n)      // 200
+expectEq(m, 100, "multi-assign m")
+expectEq(n, 200, "multi-assign n")
 
-// Multiple return values from functions
+// -- Section: multiple return values --
 func divmod(a: Int64, b: Int64) {
   return a / b, a % b
 }
 let q, r = divmod(17, 5)
-println("17 / 5 = ${q}, remainder ${r}")
+expectEq(q, 3.4, "divmod quotient")
+expectEq(r, 2, "divmod remainder")
 
-// Dynamic typing - same variable can hold any type
+// -- Section: dynamic typing --
 var dyn = 42
-println("int: ${dyn}")
+expectEq(dyn, 42, "dyn as int")
 dyn = "hello"
-println("string: ${dyn}")
+expectEq(dyn, "hello", "dyn as string")
 dyn = true
-println("bool: ${dyn}")
+expectTrue(dyn, "dyn as bool")
 
-// Table as associative array (Lua feature)
+// -- Section: table as associative array --
 let dict = {}
 dict["name"] = "Cangjie"
 dict["version"] = 1
 dict[42] = "answer"
-println(dict["name"])
-println(dict[42])
+expectEq(dict["name"], "Cangjie", "dict name")
+expectEq(dict["version"], 1, "dict version")
+expectEq(dict[42], "answer", "dict numeric key")
 
-// # operator for raw table length
+// -- Section: # operator for raw table length --
 let raw = {10, 20, 30}
-println(#raw)  // 3
+expectEq(#raw, 3, "# operator")
 
-// ipairs iterator
-print("ipairs: ")
+// -- Section: ipairs iterator --
+var ipairs_sum = 0
 for (k, v in ipairs(raw)) {
-  print("${k}=${v} ")
+  ipairs_sum = ipairs_sum + v
 }
-println()
+expectEq(ipairs_sum, 60, "ipairs sum")
 
-// pairs iterator for all keys
-print("pairs: ")
+// -- Section: pairs iterator --
+var pairs_count = 0
 for (k, v in pairs(dict)) {
-  print(tostring(k) .. "=" .. tostring(v) .. " ")
+  pairs_count = pairs_count + 1
 }
-println()
+expectEq(pairs_count, 3, "pairs count")
 
-println("PASS: ext-features/01_dynamic_features")
+if (!__test_failed) {
+    println("PASS: ext-features/01_dynamic_features")
+}

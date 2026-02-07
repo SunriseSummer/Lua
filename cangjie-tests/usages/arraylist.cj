@@ -1,3 +1,5 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: ArrayList implementation
 // A dynamic array with automatic resizing
 
@@ -116,61 +118,61 @@ struct ArrayList<T> {
   }
 }
 
-// === Tests ===
-
-// Test basic operations
+// -- Section: basic operations --
 let list = ArrayList()
-println("empty: ${tostring(list.isEmpty())}")  // true
-println("size: ${list.size()}")                // 0
+expectTrue(list.isEmpty(), "empty list")
+expectEq(list.size(), 0, "empty size")
 
-// Test add
+// -- Section: add --
 list.add(10)
 list.add(20)
 list.add(30)
 list.add(40)
 list.add(50)
-println("after add: ${list.toString()}")  // [10, 20, 30, 40, 50]
-println("size: ${list.size()}")           // 5
+expectEq(list.toString(), "[10, 20, 30, 40, 50]", "after add")
+expectEq(list.size(), 5, "size after add")
 
-// Test get (0-based index)
-println("get(0): ${list.get(0)}")  // 10
-println("get(2): ${list.get(2)}")  // 30
-println("get(4): ${list.get(4)}")  // 50
+// -- Section: get (0-based) --
+expectEq(list.get(0), 10, "get(0)")
+expectEq(list.get(2), 30, "get(2)")
+expectEq(list.get(4), 50, "get(4)")
 
-// Test set (0-based index)
+// -- Section: set (0-based) --
 list.set(2, 300)
-println("after set(2, 300): ${list.toString()}")  // [10, 20, 300, 40, 50]
+expectEq(list.toString(), "[10, 20, 300, 40, 50]", "after set(2, 300)")
 
-// Test indexOf and contains
-println("indexOf(20): ${list.indexOf(20)}")        // 1
-println("indexOf(999): ${list.indexOf(999)}")      // -1
-println("contains(40): ${tostring(list.contains(40))}")  // true
-println("contains(99): ${tostring(list.contains(99))}")  // false
+// -- Section: indexOf and contains --
+expectEq(list.indexOf(20), 1, "indexOf(20)")
+expectEq(list.indexOf(999), -1, "indexOf(999)")
+expectTrue(list.contains(40), "contains(40)")
+expectFalse(list.contains(99), "contains(99)")
 
-// Test removeAt (0-based index)
+// -- Section: removeAt (0-based) --
 let removed = list.removeAt(1)
-println("removed: ${removed}")                      // 20
-println("after remove: ${list.toString()}")          // [10, 300, 40, 50]
-println("size: ${list.size()}")                      // 4
+expectEq(removed, 20, "removed value")
+expectEq(list.toString(), "[10, 300, 40, 50]", "after remove")
+expectEq(list.size(), 4, "size after remove")
 
-// Test forEach
-print("forEach: ")
+// -- Section: forEach --
+var forEach_sum = 0
 list.forEach(func(item, idx) {
-  print("${item} ")
+  forEach_sum = forEach_sum + item
 })
-println()  // 10 300 40 50
+expectEq(forEach_sum, 400, "forEach sum")
 
-// Test map
+// -- Section: map --
 let doubled = list.map(func(x) { return x * 2 })
-println("map(*2): ${doubled.toString()}")  // [20, 600, 80, 100]
+expectEq(doubled.toString(), "[20, 600, 80, 100]", "map(*2)")
 
-// Test filter
+// -- Section: filter --
 let big = list.filter(func(x) { return x > 30 })
-println("filter(>30): ${big.toString()}")  // [300, 40, 50]
+expectEq(big.toString(), "[300, 40, 50]", "filter(>30)")
 
-// Test clear
+// -- Section: clear --
 list.clear()
-println("after clear: ${list.toString()}")  // []
-println("size: ${list.size()}")              // 0
+expectEq(list.toString(), "[]", "after clear")
+expectEq(list.size(), 0, "size after clear")
 
-println("PASS: 09_arraylist")
+if (!__test_failed) {
+    println("PASS: usages/arraylist")
+}

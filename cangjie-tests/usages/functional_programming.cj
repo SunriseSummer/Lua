@@ -1,8 +1,8 @@
-// Comprehensive Usage: Functional Programming with Lambda and Higher-Order Functions
+dofile("cangjie-tests/_testing.cj")
 
-// === Higher-order function library ===
+// Test: Functional programming with lambda and higher-order functions
 
-// Map function: applies fn to each element
+// -- Section: higher-order function library --
 func map(arr, fn) {
   let result = {}
   var i = 1
@@ -13,7 +13,6 @@ func map(arr, fn) {
   return result
 }
 
-// Filter function: keeps elements matching predicate
 func filter(arr, pred) {
   let result = {}
   var i = 1
@@ -28,7 +27,6 @@ func filter(arr, pred) {
   return result
 }
 
-// Reduce function: folds array with accumulator
 func reduce(arr, init, fn) {
   var acc = init
   var i = 1
@@ -39,12 +37,10 @@ func reduce(arr, init, fn) {
   return acc
 }
 
-// Compose two functions
 func compose(f, g) {
   return { x => f(g(x)) }
 }
 
-// Pipe: apply a series of functions
 func pipe(value, fns) {
   var result = value
   var i = 1
@@ -55,53 +51,42 @@ func pipe(value, fns) {
   return result
 }
 
-// === Usage examples ===
-
+// -- Section: map with brace lambda --
 let numbers = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-
-// Map with brace lambda
 let doubled = map(numbers, { x => x * 2 })
-print("doubled: ")
-var i = 1
-while (doubled[i] != nil) {
-  print("${doubled[i]} ")
-  i = i + 1
-}
-println()
+expectEq(doubled[1], 2, "map doubled[1]")
+expectEq(doubled[5], 10, "map doubled[5]")
+expectEq(doubled[10], 20, "map doubled[10]")
 
-// Filter with brace lambda
+// -- Section: filter with brace lambda --
 let evens = filter(numbers, { x => x % 2 == 0 })
-print("evens: ")
-i = 1
-while (evens[i] != nil) {
-  print("${evens[i]} ")
-  i = i + 1
-}
-println()
+expectEq(evens[1], 2, "filter evens[1]")
+expectEq(evens[2], 4, "filter evens[2]")
+expectEq(evens[5], 10, "filter evens[5]")
 
-// Reduce with brace lambda
+// -- Section: reduce with brace lambda --
 let sum = reduce(numbers, 0, { acc, x => acc + x })
-println("sum = ${sum}")
+expectEq(sum, 55, "reduce sum")
 
 let product = reduce(numbers, 1, { acc, x => acc * x })
-println("product = ${product}")
+expectEq(product, 3628800, "reduce product")
 
-// Compose functions
+// -- Section: compose --
 let addOne = { x => x + 1 }
 let timesTwo = { x => x * 2 }
 let addOneThenDouble = compose(timesTwo, addOne)
-println("addOneThenDouble(5) = ${addOneThenDouble(5)}")  // (5+1)*2 = 12
+expectEq(addOneThenDouble(5), 12, "compose (5+1)*2")
 
-// Pipe
+// -- Section: pipe --
 let result = pipe(5, {addOne, timesTwo, addOne})
-println("pipe(5, [+1, *2, +1]) = ${result}")  // ((5+1)*2)+1 = 13
+expectEq(result, 13, "pipe (5+1)*2+1")
 
-// Curried function using nested lambdas
+// -- Section: curried function --
 let multiply = { a => { b => a * b } }
 let triple = multiply(3)
-println("triple(7) = ${triple(7)}")
+expectEq(triple(7), 21, "curried triple(7)")
 
-// Lambda with closure for state
+// -- Section: lambda with closure for state --
 func makeCounter() {
   var count = 0
   return {
@@ -111,16 +96,17 @@ func makeCounter() {
   }
 }
 
-// Use Lua table with lambda fields as module pattern
 let counter = makeCounter()
 counter.increment()
 counter.increment()
 counter.increment()
 counter.decrement()
-println("counter = ${counter.getCount()}")  // 2
+expectEq(counter.getCount(), 2, "counter after inc*3 dec*1")
 
-// Immediate invocation of lambda
+// -- Section: immediate invocation of lambda --
 let result2 = ({ x, y => x ** 2 + y ** 2 })(3, 4)
-println("3^2 + 4^2 = ${result2}")  // 25
+expectEq(result2, 25.0, "IIFE 3^2 + 4^2")
 
-println("PASS: 10_functional_programming")
+if (!__test_failed) {
+    println("PASS: usages/functional_programming")
+}

@@ -1,14 +1,13 @@
-// Comprehensive Usage: OOP with Inheritance, Enum, and Pattern Matching
+dofile("cangjie-tests/_testing.cj")
+
+// Test: OOP with inheritance, enum, and pattern matching
 // Demonstrates how the new Cangjie features work together
 
-// === Define a type hierarchy for a simple expression evaluator ===
-
-// Base interface
+// -- Section: type hierarchy for expression evaluator --
 interface Describable {
   func describe(): String
 }
 
-// Enum for expression types with member functions
 enum Expr {
   | Num(Int64)
   | Add(Expr, Expr)
@@ -17,7 +16,6 @@ enum Expr {
   | Neg(Expr)
 }
 
-// Class hierarchy for evaluation results
 class Result {
   var value: Int64
   var steps: Int64
@@ -42,7 +40,6 @@ class DetailedResult <: Result {
   }
 }
 
-// Evaluator using pattern matching on recursive enums
 func eval(e) {
   match (e) {
     case Num(n) =>
@@ -82,48 +79,46 @@ func eval(e) {
   return Result(0, 0)
 }
 
-// Build expression: (2 + 3) * (10 - 4)
+// -- Section: expression evaluation --
 let expr1 = Mul(
   Add(Num(2), Num(3)),
   Sub(Num(10), Num(4))
 )
-
 let r1 = eval(expr1)
-println(r1.toString())
+expectEq(r1.value, 30, "(2+3)*(10-4) value")
+expectEq(r1.expr_str, "((2+3)*(10-4))", "(2+3)*(10-4) expr_str")
 
-// Build: -(5 + 3)
 let expr2 = Neg(Add(Num(5), Num(3)))
 let r2 = eval(expr2)
-println(r2.toString())
+expectEq(r2.value, -8, "-(5+3) value")
 
-// === Use tuples for multi-value operations ===
+// -- Section: tuple for multi-value operations --
 func analyze(expr_result) {
   return (expr_result.value, expr_result.steps, expr_result.value > 0)
 }
 
 let info = analyze(r1)
-println("value=${info[0]} steps=${info[1]} positive=${info[2]}")
+expectEq(info[0], 30, "analyze value")
+expectTrue(info[2], "analyze positive")
 
-// === Polymorphism via inheritance ===
-func printResult(r) {
-  // This works due to dynamic dispatch - calls the right toString
-  println("  -> " + r.toString())
-}
+// -- Section: polymorphism via inheritance --
+expectEq(r1.toString(), "((2+3)*(10-4)) = 30 (steps=7)", "DetailedResult toString")
+expectEq(Result(100, 1).toString(), "Result(100, steps=1)", "Result toString")
 
-printResult(r1)
-printResult(r2)
-
-// === Type pattern matching with class hierarchy ===
-func classifyResult(r) {
+// -- Section: type pattern matching with class hierarchy --
+func classifyResult(r): String {
   match (r) {
     case d: DetailedResult =>
-      println("detailed: " + d.expr_str)
+      return "detailed: " + d.expr_str
     case r: Result =>
-      println("basic result: ${r.value}")
+      return "basic: ${r.value}"
   }
+  return "unknown"
 }
 
-classifyResult(r1)
-classifyResult(Result(100, 1))
+expectEq(classifyResult(r1), "detailed: ((2+3)*(10-4))", "classifyResult detailed")
+expectEq(classifyResult(Result(100, 1)), "basic: 100", "classifyResult basic")
 
-println("PASS: usages/oop_enum_match")
+if (!__test_failed) {
+    println("PASS: usages/oop_enum_match")
+}
