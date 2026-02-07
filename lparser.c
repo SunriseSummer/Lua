@@ -1317,7 +1317,7 @@ static void parlist (LexState *ls) {
         int cur_current = ls->current;
         Token cur_token = ls->t;
         int cur_line = ls->linenumber;
-        /* Restore to saved position */
+        /* Restore to saved position to re-parse the default expression */
         ls->z->p = def_saved_p[i];
         ls->z->n = def_saved_n[i];
         ls->current = def_saved_current[i];
@@ -1325,23 +1325,12 @@ static void parlist (LexState *ls) {
         ls->linenumber = def_saved_line[i];
         /* Parse the default value expression */
         expr(ls, &defv);
-        /* Save current position (after parsing) for continuation */
-        {
-          const char *after_p = ls->z->p;
-          size_t after_n = ls->z->n;
-          int after_current = ls->current;
-          Token after_token = ls->t;
-          int after_line = ls->linenumber;
-          /* Restore the original lexer state (continue parsing from where
-          ** we were before the preamble) */
-          ls->z->p = cur_p;
-          ls->z->n = cur_n;
-          ls->current = cur_current;
-          ls->t = cur_token;
-          ls->linenumber = cur_line;
-          (void)after_p; (void)after_n; (void)after_current;
-          (void)after_token; (void)after_line;
-        }
+        /* Restore the original lexer state */
+        ls->z->p = cur_p;
+        ls->z->n = cur_n;
+        ls->current = cur_current;
+        ls->t = cur_token;
+        ls->linenumber = cur_line;
       }
       else {
         defv = def_val[i];
@@ -1962,20 +1951,14 @@ static int scan_brace_block (LexState *ls, int mode) {
     }
     else if (mode == 1 && depth == 0 && prev_was_close) {
       /* After a complete expression (ending with ')'), if we see
-      ** a letter (start of identifier) or '(' (start of sub-expression),
-      ** this indicates a second statement in the block. */
+      ** a letter (start of identifier), this indicates a second
+      ** statement in the block. Whitespace is skipped (prev_was_close
+      ** remains 1); any other char clears prev_was_close. */
       if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
         found = 1;
         break;
       }
       if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') {
-        prev_was_close = 0;  /* non-whitespace, non-letter: not a new statement */
-      }
-      /* whitespace: keep prev_was_close = 1 and continue scanning */
-      if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
-        /* Keep scanning whitespace */
-      }
-      else {
         prev_was_close = 0;
       }
     }
