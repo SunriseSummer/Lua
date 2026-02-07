@@ -1,32 +1,32 @@
+dofile("cangjie-tests/_testing.cj")
+
 // Test: Functions
-// Validates basic function definitions, first-class functions, closures,
-// nested functions, lambdas, anonymous functions, and recursion.
 
 // -- Section: Basic function definition --
 func add(a: Int64, b: Int64): Int64 {
   return a + b
 }
 let r_add = add(3, 4)
-if (r_add != 7) { println("FAIL: add(3,4) expected 7, got ${r_add}"); return () }
+expectEq(r_add, 7, "add(3,4)")
 
 // -- Section: Function with type annotations --
 func multiply(x: Int64, y: Int64): Int64 {
   return x * y
 }
 let r_mul = multiply(5, 6)
-if (r_mul != 30) { println("FAIL: multiply(5,6) expected 30, got ${r_mul}"); return () }
+expectEq(r_mul, 30, "multiply(5,6)")
 
 // -- Section: Functions as first-class citizens --
 let f = add
 let r_f = f(10, 20)
-if (r_f != 30) { println("FAIL: f(10,20) expected 30, got ${r_f}"); return () }
+expectEq(r_f, 30, "f(10,20)")
 
 // -- Section: Function passed as argument --
 func apply(fn, a, b) {
   return fn(a, b)
 }
 let r_apply = apply(add, 100, 200)
-if (r_apply != 300) { println("FAIL: apply(add,100,200) expected 300, got ${r_apply}"); return () }
+expectEq(r_apply, 300, "apply(add,100,200)")
 
 // -- Section: Nested functions --
 func outer() {
@@ -37,7 +37,7 @@ func outer() {
   return inner()
 }
 let r_outer = outer()
-if (r_outer != 15) { println("FAIL: outer() expected 15, got ${r_outer}"); return () }
+expectEq(r_outer, 15, "outer()")
 
 // -- Section: Closures --
 func makeAdder(n: Int64) {
@@ -48,9 +48,9 @@ func makeAdder(n: Int64) {
 let add5 = makeAdder(5)
 let add10 = makeAdder(10)
 let r_add5 = add5(3)
-if (r_add5 != 8) { println("FAIL: add5(3) expected 8, got ${r_add5}"); return () }
+expectEq(r_add5, 8, "add5(3)")
 let r_add10 = add10(3)
-if (r_add10 != 13) { println("FAIL: add10(3) expected 13, got ${r_add10}"); return () }
+expectEq(r_add10, 13, "add10(3)")
 
 // -- Section: Counter closure --
 func makeCounter() {
@@ -62,21 +62,21 @@ func makeCounter() {
 }
 let counter = makeCounter()
 let c1 = counter()
-if (c1 != 1) { println("FAIL: counter() first call expected 1, got ${c1}"); return () }
+expectEq(c1, 1, "counter() first call")
 let c2 = counter()
-if (c2 != 2) { println("FAIL: counter() second call expected 2, got ${c2}"); return () }
+expectEq(c2, 2, "counter() second call")
 let c3 = counter()
-if (c3 != 3) { println("FAIL: counter() third call expected 3, got ${c3}"); return () }
+expectEq(c3, 3, "counter() third call")
 
 // -- Section: Lambda expression --
 let square = () => 42
 let r_sq = square()
-if (r_sq != 42) { println("FAIL: square() expected 42, got ${r_sq}"); return () }
+expectEq(r_sq, 42, "square()")
 
 // -- Section: Anonymous function --
 let double = func(x: Int64): Int64 { return x * 2 }
 let r_dbl = double(7)
-if (r_dbl != 14) { println("FAIL: double(7) expected 14, got ${r_dbl}"); return () }
+expectEq(r_dbl, 14, "double(7)")
 
 // -- Section: Recursive function --
 func factorial(n: Int64): Int64 {
@@ -86,6 +86,8 @@ func factorial(n: Int64): Int64 {
   return n * factorial(n - 1)
 }
 let r_fact = factorial(10)
-if (r_fact != 3628800) { println("FAIL: factorial(10) expected 3628800, got ${r_fact}"); return () }
+expectEq(r_fact, 3628800, "factorial(10)")
 
-println("PASS: 06_functions")
+if (!__test_failed) {
+    println("PASS: 06_functions")
+}
