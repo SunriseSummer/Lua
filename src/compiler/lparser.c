@@ -2639,6 +2639,8 @@ static void whilestat (LexState *ls, int line) {
     pattern_name = str_checkname(ls);
     if (testnext(ls, '(')) {
       while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        if (nbounds >= 16)
+          luaX_syntaxerror(ls, "too many variables in pattern (maximum 16)");
         bound_vars[nbounds++] = str_checkname(ls);
         if (!testnext(ls, ',')) break;
       }
@@ -2966,6 +2968,8 @@ static void test_then_block (LexState *ls, int *escapelist) {
     pattern_name = str_checkname(ls);
     if (testnext(ls, '(')) {
       while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+        if (nbounds >= 16)
+          luaX_syntaxerror(ls, "too many variables in pattern (maximum 16)");
         bound_vars[nbounds++] = str_checkname(ls);
         if (!testnext(ls, ',')) break;
       }

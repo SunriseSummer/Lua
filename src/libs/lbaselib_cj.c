@@ -863,17 +863,21 @@ static int cangjie_option_getOrThrow (lua_State *L) {
 
 /* Option.isSome() */
 static int cangjie_option_isSome (lua_State *L) {
+  int result;
   lua_getfield(L, 1, "__tag");
-  lua_pushboolean(L, lua_isstring(L, -1) &&
-                  strcmp(lua_tostring(L, -1), "Some") == 0);
+  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0;
+  lua_pop(L, 1);
+  lua_pushboolean(L, result);
   return 1;
 }
 
 /* Option.isNone() */
 static int cangjie_option_isNone (lua_State *L) {
+  int result;
   lua_getfield(L, 1, "__tag");
-  lua_pushboolean(L, lua_isstring(L, -1) &&
-                  strcmp(lua_tostring(L, -1), "None") == 0);
+  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "None") == 0;
+  lua_pop(L, 1);
+  lua_pushboolean(L, result);
   return 1;
 }
 
