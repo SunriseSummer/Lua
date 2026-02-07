@@ -8,7 +8,7 @@
 
 - **不可变变量** `let`：`let x: Int64 = 42`
 - **可变变量** `var`：`var name: String = "hello"`
-- **类型注解**：支持 `Int64`、`Float64`、`String`、`Bool`、`Rune` 类型标注
+- **类型注解**：支持 `Int64`、`Float64`、`String`、`Bool`、`Rune` 等类型标注
 - **类型推断**：可省略类型注解，由右值推断类型
 
 ### 数据类型
