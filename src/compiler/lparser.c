@@ -3964,6 +3964,117 @@ parse_operator_body:
         expr(ls, &dummy);  /* skip the expression */
       }
     }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == sname &&
+             luaX_lookahead(ls) == '(') {
+      /* Primary constructor: ClassName(let field: Type, var field: Type) { ... }
+      ** Equivalent to declaring fields + init constructor. */
+      has_init = 1;
+      {
+        /* Parse primary constructor parameters to extract field declarations */
+        TString *pcon_fields[MAX_VAR_FIELDS];
+        int pcon_is_let[MAX_VAR_FIELDS];
+        TString *pcon_params[MAX_VAR_FIELDS];
+        int npcon = 0;
+        int pi;
+        luaX_next(ls);  /* skip class name */
+        checknext(ls, '(');
+        /* Parse parameter list: (let/var name: Type, ...) */
+        while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+          int is_field = 0;
+          int is_let_field = 0;
+          if (ls->t.token == TK_LET || ls->t.token == TK_VAR) {
+            is_field = 1;
+            is_let_field = (ls->t.token == TK_LET);
+            luaX_next(ls);  /* skip let/var */
+          }
+          if (npcon < MAX_VAR_FIELDS) {
+            TString *pname = str_checkname(ls);
+            pcon_params[npcon] = pname;
+            if (is_field) {
+              pcon_fields[npcon] = pname;
+              pcon_is_let[npcon] = is_let_field;
+              /* Register as struct field for implicit this */
+              if (ls->nfields < 64) {
+                ls->struct_fields[ls->nfields++] = pname;
+              }
+              /* Track var fields for auto-constructor */
+              if (!is_let_field && nvarfields < MAX_VAR_FIELDS) {
+                var_fields[nvarfields++] = pname;
+              }
+            }
+            else {
+              pcon_fields[npcon] = NULL;
+              pcon_is_let[npcon] = 0;
+            }
+            npcon++;
+          }
+          skip_type_annotation(ls);
+          if (!testnext(ls, ',')) break;
+        }
+        checknext(ls, ')');
+        /* Now generate the init function with auto-assignments */
+        {
+          expdesc mv, mb;
+          TString *mname = luaS_new(ls->L, "init");
+          FuncState new_fs;
+          BlockCnt bl;
+          /* Build NAME.init */
+          buildvar(ls, sname, &mv);
+          {
+            expdesc mkey;
+            luaK_exp2anyregup(fs, &mv);
+            codestring(&mkey, mname);
+            luaK_indexed(fs, &mv, &mkey);
+          }
+          /* Create constructor function */
+          new_fs.f = addprototype(ls);
+          new_fs.f->linedefined = ls->linenumber;
+          open_func(ls, &new_fs, &bl);
+          /* 'self' parameter */
+          new_localvarliteral(ls, "self");
+          adjustlocalvars(ls, 1);
+          /* Declare parameters */
+          for (pi = 0; pi < npcon; pi++) {
+            new_localvar(ls, pcon_params[pi]);
+          }
+          new_fs.f->numparams = cast_byte(npcon + 1);
+          adjustlocalvars(ls, npcon);
+          luaK_reserveregs(&new_fs, new_fs.f->numparams);
+          /* Generate self.field = param for each let/var parameter */
+          ls->in_struct_method = 1;
+          for (pi = 0; pi < npcon; pi++) {
+            if (pcon_fields[pi] != NULL) {
+              expdesc self_e, field_key, param_e;
+              TString *selfname = luaS_new(ls->L, "self");
+              singlevaraux(ls->fs, selfname, &self_e, 1);
+              luaK_exp2anyregup(ls->fs, &self_e);
+              codestring(&field_key, pcon_fields[pi]);
+              luaK_indexed(ls->fs, &self_e, &field_key);
+              singlevaraux(ls->fs, pcon_params[pi], &param_e, 1);
+              luaK_storevar(ls->fs, &self_e, &param_e);
+            }
+          }
+          /* Parse optional body */
+          checknext(ls, '{' /*}*/);
+          statlist(ls);
+          /* Auto-generate: return self */
+          {
+            expdesc selfvar;
+            TString *selfname2 = luaS_new(ls->L, "self");
+            singlevaraux(ls->fs, selfname2, &selfvar, 1);
+            luaK_ret(ls->fs, luaK_exp2anyreg(ls->fs, &selfvar), 1);
+          }
+          new_fs.f->lastlinedefined = ls->linenumber;
+          check_match(ls, /*{*/ '}', TK_FUNC, line);
+          codeclosure(ls, &mb);
+          close_func(ls);
+          ls->in_struct_method = 0;
+          luaK_storevar(fs, &mv, &mb);
+          luaK_fixline(fs, line);
+        }
+      }
+    }
     else {
       luaX_syntaxerror(ls, "expected 'func', 'init', 'let', 'var', 'static', or 'operator' in struct/class body");
     }
