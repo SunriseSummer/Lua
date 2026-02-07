@@ -3218,6 +3218,27 @@ static void skip_generic_params (LexState *ls) {
 
 
 /*
+** Check for type redefinition in the same scope.
+** Types (struct/class/enum/interface) may not reuse the same name.
+*/
+static void check_type_redefine (LexState *ls, TString *name) {
+  int i;
+  for (i = 0; i < ls->ndefined_types; i++) {
+    if (ls->defined_types[i] == name) {
+      luaX_syntaxerror(ls, luaO_pushfstring(ls->L,
+          "type '%s' already defined in this scope", getstr(name)));
+    }
+  }
+  if (ls->ndefined_types < 128) {
+    ls->defined_types[ls->ndefined_types++] = name;
+  }
+  else {
+    luaX_syntaxerror(ls, "too many type definitions in one scope (limit 128)");
+  }
+}
+
+
+/*
 ** ============================================================
 ** Struct/Class definition
 ** Compiles Cangjie struct/class declarations to Lua table+metatable
@@ -3252,6 +3273,7 @@ static void structstat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'struct' or 'class' */
   sname = str_checkname(ls);
+  check_type_redefine(ls, sname);
 
   /* Determine if '<' is generic params or '<:' inheritance */
   if (ls->t.token == '<') {
@@ -3613,6 +3635,7 @@ static void interfacestat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'interface' */
   iname = str_checkname(ls);
+  check_type_redefine(ls, iname);
   skip_generic_params(ls);
 
   /* Create the interface table: NAME = {} */
@@ -4015,6 +4038,7 @@ static void enumstat (LexState *ls, int line) {
 
   luaX_next(ls);  /* skip 'enum' */
   ename = str_checkname(ls);
+  check_type_redefine(ls, ename);
 
   /* skip generic type parameters */
   skip_generic_params(ls);
@@ -4985,6 +5009,7 @@ static void statement (LexState *ls) {
 static void mainfunc (LexState *ls, FuncState *fs) {
   BlockCnt bl;
   Upvaldesc *env;
+  ls->ndefined_types = 0;  /* initialize type redefinition tracking */
   open_func(ls, fs, &bl);
   setvararg(fs);  /* main function is always vararg */
   env = allocupvalue(fs);  /* ...set environment upvalue */

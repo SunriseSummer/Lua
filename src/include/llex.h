@@ -86,6 +86,9 @@ typedef struct LexState {
   TString *struct_fields[64];  /* field names of current struct/class */
   int nfields;  /* number of fields in current struct/class */
   int in_struct_method;  /* nonzero if parsing inside a struct/class method */
+  /* Cangjie type definition tracking for redefinition detection */
+  TString *defined_types[128];  /* type names defined at current scope level */
+  int ndefined_types;  /* number of defined type names */
 } LexState;
 
 
