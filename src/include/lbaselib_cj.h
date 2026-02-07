@@ -16,6 +16,7 @@ LUAI_FUNC int luaB_setup_class (lua_State *L);
 LUAI_FUNC int luaB_extend_type (lua_State *L);
 LUAI_FUNC int luaB_copy_to_type (lua_State *L);
 LUAI_FUNC int luaB_set_parent (lua_State *L);
+LUAI_FUNC int luaB_super_init (lua_State *L);
 LUAI_FUNC int luaB_is_instance (lua_State *L);
 LUAI_FUNC int luaB_match_tag (lua_State *L);
 LUAI_FUNC int luaB_match_tuple (lua_State *L);
@@ -28,6 +29,7 @@ LUAI_FUNC int luaB_option_init (lua_State *L);
 LUAI_FUNC int luaB_coalesce (lua_State *L);
 LUAI_FUNC int luaB_array_slice (lua_State *L);
 LUAI_FUNC int luaB_array_slice_set (lua_State *L);
+LUAI_FUNC int luaB_iter (lua_State *L);
 LUAI_FUNC int luaB_apply_interface (lua_State *L);
 
 #endif

@@ -1905,6 +1905,43 @@ static void primaryexp (LexState *ls, expdesc *v) {
       singlevaraux(ls->fs, ts, v, 1);
       return;
     }
+    case TK_SUPER: {
+      /* 'super(args)' calls parent class constructor on self.
+      ** Compiles to: __cangjie_super_init(self, args...) */
+      FuncState *fs2 = ls->fs;
+      expdesc fn, selfvar;
+      int base2;
+      luaX_next(ls);  /* skip 'super' */
+      buildvar(ls, luaX_newstring(ls, "__cangjie_super_init", 20), &fn);
+      luaK_exp2nextreg(fs2, &fn);
+      base2 = fn.u.info;
+      /* push self as first arg */
+      {
+        TString *sn = luaS_new(ls->L, "self");
+        singlevaraux(fs2, sn, &selfvar, 1);
+        luaK_exp2nextreg(fs2, &selfvar);
+      }
+      checknext(ls, '(');
+      {
+        int nargs = 1;  /* self is first arg */
+        if (ls->t.token != ')') {
+          expdesc arg;
+          expr(ls, &arg);
+          luaK_exp2nextreg(fs2, &arg);
+          nargs++;
+          while (testnext(ls, ',')) {
+            expr(ls, &arg);
+            luaK_exp2nextreg(fs2, &arg);
+            nargs++;
+          }
+        }
+        checknext(ls, ')');
+        init_exp(v, VCALL,
+                 luaK_codeABC(fs2, OP_CALL, base2, nargs + 1, 1));
+        fs2->freereg = cast_byte(base2);
+      }
+      return;
+    }
     default: {
       luaX_syntaxerror(ls, "unexpected symbol");
     }
@@ -2050,6 +2087,10 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         break;
       }
       case '(': {  /* funcargs -> '(' args ')' */
+        /* In Cangjie, '(' on a different line does NOT form a function call.
+        ** This prevents ambiguity: a = b + dy\n(expr) should NOT call dy(expr).
+        ** Only treat '(' as function call when on the same line. */
+        if (ls->linenumber != ls->lastline) return;
         luaK_exp2nextreg(fs, v);
         funcargs(ls, v);
         break;
@@ -3168,7 +3209,8 @@ static void forstat (LexState *ls, int line) {
         forbody(ls, base, line, 1, 0);
       }
       else {
-        /* Generic for: for (v in iterator_expr) */
+        /* Generic for: for (v in iterator_expr)
+        ** Wrap with __cangjie_iter() so arrays/tables are iterable. */
         int nvars = 4;
         int base2 = base0;  /* use saved base from before expression */
         /* Reset freereg to base to properly allocate for-loop registers */
@@ -3177,19 +3219,19 @@ static void forstat (LexState *ls, int line) {
         new_localvarliteral(ls, "(for state)");
         new_localvarliteral(ls, "(for state)");
         new_varkind(ls, varname, LOOPVARKIND);
-        /* Now evaluate the expression and assign to the 4 registers */
+        /* Wrap expression: __cangjie_iter(expr) */
         {
-          int nexps;
-          if (hasmultret(start_e.k)) {
-            luaK_setmultret(fs, &start_e);
-            nexps = LUA_MULTRET;
-          }
-          else {
-            if (start_e.k != VVOID)
-              luaK_exp2nextreg(fs, &start_e);
-            nexps = 1;
-          }
-          adjust_assign(ls, 4, nexps, &start_e);
+          expdesc fn_iter;
+          int iter_base;
+          buildvar(ls, luaX_newstring(ls, "__cangjie_iter", 14), &fn_iter);
+          luaK_exp2nextreg(fs, &fn_iter);
+          iter_base = fn_iter.u.info;
+          if (start_e.k != VVOID)
+            luaK_exp2nextreg(fs, &start_e);
+          init_exp(&start_e, VCALL,
+                   luaK_codeABC(fs, OP_CALL, iter_base, 2, 4));
+          fs->freereg = cast_byte(iter_base + 3);
+          adjust_assign(ls, 4, 3, &start_e);
         }
         adjustlocalvars(ls, 3);
         marktobeclosed(fs);
@@ -3893,8 +3935,31 @@ static void structstat (LexState *ls, int line) {
 
   checknext(ls, '{' /*}*/);
 
+  /* Inherit parent class fields for implicit 'this' resolution */
+  if (parent_name != NULL) {
+    int ri;
+    for (ri = 0; ri < ls->nclass_registry; ri++) {
+      if (eqstr(ls->class_registry[ri].name, parent_name)) {
+        int fi;
+        for (fi = 0; fi < ls->class_registry[ri].nfields; fi++) {
+          if (ls->nfields < 64) {
+            ls->struct_fields[ls->nfields++] = ls->class_registry[ri].fields[fi];
+          }
+        }
+        break;
+      }
+    }
+  }
+
   /* Parse members */
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
+    /* Skip visibility/open modifiers: open, public, private */
+    while (ls->t.token == TK_NAME &&
+           (ls->t.seminfo.ts == luaS_new(ls->L, "open") ||
+            ls->t.seminfo.ts == luaS_new(ls->L, "public") ||
+            ls->t.seminfo.ts == luaS_new(ls->L, "private"))) {
+      luaX_next(ls);  /* skip modifier */
+    }
     if (ls->t.token == TK_FUNC) {
       /* Method definition: func name(...) { ... } */
       expdesc mv, mb;
@@ -4291,6 +4356,19 @@ parse_operator_body:
 
   reg = fs->freereg;
   fs->freereg = cast_byte(reg);
+
+  /* Save this class's fields to the registry for inheritance */
+  if (ls->nclass_registry < MAX_CLASS_REGISTRY) {
+    int ri = ls->nclass_registry;
+    int fi;
+    ls->class_registry[ri].name = sname;
+    ls->class_registry[ri].nfields = (ls->nfields < MAX_CLASS_FIELDS) ?
+                                       ls->nfields : MAX_CLASS_FIELDS;
+    for (fi = 0; fi < ls->class_registry[ri].nfields; fi++) {
+      ls->class_registry[ri].fields[fi] = ls->struct_fields[fi];
+    }
+    ls->nclass_registry++;
+  }
 
   /* Restore previous struct field context */
   ls->nfields = saved_nfields;
@@ -6535,6 +6613,14 @@ static void statement (LexState *ls) {
         luaX_next(ls);  /* skip '(' */
         luaX_next(ls);  /* skip ')' */
         break;  /* no-op */
+      }
+      /* 'open class' => class that can be inherited */
+      if (ls->t.token == TK_NAME &&
+          ls->t.seminfo.ts == luaS_new(ls->L, "open") &&
+          luaX_lookahead(ls) == TK_CLASS) {
+        luaX_next(ls);  /* skip 'open' (consume lookahead 'class') */
+        structstat(ls, line);
+        break;
       }
       exprstat(ls);
       break;

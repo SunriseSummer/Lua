@@ -86,6 +86,16 @@ typedef struct LexState {
   TString *struct_fields[64];  /* field names of current struct/class */
   int nfields;  /* number of fields in current struct/class */
   int in_struct_method;  /* nonzero if parsing inside a struct/class method */
+  /* Persistent field registry: stores fields for each defined class/struct
+  ** so that child classes can inherit field names for implicit 'this'. */
+#define MAX_CLASS_REGISTRY 64
+#define MAX_CLASS_FIELDS 32
+  struct {
+    TString *name;
+    TString *fields[MAX_CLASS_FIELDS];
+    int nfields;
+  } class_registry[MAX_CLASS_REGISTRY];
+  int nclass_registry;
   /* Cangjie type definition tracking for redefinition detection */
   TString *defined_types[128];  /* type names defined at current scope level */
   int ndefined_types;  /* number of defined type names */
