@@ -13,6 +13,7 @@
 
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 #include "lua.h"
 
@@ -279,10 +280,52 @@ static int cangjie_type_index_handler (lua_State *L) {
 ** Creates/updates metatables so that values of these types can call
 ** extension methods using dot syntax (e.g., 42.double()).
 */
+/* C function: Float64.GetPI() returns pi */
+static int cangjie_float64_getpi (lua_State *L) {
+  UNUSED(L);
+  lua_pushnumber(L, M_PI);
+  return 1;
+}
+
+/* C function: Float64(value) converts to float */
+static int cangjie_float64_call (lua_State *L) {
+  /* First arg is the table itself (Float64), second is the value to convert */
+  lua_Number n = luaL_checknumber(L, 2);
+  lua_pushnumber(L, n);
+  return 1;
+}
+
+
 int luaB_extend_type (lua_State *L) {
   const char *tname = luaL_checkstring(L, 1);
   int val_idx;
   luaL_checktype(L, 2, LUA_TTABLE);  /* methods table */
+
+  /* For Float64, add built-in static methods and __call metamethod */
+  if (strcmp(tname, "Float64") == 0) {
+    lua_getfield(L, 2, "GetPI");
+    if (lua_isnil(L, -1)) {
+      lua_pop(L, 1);
+      lua_pushcfunction(L, cangjie_float64_getpi);
+      lua_setfield(L, 2, "GetPI");
+      lua_pushboolean(L, 1);
+      lua_setfield(L, 2, "__static_GetPI");
+    }
+    else {
+      lua_pop(L, 1);
+    }
+    /* Set up __call metamethod for Float64(value) conversion */
+    {
+      int has_mt;
+      has_mt = lua_getmetatable(L, 2);
+      if (!has_mt) {
+        lua_newtable(L);  /* create metatable for Float64 table */
+      }
+      lua_pushcfunction(L, cangjie_float64_call);
+      lua_setfield(L, -2, "__call");
+      lua_setmetatable(L, 2);
+    }
+  }
 
   /* Create a representative value to get/set its metatable */
   if (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0) {
@@ -377,6 +420,39 @@ int luaB_set_parent (lua_State *L) {
         else {
           lua_pop(L, 1);  /* pop existing value */
         }
+      }
+    }
+    lua_pop(L, 1);  /* pop value, keep key */
+  }
+  return 0;
+}
+
+
+/*
+** __cangjie_apply_interface(target, iface) - Apply interface default
+** implementations to a class/type table. Copies all methods from the
+** interface table that are not already defined in the target.
+** Unlike __cangjie_set_parent, this also copies metamethods (__xxx).
+*/
+int luaB_apply_interface (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);  /* target class/type */
+  luaL_checktype(L, 2, LUA_TTABLE);  /* interface table */
+  lua_pushnil(L);
+  while (lua_next(L, 2) != 0) {
+    /* stack: target, iface, key, value */
+    if (lua_type(L, -2) == LUA_TSTRING && lua_isfunction(L, -1)) {
+      /* Only copy function values (skip non-function entries) */
+      lua_pushvalue(L, -2);  /* push key */
+      lua_rawget(L, 1);      /* get target[key] */
+      if (lua_isnil(L, -1)) {
+        /* Not in target, copy from interface */
+        lua_pop(L, 1);  /* pop nil */
+        lua_pushvalue(L, -2);  /* push key */
+        lua_pushvalue(L, -2);  /* push value */
+        lua_rawset(L, 1);      /* target[key] = value */
+      }
+      else {
+        lua_pop(L, 1);  /* pop existing value */
       }
     }
     lua_pop(L, 1);  /* pop value, keep key */

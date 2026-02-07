@@ -554,6 +554,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_extend_type", luaB_extend_type},
   {"__cangjie_copy_to_type", luaB_copy_to_type},
   {"__cangjie_set_parent", luaB_set_parent},
+  {"__cangjie_apply_interface", luaB_apply_interface},
   {"__cangjie_is_instance", luaB_is_instance},
   {"__cangjie_match_tag", luaB_match_tag},
   {"__cangjie_match_tuple", luaB_match_tuple},
