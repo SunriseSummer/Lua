@@ -167,7 +167,7 @@ let dog = Animal("Dog")
 
 #### 主构造函数
 
-struct 和 class 支持主构造函数语法，在类名后直接声明参数并使用 `let`/`var` 标记自动声明为成员字段：
+struct 和 class 支持主构造函数语法，即以类型名作为构造函数名，参数列表中直接定义成员变量，解释器会自动传递实参给对应成员变量进行初始化：
 
 ```cangjie
 class Wave {
@@ -193,8 +193,8 @@ w.phi = 1.0         // var 字段可修改
 ```
 
 主构造函数特性：
-- 参数前加 `let` 声明为不可变成员字段
-- 参数前加 `var` 声明为可变成员字段
+- 参数前加 `let` 声明为不可变成员变量
+- 参数前加 `var` 声明为可变成员变量
 - 构造函数体中可以访问参数并执行额外初始化逻辑
 - 与 `init` 构造函数互斥，一个类型只能使用其中一种
 
@@ -562,7 +562,7 @@ let sum = {
 
 #### 函数隐式返回
 
-函数体中如果最后一个语句是表达式（不是 return），则该表达式的值作为函数的返回值。if 和 match 作为函数体最后一个语句时，各分支的最后一个表达式也会自动返回：
+函数体中如果最后一个语句是表达式（不是 return），则该表达式的值作为函数的返回值：
 
 ```cangjie
 func add(a: Int64, b: Int64): Int64 {
@@ -571,24 +571,6 @@ func add(a: Int64, b: Int64): Int64 {
 
 func greet(name: String): String {
   "Hello, " + name + "!"
-}
-
-// if 作为最后一个语句，分支值自动返回
-func classify(x: Int64): String {
-  if (x > 0) {
-    "positive"
-  } else {
-    "non-positive"
-  }
-}
-
-// match 作为最后一个语句，分支值自动返回
-func dayName(d: Int64): String {
-  match (d) {
-    case 1 => "Monday"
-    case 2 => "Tuesday"
-    case _ => "Other"
-  }
 }
 ```
 
@@ -625,10 +607,10 @@ let grid = Array<Array<Int64>>(3, { i: Int64 =>
 ```cangjie
 let arr = [10, 20, 30, 40, 50, 60]
 
-// 排他区间取值：arr[start..end] 取 [start, end) 范围
+// 左闭右开区间取值：arr[start..end] 取 [start, end) 范围
 let r1 = arr[0..3]      // [10, 20, 30]
 
-// 包含区间取值：arr[start..=end] 取 [start, end] 范围
+// 闭区间取值：arr[start..=end] 取 [start, end] 范围
 let r2 = arr[2..=4]      // [30, 40, 50]
 
 // 区间赋值：将值数组写入指定范围
@@ -748,9 +730,9 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 15. **幂运算**：`**` 运算结果为浮点数（遵循 Lua 底层实现），如 `2 ** 10` 返回 `1024.0`
 16. **默认值检测**：默认值检测基于 nil 判断（仅当参数为 nil 时使用默认值），传递 `false` 不会被错误地替换为默认值
 17. **Unit 类型**：`()` 映射为 nil，可用作表达式或空操作语句
-18. **表达式求值**：if、match、代码块可用作表达式，其值为所执行分支（或代码块）最后一个表达式的值；函数体支持隐式返回最后一个表达式的值（包括 if/match 作为最后一个语句时各分支自动返回）；while/for 等未确定求值规则的表达式其值为 nil
-19. **数组区间索引**：支持 `arr[start..end]`（排他）和 `arr[start..=end]`（包含）区间取值，以及 `arr[start..end] = values` 区间赋值
-20. **主构造函数**：struct/class 支持以类型名命名的主构造函数，参数前加 `let`/`var` 自动声明为成员字段
+18. **表达式求值**：if、match、代码块可用作表达式，其值为所执行分支（或代码块）最后一个表达式的值；函数体支持隐式返回最后一个表达式的值；while/for 等未确定求值规则的表达式其值为 nil
+19. **数组区间索引**：支持 `arr[start..end]`（左闭右开区间）和 `arr[start..=end]`（闭区间）取值，以及 `arr[start..end] = values` 区间赋值
+20. **主构造函数**：struct/class 支持以类型名命名的主构造函数，参数前加 `let`/`var` 自动声明为成员变量
 
 ## 构建与测试
 
