@@ -1444,11 +1444,12 @@ static int body_or_abstract (LexState *ls, expdesc *e, int ismethod, int line) {
       if (ls->t.token == TK_NAME) {
         if (depth == 0) {
           /* At top level, check if this NAME is the start of a new
-          ** declaration rather than part of the return type.
-          ** If followed by '(' (like 'compute(...)'), it's a new func.
-          ** If it is 'operator' or other known keywords, stop. */
-          int la = luaX_lookahead(ls);
-          if (la == '(' || la == TK_FUNC) break;
+          ** declaration rather than part of the return type. */
+          const char *nm = getstr(ls->t.seminfo.ts);
+          if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0) {
+            break;  /* known declaration keywords - stop */
+          }
+          if (luaX_lookahead(ls) == '(') break;
         }
         luaX_next(ls);
       }

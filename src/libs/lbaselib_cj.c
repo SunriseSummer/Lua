@@ -283,7 +283,7 @@ static int cangjie_type_index_handler (lua_State *L) {
 /* C function: Float64.GetPI() returns pi */
 static int cangjie_float64_getpi (lua_State *L) {
   UNUSED(L);
-  lua_pushnumber(L, 3.14159265358979323846);
+  lua_pushnumber(L, M_PI);
   return 1;
 }
 
