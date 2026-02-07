@@ -449,6 +449,7 @@ func eval(e) {
 - **无大括号语法**：`=>` 后直接写多行语句，由下一个 `case` 或 `}` 分隔
 - **if-let 模式匹配**：`if (let Pattern <- expr) { ... }` 解构并判断
 - **while-let 模式匹配**：`while (let Pattern <- expr) { ... }` 循环解构
+- **与逻辑表达式混合**：`if (let Some(v) <- expr && v > 0)` 或 `if (let Some(v) <- expr || fallback)`
 
 #### if-let 和 while-let
 
@@ -457,6 +458,16 @@ func eval(e) {
 let opt = Some(42)
 if (let Some(v) <- opt) {
   println("got: ${v}")    // got: 42
+}
+
+// 与 && 混合：模式匹配成功且额外条件满足
+if (let Some(v) <- opt && v > 10) {
+  println("v is ${v}, greater than 10")
+}
+
+// 与 || 混合：模式匹配成功或备选条件为真
+if (let Some(v) <- opt || fallbackCondition) {
+  println("entered")
 }
 
 // while-let：循环解构

@@ -2627,11 +2627,12 @@ static void whilestat (LexState *ls, int line) {
   whileinit = luaK_getlabel(fs);
   checknext(ls, '(');
   if (ls->t.token == TK_LET) {
-    /* while-let pattern matching */
+    /* while-let pattern matching: while (let Some(x) <- expr [&& extra]) { body } */
     TString *pattern_name;
     TString *bound_vars[16];
     int nbounds = 0;
     int tmp_reg;
+    int has_extra_cond = 0;
     BlockCnt bl2;
     expdesc fn, tag_str;
     int base2, i;
@@ -2650,12 +2651,20 @@ static void whilestat (LexState *ls, int line) {
     checknext(ls, '-');
     enterblock(fs, &bl, 1);  /* loop block */
     enterblock(fs, &bl2, 0);  /* scope for temp + bound vars */
-    /* Create temp local and evaluate expression */
+    /* Create temp local and evaluate source expression.
+    ** Use subexpr with limit 2 so that '&&' (priority 2) is NOT consumed */
     new_localvarliteral(ls, "(whilelet_tmp)");
-    exp1(ls);
+    {
+      expdesc src;
+      subexpr(ls, &src, 2);
+      luaK_exp2nextreg(fs, &src);
+    }
     adjustlocalvars(ls, 1);
     tmp_reg = fs->nactvar - 1;
-    checknext(ls, ')');
+    /* Check for optional && or || extra_condition before ')' */
+    has_extra_cond = (ls->t.token == TK_AND || ls->t.token == TK_OR);
+    if (!has_extra_cond)
+      checknext(ls, ')');
     /* Generate condition: __cangjie_match_tag(tmp, "pattern_name") */
     buildvar(ls, luaS_new(ls->L, "__cangjie_match_tag"), &fn);
     luaK_exp2nextreg(fs, &fn);
@@ -2669,21 +2678,61 @@ static void whilestat (LexState *ls, int line) {
     luaK_exp2nextreg(fs, &tag_str);
     init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 2));
     fs->freereg = cast_byte(base2 + 1);
-    luaK_goiftrue(fs, &fn);
-    condexit = fn.f;
-    checknext(ls, '{' /*}*/);
-    /* Bind variables from matched value */
-    for (i = 0; i < nbounds; i++) {
-      expdesc tmp_e, key_e;
-      new_localvar(ls, bound_vars[i]);
-      init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
-      luaK_exp2anyregup(fs, &tmp_e);
-      init_exp(&key_e, VKINT, 0);
-      key_e.u.ival = i + 1;
-      luaK_indexed(fs, &tmp_e, &key_e);
-      luaK_exp2nextreg(fs, &tmp_e);
-      adjustlocalvars(ls, 1);
+    if (!has_extra_cond || ls->t.token == TK_AND) {
+      luaK_goiftrue(fs, &fn);
+      condexit = fn.f;
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      if (has_extra_cond) {
+        expdesc extra;
+        luaX_next(ls);  /* skip '&&' */
+        expr(ls, &extra);
+        if (extra.k == VNIL) extra.k = VFALSE;
+        luaK_goiftrue(fs, &extra);
+        luaK_concat(fs, &condexit, extra.f);
+        checknext(ls, ')');
+      }
     }
+    else {
+      /* || case: match succeeds OR extra condition is true */
+      luaK_goiftrue(fs, &fn);
+      condexit = fn.f;
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      {
+        int skip_or = luaK_jump(fs);
+        luaK_patchtohere(fs, condexit);
+        {
+          expdesc extra;
+          luaX_next(ls);  /* skip '||' */
+          expr(ls, &extra);
+          if (extra.k == VNIL) extra.k = VFALSE;
+          luaK_goiftrue(fs, &extra);
+          condexit = extra.f;
+        }
+        luaK_patchtohere(fs, skip_or);
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '{' /*}*/);
     block(ls);
     createlabel(ls, ls->contn, 0, 0);
     leaveblock(fs);  /* close inner scope */
@@ -2956,11 +3005,15 @@ static void test_then_block (LexState *ls, int *escapelist) {
   luaX_next(ls);  /* skip IF */
   checknext(ls, '(');
   if (ls->t.token == TK_LET) {
-    /* if-let pattern matching: if (let Some(x) <- expr) { body } */
+    /* if-let pattern matching: if (let Some(x) <- expr [&& extra]) { body }
+    ** Also supports: if (let Some(x) <- expr) { body }
+    ** Desugars to: temp = expr; if match_tag(temp, "Some") [&& extra] then
+    **   local x = temp[1]; body end */
     TString *pattern_name;
     TString *bound_vars[16];
     int nbounds = 0;
     int tmp_reg;
+    int has_extra_cond = 0;
     BlockCnt bl;
     expdesc fn, tag_str;
     int base2, i;
@@ -2978,12 +3031,20 @@ static void test_then_block (LexState *ls, int *escapelist) {
     checknext(ls, '<');
     checknext(ls, '-');
     enterblock(fs, &bl, 0);
-    /* Create temp local and evaluate expression */
+    /* Create temp local and evaluate source expression.
+    ** Use subexpr with limit 2 so that '&&' (priority 2) is NOT consumed */
     new_localvarliteral(ls, "(iflet_tmp)");
-    exp1(ls);
+    {
+      expdesc src;
+      subexpr(ls, &src, 2);
+      luaK_exp2nextreg(fs, &src);
+    }
     adjustlocalvars(ls, 1);
     tmp_reg = fs->nactvar - 1;
-    checknext(ls, ')');
+    /* Check for optional && or || extra_condition before ')' */
+    has_extra_cond = (ls->t.token == TK_AND || ls->t.token == TK_OR);
+    if (!has_extra_cond)
+      checknext(ls, ')');
     /* Generate condition: __cangjie_match_tag(tmp, "pattern_name") */
     buildvar(ls, luaS_new(ls->L, "__cangjie_match_tag"), &fn);
     luaK_exp2nextreg(fs, &fn);
@@ -2997,21 +3058,69 @@ static void test_then_block (LexState *ls, int *escapelist) {
     luaK_exp2nextreg(fs, &tag_str);
     init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 2));
     fs->freereg = cast_byte(base2 + 1);
-    luaK_goiftrue(fs, &fn);
-    condtrue = fn.f;
-    checknext(ls, '{' /*}*/);
-    /* Bind variables from matched value */
-    for (i = 0; i < nbounds; i++) {
-      expdesc tmp_e, key_e;
-      new_localvar(ls, bound_vars[i]);
-      init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
-      luaK_exp2anyregup(fs, &tmp_e);
-      init_exp(&key_e, VKINT, 0);
-      key_e.u.ival = i + 1;
-      luaK_indexed(fs, &tmp_e, &key_e);
-      luaK_exp2nextreg(fs, &tmp_e);
-      adjustlocalvars(ls, 1);
+    if (!has_extra_cond || ls->t.token == TK_AND) {
+      /* Simple case or &&: match must succeed */
+      luaK_goiftrue(fs, &fn);
+      condtrue = fn.f;
+      /* Tag matched: bind variables from matched value */
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      /* Handle && extra_condition if present */
+      if (has_extra_cond) {
+        expdesc extra;
+        luaX_next(ls);  /* skip '&&' */
+        expr(ls, &extra);
+        if (extra.k == VNIL) extra.k = VFALSE;
+        luaK_goiftrue(fs, &extra);
+        luaK_concat(fs, &condtrue, extra.f);
+        checknext(ls, ')');
+      }
     }
+    else {
+      /* || case: match succeeds OR extra condition is true
+      ** Generate: if match_tag(tmp, pattern) or extra_cond then ... */
+      luaK_goiftrue(fs, &fn);
+      condtrue = fn.f;
+      /* Bind variables (may be nil if match fails and || branch taken) */
+      for (i = 0; i < nbounds; i++) {
+        expdesc tmp_e, key_e;
+        new_localvar(ls, bound_vars[i]);
+        init_exp(&tmp_e, VLOCAL, getlocalvardesc(fs, tmp_reg)->vd.ridx);
+        luaK_exp2anyregup(fs, &tmp_e);
+        init_exp(&key_e, VKINT, 0);
+        key_e.u.ival = i + 1;
+        luaK_indexed(fs, &tmp_e, &key_e);
+        luaK_exp2nextreg(fs, &tmp_e);
+        adjustlocalvars(ls, 1);
+      }
+      /* Match succeeded: jump over the || fallback to body */
+      {
+        int skip_or = luaK_jump(fs);
+        /* Match failed: patch false exit to here to try || condition */
+        luaK_patchtohere(fs, condtrue);
+        {
+          expdesc extra;
+          luaX_next(ls);  /* skip '||' */
+          expr(ls, &extra);
+          if (extra.k == VNIL) extra.k = VFALSE;
+          luaK_goiftrue(fs, &extra);
+          condtrue = extra.f;
+        }
+        /* Patch skip_or to fall through to body */
+        luaK_patchtohere(fs, skip_or);
+      }
+      checknext(ls, ')');
+    }
+    checknext(ls, '{' /*}*/);
     block(ls);
     checknext(ls, /*{*/ '}');
     leaveblock(fs);
