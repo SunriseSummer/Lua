@@ -21,7 +21,7 @@ if (b.y != "hello") { println("FAIL: b.y expected 'hello', got '${b.y}'"); retur
 
 // --- No args: fields remain unset (nil) ---
 let c = A()
-if (tostring(c.x) != "nil") { println("FAIL: c.x expected nil, got ${tostring(c.x)}"); return () }
+if (c.x != nil) { println("FAIL: c.x expected nil, got ${tostring(c.x)}"); return () }
 
 // --- Class with explicit init ---
 class C {
