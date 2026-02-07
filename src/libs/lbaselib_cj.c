@@ -533,6 +533,28 @@ int luaB_setup_enum (lua_State *L) {
   lua_pushvalue(L, 1);  /* push enum table as upvalue */
   lua_pushcclosure(L, cangjie_enum_index_handler, 1);
   lua_setfield(L, -2, "__index");  /* mt.__index = handler */
+
+  /* Copy metamethods (__add, __sub, __mul, etc.) from enum table to metatable.
+  ** Lua requires metamethods to be directly in the metatable, not behind __index. */
+  {
+    static const char *metamethods[] = {
+      "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
+      "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
+      "__eq", "__lt", "__le", "__len", "__concat", "__call",
+      "__tostring", NULL
+    };
+    int mi;
+    for (mi = 0; metamethods[mi] != NULL; mi++) {
+      lua_getfield(L, 1, metamethods[mi]);
+      if (!lua_isnil(L, -1)) {
+        lua_setfield(L, -2, metamethods[mi]);  /* mt[metamethod] = value */
+      }
+      else {
+        lua_pop(L, 1);
+      }
+    }
+  }
+
   /* Stack: [enum_table, mt] */
 
   {

@@ -66,7 +66,7 @@ check_load_error("unclosed class body",
 // 4. Invalid enum body token
 check_load_error("invalid enum body",
   "enum Foo { let x = 1 }",
-  "expected '|', constructor name, or 'func' in enum body")
+  "expected '|', constructor name, 'func', or 'operator' in enum body")
 
 // 5. Invalid interface body
 check_load_error("invalid interface body",

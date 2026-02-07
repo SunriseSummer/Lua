@@ -68,6 +68,10 @@ static void statement (LexState *ls);
 static void expr (LexState *ls, expdesc *v);
 static void skip_generic_params (LexState *ls);
 static void exp1 (LexState *ls);
+static void blockexpr (LexState *ls, expdesc *v, int line);
+static void ifexpr (LexState *ls, expdesc *v, int line);
+static void matchexpr (LexState *ls, expdesc *v, int line);
+static void statlist_autoreturning (LexState *ls);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -1402,7 +1406,7 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
     }
   }
   checknext(ls, '{' /*}*/);
-  statlist(ls);
+  statlist_autoreturning(ls);
   new_fs.f->lastlinedefined = ls->linenumber;
   check_match(ls, /*{*/ '}', TK_FUNC, line);
   codeclosure(ls, e);
@@ -2225,7 +2229,7 @@ static void simpleexp (LexState *ls, expdesc *v) {
       init_exp(v, VFALSE, 0);
       break;
     }
-    case '{' /*}*/: {  /* constructor or brace lambda { params => body } */
+    case '{' /*}*/: {  /* constructor, brace lambda, or block expression */
       /* Detect brace lambda by scanning ahead for '=>' at depth 0 */
       if (scan_brace_block(ls, 0)) {
         int line2 = ls->linenumber;
@@ -2233,7 +2237,52 @@ static void simpleexp (LexState *ls, expdesc *v) {
         bracelambda(ls, v, line2);
         return;
       }
+      /* Detect block expression: first token after '{' is a statement keyword
+      ** like let, var, for, while, if, etc. This distinguishes from constructors
+      ** like { key = value } */
+      {
+        int next_tok = luaX_lookahead(ls);
+        if (next_tok == TK_LET || next_tok == TK_VAR || next_tok == TK_FOR ||
+            next_tok == TK_WHILE || next_tok == TK_IF || next_tok == TK_RETURN ||
+            next_tok == TK_MATCH || next_tok == TK_FUNC || next_tok == TK_STRUCT ||
+            next_tok == TK_CLASS || next_tok == TK_ENUM || next_tok == TK_INTERFACE ||
+            next_tok == TK_EXTEND || next_tok == TK_BREAK || next_tok == TK_CONTINUE) {
+          blockexpr(ls, v, ls->linenumber);
+          return;
+        }
+      }
       constructor(ls, v);
+      return;
+    }
+    case TK_IF: {  /* if expression */
+      ifexpr(ls, v, ls->linenumber);
+      return;
+    }
+    case TK_MATCH: {  /* match expression */
+      matchexpr(ls, v, ls->linenumber);
+      return;
+    }
+    case TK_WHILE: case TK_FOR: {
+      /* Undetermined expression: wrap statement in IIFE, value = nil */
+      FuncState new_fs2;
+      FuncState *prev_fs2 = ls->fs;
+      BlockCnt bl2;
+      expdesc fn_e;
+      int base3;
+      int line2 = ls->linenumber;
+      new_fs2.f = addprototype(ls);
+      new_fs2.f->linedefined = line2;
+      open_func(ls, &new_fs2, &bl2);
+      new_fs2.f->numparams = 0;
+      statement(ls);
+      new_fs2.f->lastlinedefined = ls->linenumber;
+      codeclosure(ls, &fn_e);
+      close_func(ls);
+      luaK_exp2nextreg(prev_fs2, &fn_e);
+      base3 = fn_e.u.info;
+      init_exp(v, VCALL,
+               luaK_codeABC(prev_fs2, OP_CALL, base3, 1, 2));
+      prev_fs2->freereg = cast_byte(base3 + 1);
       return;
     }
     case '[': {  /* array constructor -> '[' [explist] ']' */
@@ -4359,7 +4408,9 @@ static void enumstat (LexState *ls, int line) {
 
   /* Parse enum constructors */
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
-    if (testnext(ls, '|') || ls->t.token == TK_NAME) {
+    if (testnext(ls, '|') ||
+        (ls->t.token == TK_NAME &&
+         ls->t.seminfo.ts != luaS_new(ls->L, "operator"))) {
       /* '|' CTOR_NAME ['(' type_list ')'] */
       TString *ctorname;
       int has_params = 0;
@@ -4654,9 +4705,80 @@ static void enumstat (LexState *ls, int line) {
       luaK_storevar(fs, &mv, &mb);
       luaK_fixline(fs, line);
     }
+    else if (ls->t.token == TK_NAME &&
+             ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+      /* Operator overload inside enum: operator func +(other: Type): Type { ... } */
+      expdesc mv, mb;
+      TString *metamethod_name;
+      int op_token;
+      luaX_next(ls);  /* skip 'operator' */
+      checknext(ls, TK_FUNC);  /* expect 'func' */
+      op_token = ls->t.token;
+      switch (op_token) {
+        case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+        case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+        case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+        case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+        case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+        case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+        case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+        case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+        case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+        case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+        case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+        case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+        case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+        case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+        case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+        case '[': {
+          luaX_next(ls);  /* skip '[' */
+          checknext(ls, ']');
+          metamethod_name = luaS_new(ls->L, "__index");
+          goto enum_parse_operator_body;
+        }
+        default: {
+          if (ls->t.token == TK_NAME) {
+            const char *opname = getstr(ls->t.seminfo.ts);
+            if (strcmp(opname, "toString") == 0) {
+              metamethod_name = luaS_new(ls->L, "__tostring");
+            }
+            else {
+              char mm[64];
+              if (strlen(opname) > 58)
+                luaX_syntaxerror(ls, "operator name too long");
+              snprintf(mm, sizeof(mm), "__%s", opname);
+              metamethod_name = luaS_new(ls->L, mm);
+            }
+          }
+          else {
+            luaX_syntaxerror(ls, "unsupported operator for overloading");
+            metamethod_name = NULL;  /* unreachable */
+          }
+          break;
+        }
+      }
+      luaX_next(ls);  /* skip operator token */
+enum_parse_operator_body:
+      skip_generic_params(ls);
+      /* Build NAME.metamethod_name */
+      buildvar(ls, ename, &mv);
+      {
+        expdesc mkey;
+        luaK_exp2anyregup(fs, &mv);
+        codestring(&mkey, metamethod_name);
+        luaK_indexed(fs, &mv, &mkey);
+      }
+      /* Parse operator method body (with 'self' parameter) */
+      ls->in_struct_method = 1;
+      body(ls, &mb, 1, ls->linenumber);
+      ls->in_struct_method = 0;
+      luaK_storevar(fs, &mv, &mb);
+      luaK_fixline(fs, line);
+    }
     else {
       luaX_syntaxerror(ls,
-          "expected '|', constructor name, or 'func' in enum body");
+          "expected '|', constructor name, 'func', or 'operator' in enum body");
     }
     testnext(ls, ';');
   }
@@ -5187,6 +5309,586 @@ static void retstat (LexState *ls) {
   }
   luaK_ret(fs, first, nret);
   testnext(ls, ';');  /* skip optional semicolon */
+}
+
+
+/*
+** ============================================================
+** Expression forms for if, match, and block expressions.
+** These wrap the construct in an IIFE (immediately-invoked function
+** expression) so they produce a value. The last expression in each
+** branch is auto-returned.
+** ============================================================
+*/
+
+
+/*
+** Parse a statement list where the last expression before block_follow
+** is automatically returned. Used inside IIFE bodies for expression forms
+** and for function bodies with implicit return.
+** For statement keywords (let, var, for, while, etc.), parse normally.
+** For expression statements that are the last thing before '}', emit return.
+*/
+static void statlist_autoreturning (LexState *ls) {
+  while (!block_follow(ls, 1)) {
+    if (ls->t.token == TK_RETURN) {
+      statement(ls);
+      return;  /* explicit return */
+    }
+    /* Check if current token starts a keyword statement */
+    {
+      int tok = ls->t.token;
+      int is_keyword_stat = (tok == TK_LET || tok == TK_VAR || tok == TK_WHILE ||
+                             tok == TK_FOR || tok == TK_FUNC || tok == TK_STRUCT ||
+                             tok == TK_CLASS || tok == TK_ENUM || tok == TK_INTERFACE ||
+                             tok == TK_EXTEND || tok == TK_BREAK || tok == TK_CONTINUE ||
+                             tok == ';' || tok == TK_DBCOLON || tok == TK_IF ||
+                             tok == TK_MATCH);
+      if (is_keyword_stat) {
+        /* Parse as regular statement */
+        statement(ls);
+      }
+      else {
+        /* Potential expression - could be assignment, call, or last expr */
+        FuncState *fs = ls->fs;
+        enterlevel(ls);
+        /* Check for Unit literal '()' */
+        if (tok == '(' && luaX_lookahead(ls) == ')') {
+          luaX_next(ls);  /* skip '(' */
+          luaX_next(ls);  /* skip ')' */
+        }
+        else if (tok == TK_NAME || tok == TK_THIS) {
+          /* NAME-based: could be assignment, call, or last expression */
+          expdesc e;
+          suffixedexp(ls, &e);
+          if (ls->t.token == '=' || ls->t.token == ',') {
+            /* Assignment: name = expr */
+            struct LHS_assign v;
+            v.v = e;
+            v.prev = NULL;
+            restassign(ls, &v, 1);
+          }
+          else {
+            /* Continue parsing as full expression (binary ops, ??, etc.) */
+            {
+              BinOpr op = getbinopr(ls->t.token);
+              while (op != OPR_NOBINOPR && priority[op].left > 0) {
+                expdesc e2;
+                BinOpr nextop;
+                int line2 = ls->linenumber;
+                luaX_next(ls);
+                luaK_infix(fs, op, &e);
+                nextop = subexpr(ls, &e2, priority[op].right);
+                luaK_posfix(fs, op, &e, &e2, line2);
+                op = nextop;
+              }
+            }
+            /* Check what follows */
+            if (block_follow(ls, 1)) {
+              /* Last expression before '}' - auto-return */
+              luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
+              lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                         fs->freereg >= luaY_nvarstack(fs));
+              fs->freereg = luaY_nvarstack(fs);
+              leavelevel(ls);
+              return;
+            }
+            else {
+              /* Intermediate expression statement (function call) */
+              Instruction *inst;
+              check_condition(ls, e.k == VCALL, "syntax error");
+              inst = &getinstruction(fs, &e);
+              SETARG_C(*inst, 1);
+            }
+          }
+        }
+        else {
+          /* Non-NAME token: literal, unary op, etc. Parse as full expression */
+          expdesc e;
+          expr(ls, &e);
+          if (block_follow(ls, 1)) {
+            luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
+            lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                       fs->freereg >= luaY_nvarstack(fs));
+            fs->freereg = luaY_nvarstack(fs);
+            leavelevel(ls);
+            return;
+          }
+          else {
+            if (e.k == VCALL) {
+              Instruction *inst = &getinstruction(fs, &e);
+              SETARG_C(*inst, 1);
+            }
+          }
+        }
+        lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                   fs->freereg >= luaY_nvarstack(fs));
+        fs->freereg = luaY_nvarstack(fs);
+        leavelevel(ls);
+      }
+    }
+  }
+}
+
+
+/*
+** Block expression: { stmts; last_expr }
+** Wraps in IIFE: (function() stmts; return last_expr end)()
+*/
+static void blockexpr (LexState *ls, expdesc *v, int line) {
+  FuncState new_fs;
+  FuncState *prev_fs = ls->fs;
+  BlockCnt bl;
+  expdesc fn_expr;
+  int base2;
+
+  /* Create IIFE wrapper function */
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  new_fs.f->numparams = 0;
+
+  checknext(ls, '{' /*}*/);
+
+  /* Parse body with auto-returning last expression */
+  statlist_autoreturning(ls);
+
+  new_fs.f->lastlinedefined = ls->linenumber;
+  check_match(ls, /*{*/ '}', '{', line);
+  codeclosure(ls, &fn_expr);
+  close_func(ls);
+
+  /* Generate immediate call: fn() */
+  luaK_exp2nextreg(prev_fs, &fn_expr);
+  base2 = fn_expr.u.info;
+  init_exp(v, VCALL,
+           luaK_codeABC(prev_fs, OP_CALL, base2, 1, 2));
+  prev_fs->freereg = cast_byte(base2 + 1);
+}
+
+
+/*
+** If expression: if (cond) { expr1 } else { expr2 }
+** Wraps in IIFE where each branch auto-returns its last expression.
+*/
+static void ifexpr (LexState *ls, expdesc *v, int line) {
+  FuncState new_fs;
+  FuncState *prev_fs = ls->fs;
+  BlockCnt bl;
+  expdesc fn_expr;
+  int base2;
+
+  /* Create IIFE wrapper function */
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  new_fs.f->numparams = 0;
+
+  /* Parse if statement with auto-returning branches */
+  {
+    FuncState *fs = ls->fs;
+    int escapelist = NO_JUMP;
+    /* Parse IF cond { block } with auto-returning */
+    {
+      int condtrue;
+      luaX_next(ls);  /* skip IF */
+      checknext(ls, '(');
+      condtrue = cond(ls);
+      checknext(ls, ')');
+      checknext(ls, '{' /*}*/);
+      {
+        BlockCnt bl2;
+        enterblock(fs, &bl2, 0);
+        statlist_autoreturning(ls);
+        leaveblock(fs);
+      }
+      checknext(ls, /*{*/ '}');
+      if (ls->t.token == TK_ELSE)
+        luaK_concat(fs, &escapelist, luaK_jump(fs));
+      luaK_patchtohere(fs, condtrue);
+    }
+    /* Parse ELSE IF chains */
+    while (ls->t.token == TK_ELSE && luaX_lookahead(ls) == TK_IF) {
+      int condtrue;
+      luaX_next(ls);  /* skip ELSE */
+      luaX_next(ls);  /* skip IF */
+      checknext(ls, '(');
+      condtrue = cond(ls);
+      checknext(ls, ')');
+      checknext(ls, '{' /*}*/);
+      {
+        BlockCnt bl2;
+        enterblock(fs, &bl2, 0);
+        statlist_autoreturning(ls);
+        leaveblock(fs);
+      }
+      checknext(ls, /*{*/ '}');
+      if (ls->t.token == TK_ELSE)
+        luaK_concat(fs, &escapelist, luaK_jump(fs));
+      luaK_patchtohere(fs, condtrue);
+    }
+    /* Parse ELSE */
+    if (testnext(ls, TK_ELSE)) {
+      checknext(ls, '{' /*}*/);
+      {
+        BlockCnt bl2;
+        enterblock(fs, &bl2, 0);
+        statlist_autoreturning(ls);
+        leaveblock(fs);
+      }
+      check_match(ls, /*{*/ '}', TK_IF, line);
+    }
+    luaK_patchtohere(fs, escapelist);
+  }
+
+  new_fs.f->lastlinedefined = ls->linenumber;
+  codeclosure(ls, &fn_expr);
+  close_func(ls);
+
+  /* Generate immediate call: fn() */
+  luaK_exp2nextreg(prev_fs, &fn_expr);
+  base2 = fn_expr.u.info;
+  init_exp(v, VCALL,
+           luaK_codeABC(prev_fs, OP_CALL, base2, 1, 2));
+  prev_fs->freereg = cast_byte(base2 + 1);
+}
+
+
+/*
+** Match case body with auto-returning: parse statements until next
+** 'case' or '}', with the last expression auto-returned.
+*/
+static void match_case_body_returning (LexState *ls) {
+  if (ls->t.token == '{') {
+    /* Braces-style body */
+    luaX_next(ls);  /* skip '{' */
+    statlist_autoreturning(ls);
+    checknext(ls, '}');
+  }
+  else {
+    /* Cangjie-style: statements until next 'case' or '}' */
+    while (ls->t.token != TK_CASE &&
+           ls->t.token != /*{*/ '}' &&
+           ls->t.token != TK_EOS) {
+      if (ls->t.token == TK_RETURN) {
+        statement(ls);
+        return;
+      }
+      {
+        int tok = ls->t.token;
+        int is_keyword_stat = (tok == TK_LET || tok == TK_VAR || tok == TK_WHILE ||
+                               tok == TK_FOR || tok == TK_FUNC || tok == TK_STRUCT ||
+                               tok == TK_CLASS || tok == TK_ENUM || tok == TK_INTERFACE ||
+                               tok == TK_EXTEND || tok == TK_BREAK || tok == TK_CONTINUE ||
+                               tok == ';' || tok == TK_DBCOLON || tok == TK_IF ||
+                               tok == TK_MATCH);
+        if (is_keyword_stat) {
+          statement(ls);
+        }
+        else {
+          FuncState *fs = ls->fs;
+          enterlevel(ls);
+          if (tok == '(' && luaX_lookahead(ls) == ')') {
+            luaX_next(ls);
+            luaX_next(ls);
+          }
+          else if (tok == TK_NAME || tok == TK_THIS) {
+            expdesc e;
+            suffixedexp(ls, &e);
+            if (ls->t.token == '=' || ls->t.token == ',') {
+              struct LHS_assign v;
+              v.v = e;
+              v.prev = NULL;
+              restassign(ls, &v, 1);
+            }
+            else {
+              /* Continue parsing binary ops */
+              {
+                BinOpr op = getbinopr(ls->t.token);
+                while (op != OPR_NOBINOPR && priority[op].left > 0) {
+                  expdesc e2;
+                  BinOpr nextop;
+                  int line2 = ls->linenumber;
+                  luaX_next(ls);
+                  luaK_infix(fs, op, &e);
+                  nextop = subexpr(ls, &e2, priority[op].right);
+                  luaK_posfix(fs, op, &e, &e2, line2);
+                  op = nextop;
+                }
+              }
+              if (ls->t.token == TK_CASE ||
+                  ls->t.token == /*{*/ '}' ||
+                  ls->t.token == TK_EOS) {
+                /* Last expression - auto-return */
+                luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
+                lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                           fs->freereg >= luaY_nvarstack(fs));
+                fs->freereg = luaY_nvarstack(fs);
+                leavelevel(ls);
+                return;
+              }
+              else {
+                Instruction *inst;
+                check_condition(ls, e.k == VCALL, "syntax error");
+                inst = &getinstruction(fs, &e);
+                SETARG_C(*inst, 1);
+              }
+            }
+          }
+          else {
+            /* Non-NAME: literal, unary, etc. - parse full expression */
+            expdesc e;
+            expr(ls, &e);
+            if (ls->t.token == TK_CASE ||
+                ls->t.token == /*{*/ '}' ||
+                ls->t.token == TK_EOS) {
+              luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
+              lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                         fs->freereg >= luaY_nvarstack(fs));
+              fs->freereg = luaY_nvarstack(fs);
+              leavelevel(ls);
+              return;
+            }
+            else {
+              if (e.k == VCALL) {
+                Instruction *inst = &getinstruction(fs, &e);
+                SETARG_C(*inst, 1);
+              }
+            }
+          }
+          lua_assert(fs->f->maxstacksize >= fs->freereg &&
+                     fs->freereg >= luaY_nvarstack(fs));
+          fs->freereg = luaY_nvarstack(fs);
+          leavelevel(ls);
+        }
+      }
+    }
+  }
+}
+
+
+/*
+** Match expression: match (expr) { case ... => expr }
+** Wraps in IIFE where each case branch auto-returns its last expression.
+*/
+static void matchexpr (LexState *ls, expdesc *v, int line) {
+  FuncState new_fs;
+  FuncState *prev_fs = ls->fs;
+  BlockCnt bl;
+  expdesc fn_expr;
+  int base2;
+
+  /* Create IIFE wrapper function */
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  new_fs.f->numparams = 0;
+
+  /* Parse match expression body - replicates matchstat but with auto-return */
+  {
+    FuncState *fs = ls->fs;
+    expdesc match_val;
+    int jmp_to_end[256];
+    int njumps = 0;
+    TString *match_var_name;
+
+    luaX_next(ls);  /* skip 'match' */
+    checknext(ls, '(');
+    expr(ls, &match_val);
+    checknext(ls, ')');
+
+    match_var_name = luaX_newstring(ls, "__match_val", 11);
+    {
+      new_varkind(ls, match_var_name, VDKREG);
+      luaK_exp2nextreg(fs, &match_val);
+      adjustlocalvars(ls, 1);
+    }
+
+    checknext(ls, '{' /*}*/);
+
+    while (ls->t.token == TK_CASE && ls->t.token != TK_EOS) {
+      BlockCnt bl2;
+      luaX_next(ls);  /* skip 'case' */
+
+      /* Wildcard pattern */
+      if (ls->t.token == TK_NAME &&
+          strcmp(getstr(ls->t.seminfo.ts), "_") == 0 &&
+          luaX_lookahead(ls) == TK_ARROW) {
+        luaX_next(ls);
+        checknext(ls, TK_ARROW);
+        enterblock(fs, &bl2, 0);
+        match_case_body_returning(ls);
+        leaveblock(fs);
+        if (njumps < 256)
+          jmp_to_end[njumps++] = luaK_jump(fs);
+      }
+      /* Tuple pattern */
+      else if (ls->t.token == '(') {
+        int npatterns = 0;
+        TString *tpat_names[32];
+        TString *tpat_tags[32];
+        int condjmp;
+
+        luaX_next(ls);
+        while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+          if (ls->t.token == TK_NAME) {
+            TString *nm = ls->t.seminfo.ts;
+            if (strcmp(getstr(nm), "_") == 0) {
+              if (npatterns < 32) { tpat_names[npatterns] = NULL; tpat_tags[npatterns] = NULL; npatterns++; }
+            } else {
+              if (npatterns < 32) { tpat_names[npatterns] = nm; tpat_tags[npatterns] = NULL; npatterns++; }
+            }
+            luaX_next(ls);
+          }
+          if (!testnext(ls, ',')) break;
+        }
+        checknext(ls, ')');
+        checknext(ls, TK_ARROW);
+
+        condjmp = match_emit_tuple_check(ls, match_var_name, npatterns);
+        enterblock(fs, &bl2, 0);
+        {
+          int ti;
+          for (ti = 0; ti < npatterns; ti++) {
+            if (tpat_names[ti] != NULL) {
+              match_bind_tuple_elem(ls, match_var_name, tpat_names[ti], ti);
+            } else {
+              char dn[16]; TString *dname;
+              snprintf(dn, sizeof(dn), "__td%d", ti);
+              dname = luaX_newstring(ls, dn, (size_t)strlen(dn));
+              match_bind_tuple_elem(ls, match_var_name, dname, ti);
+            }
+          }
+        }
+        match_case_body_returning(ls);
+        leaveblock(fs);
+        if (njumps < 256)
+          jmp_to_end[njumps++] = luaK_jump(fs);
+        luaK_patchtohere(fs, condjmp);
+      }
+      /* Name-based patterns */
+      else if (ls->t.token == TK_NAME) {
+        TString *patname = ls->t.seminfo.ts;
+        luaX_next(ls);
+
+        if (ls->t.token == '(') {
+          /* Enum constructor pattern */
+          int nparams = 0;
+          TString *param_names[32];
+          int condjmp;
+
+          luaX_next(ls);
+          while (ls->t.token != ')' && ls->t.token != TK_EOS) {
+            if (ls->t.token == TK_NAME) {
+              TString *nm = ls->t.seminfo.ts;
+              if (strcmp(getstr(nm), "_") == 0) {
+                if (nparams < 32) param_names[nparams++] = NULL;
+              } else {
+                if (nparams < 32) param_names[nparams++] = nm;
+              }
+              luaX_next(ls);
+            }
+            if (!testnext(ls, ',')) break;
+          }
+          checknext(ls, ')');
+          checknext(ls, TK_ARROW);
+
+          condjmp = match_emit_tag_check(ls, match_var_name, patname);
+          enterblock(fs, &bl2, 0);
+          match_bind_enum_params(ls, match_var_name, param_names, nparams);
+          match_case_body_returning(ls);
+          leaveblock(fs);
+          if (njumps < 256)
+            jmp_to_end[njumps++] = luaK_jump(fs);
+          luaK_patchtohere(fs, condjmp);
+        }
+        else if (ls->t.token == ':') {
+          /* Type pattern */
+          TString *type_name;
+          int condjmp;
+          luaX_next(ls);
+          type_name = str_checkname(ls);
+          checknext(ls, TK_ARROW);
+
+          condjmp = match_emit_type_check(ls, match_var_name, type_name);
+          enterblock(fs, &bl2, 0);
+          {
+            expdesc mv;
+            new_varkind(ls, patname, VDKREG);
+            buildvar(ls, match_var_name, &mv);
+            luaK_exp2nextreg(fs, &mv);
+            adjustlocalvars(ls, 1);
+          }
+          match_case_body_returning(ls);
+          leaveblock(fs);
+          if (njumps < 256)
+            jmp_to_end[njumps++] = luaK_jump(fs);
+          luaK_patchtohere(fs, condjmp);
+        }
+        else {
+          /* No-arg enum constructor pattern */
+          int condjmp;
+          checknext(ls, TK_ARROW);
+          condjmp = match_emit_tag_check(ls, match_var_name, patname);
+          enterblock(fs, &bl2, 0);
+          match_case_body_returning(ls);
+          leaveblock(fs);
+          if (njumps < 256)
+            jmp_to_end[njumps++] = luaK_jump(fs);
+          luaK_patchtohere(fs, condjmp);
+        }
+      }
+      /* Constant patterns */
+      else if (ls->t.token == TK_INT || ls->t.token == TK_FLT ||
+               ls->t.token == TK_STRING || ls->t.token == TK_TRUE ||
+               ls->t.token == TK_FALSE || ls->t.token == TK_NIL) {
+        expdesc pat_val;
+        BlockCnt bl3;
+        int condjmp;
+
+        simpleexp(ls, &pat_val);
+        checknext(ls, TK_ARROW);
+
+        {
+          expdesc lhs;
+          buildvar(ls, match_var_name, &lhs);
+          luaK_infix(fs, OPR_EQ, &lhs);
+          luaK_posfix(fs, OPR_EQ, &lhs, &pat_val, line);
+          luaK_goiftrue(fs, &lhs);
+          condjmp = lhs.f;
+        }
+
+        enterblock(fs, &bl3, 0);
+        match_case_body_returning(ls);
+        leaveblock(fs);
+        if (njumps < 256)
+          jmp_to_end[njumps++] = luaK_jump(fs);
+        luaK_patchtohere(fs, condjmp);
+      }
+      else {
+        luaX_syntaxerror(ls, "invalid pattern in match expression");
+      }
+    }
+
+    check_match(ls, /*{*/ '}', TK_MATCH, line);
+
+    {
+      int ji;
+      for (ji = 0; ji < njumps; ji++)
+        luaK_patchtohere(fs, jmp_to_end[ji]);
+    }
+  }
+
+  new_fs.f->lastlinedefined = ls->linenumber;
+  codeclosure(ls, &fn_expr);
+  close_func(ls);
+
+  /* Generate immediate call: fn() */
+  luaK_exp2nextreg(prev_fs, &fn_expr);
+  base2 = fn_expr.u.info;
+  init_exp(v, VCALL,
+           luaK_codeABC(prev_fs, OP_CALL, base2, 1, 2));
+  prev_fs->freereg = cast_byte(base2 + 1);
 }
 
 
