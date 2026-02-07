@@ -1418,6 +1418,84 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
 
 
 /*
+** Like body() but for interface method declarations that may be abstract.
+** If the declaration has a body '{...}', compiles it as a method and
+** returns 1. If no body (abstract declaration), skips the declaration
+** and returns 0 (e is left uninitialized).
+*/
+static int body_or_abstract (LexState *ls, expdesc *e, int ismethod, int line) {
+  FuncState new_fs;
+  BlockCnt bl;
+  new_fs.f = addprototype(ls);
+  new_fs.f->linedefined = line;
+  open_func(ls, &new_fs, &bl);
+  checknext(ls, '(');
+  if (ismethod) {
+    new_localvarliteral(ls, "self");
+    adjustlocalvars(ls, 1);
+  }
+  parlist(ls);
+  checknext(ls, ')');
+  /* optional return type annotation */
+  if (testnext(ls, ':')) {
+    int depth = 0;
+    if (ls->t.token == '?') luaX_next(ls);
+    for (;;) {
+      if (ls->t.token == TK_NAME) {
+        if (depth == 0) {
+          /* At top level, check if this NAME is the start of a new
+          ** declaration rather than part of the return type. */
+          const char *nm = getstr(ls->t.seminfo.ts);
+          if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0) {
+            break;  /* known declaration keywords - stop */
+          }
+          if (luaX_lookahead(ls) == '(') break;
+        }
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '<' || ls->t.token == '(') {
+        depth++;
+        luaX_next(ls);
+      }
+      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        depth--;
+        luaX_next(ls);
+        if (depth == 0 && ls->t.token == '-') {
+          if (luaX_lookahead(ls) == '>') {
+            luaX_next(ls);
+            luaX_next(ls);
+          }
+        }
+      }
+      else if (ls->t.token == ',' && depth > 0) {
+        luaX_next(ls);
+      }
+      else if (ls->t.token == '?' && depth > 0) {
+        luaX_next(ls);
+      }
+      else {
+        break;
+      }
+    }
+  }
+  if (ls->t.token != '{') {
+    /* Abstract method - no body. Close the function scope and return 0. */
+    luaK_ret(&new_fs, 0, 0);
+    new_fs.f->lastlinedefined = ls->linenumber;
+    close_func(ls);
+    return 0;
+  }
+  checknext(ls, '{' /*}*/);
+  statlist_autoreturning(ls);
+  new_fs.f->lastlinedefined = ls->linenumber;
+  check_match(ls, /*{*/ '}', TK_FUNC, line);
+  codeclosure(ls, e);
+  close_func(ls);
+  return 1;
+}
+
+
+/*
 ** Parse an init constructor body. Same as body() but auto-appends
 ** 'return self' at the end, so Cangjie constructors don't need
 ** explicit 'return this'.
@@ -1878,7 +1956,6 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         break;
       }
       case '[': {  /* '[' exp ']' or '[' exp '..' exp ']' (range) */
-        luaK_exp2anyregup(fs, v);
         luaX_next(ls);  /* skip '[' */
         {
           expdesc start_e;
@@ -1889,18 +1966,35 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             /* Range subscript: arr[start..end] or arr[start..=end] */
             int inclusive = (ls->t.token == TK_DOTDOTEQ);
             expdesc end_e, fn_e, incl_e;
-            int base2;
+            int base2, arr_reg;
             luaX_next(ls);  /* skip '..' or '..=' */
             expr(ls, &end_e);
             checknext(ls, ']');
+            /* Resolve arr (v) to a register first. This avoids register
+            ** corruption when v is an indexed expression (e.g., m.data[1])
+            ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
+            ** if fn were already loaded above the table register.
+            ** Strategy: put arr into nextreg, then fn, then swap them
+            ** with OP_MOVE so fn is at base and arr is at base+1. */
+            luaK_exp2nextreg(fs, v);  /* arr at freereg-1 */
             if (ls->t.token == '=') {
               /* Range assignment: arr[start..end] = values */
               expdesc rhs;
+              int arr_r;
               luaX_next(ls);  /* skip '=' */
+              arr_r = fs->freereg - 1;  /* register where arr landed */
+              /* Build call: fn(arr, start, end, inclusive, values) */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice_set"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              base2 = fn_e.u.info;
-              luaK_exp2nextreg(fs, v);
+              /* Now: arr at arr_r, fn at arr_r+1. Swap: fn to arr_r, arr to arr_r+1 */
+              base2 = arr_r;
+              {
+                int fn_r = arr_r + 1;
+                int tmp_r = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);  /* tmp = arr */
+                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);   /* arr_slot = fn */
+                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);   /* fn_slot = arr */
+              }
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
@@ -1914,10 +2008,19 @@ static void suffixedexp (LexState *ls, expdesc *v) {
             }
             else {
               /* Range read: arr[start..end] */
+              int arr_r;
+              arr_r = fs->freereg - 1;  /* register where arr landed */
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              base2 = fn_e.u.info;
-              luaK_exp2nextreg(fs, v);
+              /* Now: arr at arr_r, fn at arr_r+1. Swap them. */
+              base2 = arr_r;
+              {
+                int fn_r = arr_r + 1;
+                int tmp_r = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);
+                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);
+                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);
+              }
               luaK_exp2nextreg(fs, &start_e);
               luaK_exp2nextreg(fs, &end_e);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
@@ -1930,6 +2033,7 @@ static void suffixedexp (LexState *ls, expdesc *v) {
           }
           else {
             /* Normal subscript: arr[expr] */
+            luaK_exp2anyregup(fs, v);
             luaK_exp2val(fs, &start_e);
             checknext(ls, ']');
             luaK_indexed(fs, v, &start_e);
@@ -3683,6 +3787,9 @@ static void structstat (LexState *ls, int line) {
 #define MAX_VAR_FIELDS 64
   TString *var_fields[MAX_VAR_FIELDS];
   int nvarfields = 0;
+#define MAX_IFACES 16
+  TString *iface_names[MAX_IFACES];
+  int nifaces = 0;
 
   /* Reset field tracking for this struct */
   ls->nfields = 0;
@@ -3702,12 +3809,16 @@ static void structstat (LexState *ls, int line) {
       /* First name is the parent class or interface */
       if (ls->t.token == TK_NAME) {
         parent_name = ls->t.seminfo.ts;
+        if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
         luaX_next(ls);
       }
       /* Skip additional interfaces after '&' */
       while (ls->t.token == '&') {
         luaX_next(ls);  /* skip '&' */
-        if (ls->t.token == TK_NAME) luaX_next(ls);
+        if (ls->t.token == TK_NAME) {
+          if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
+          luaX_next(ls);
+        }
       }
     }
     else {
@@ -3719,11 +3830,15 @@ static void structstat (LexState *ls, int line) {
         luaX_next(ls);  /* skip ':' */
         if (ls->t.token == TK_NAME) {
           parent_name = ls->t.seminfo.ts;
+          if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
           luaX_next(ls);
         }
         while (ls->t.token == '&') {
           luaX_next(ls);
-          if (ls->t.token == TK_NAME) luaX_next(ls);
+          if (ls->t.token == TK_NAME) {
+            if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
+            luaX_next(ls);
+          }
         }
       }
     }
@@ -3741,11 +3856,15 @@ static void structstat (LexState *ls, int line) {
     luaX_next(ls);  /* skip '<=' */
     if (ls->t.token == TK_NAME) {
       parent_name = ls->t.seminfo.ts;
+      if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
       luaX_next(ls);
     }
     while (ls->t.token == '&') {
       luaX_next(ls);
-      if (ls->t.token == TK_NAME) luaX_next(ls);
+      if (ls->t.token == TK_NAME) {
+        if (nifaces < MAX_IFACES) iface_names[nifaces++] = ls->t.seminfo.ts;
+        luaX_next(ls);
+      }
     }
   }
 
@@ -3961,10 +4080,18 @@ parse_operator_body:
         var_fields[nvarfields++] = fname;
       }
       skip_type_annotation(ls);
-      /* optional default value */
+      /* optional default value - compile as ClassName.field = value */
       if (testnext(ls, '=')) {
-        expdesc dummy;
-        expr(ls, &dummy);  /* skip the expression */
+        expdesc field_target, field_val;
+        buildvar(ls, sname, &field_target);
+        {
+          expdesc fkey;
+          luaK_exp2anyregup(fs, &field_target);
+          codestring(&fkey, fname);
+          luaK_indexed(fs, &field_target, &fkey);
+        }
+        expr(ls, &field_val);
+        luaK_storevar(fs, &field_target, &field_val);
       }
     }
     else if (ls->t.token == TK_NAME &&
@@ -4143,6 +4270,25 @@ parse_operator_body:
     fs->freereg = cast_byte(base2);
   }
 
+  /* Apply interface default implementations */
+  {
+    int ii;
+    for (ii = 0; ii < nifaces; ii++) {
+      expdesc fn, arg1, arg2;
+      int base2;
+      buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base2 = fn.u.info;
+      buildvar(ls, sname, &arg1);
+      luaK_exp2nextreg(fs, &arg1);
+      buildvar(ls, iface_names[ii], &arg2);
+      luaK_exp2nextreg(fs, &arg2);
+      init_exp(&fn, VCALL,
+               luaK_codeABC(fs, OP_CALL, base2, 3, 1));
+      fs->freereg = cast_byte(base2);
+    }
+  }
+
   reg = fs->freereg;
   fs->freereg = cast_byte(reg);
 
@@ -4155,7 +4301,8 @@ parse_operator_body:
 static void interfacestat (LexState *ls, int line) {
   /*
   ** interface NAME ['<' typeparams '>'] '{' func_decls '}'
-  ** Compiles to: NAME = {} (marker table)
+  ** Compiles to: NAME = {} (interface table)
+  ** Default method implementations are compiled and stored in the table.
   */
   FuncState *fs = ls->fs;
   expdesc v, e;
@@ -4179,62 +4326,106 @@ static void interfacestat (LexState *ls, int line) {
 
   checknext(ls, '{' /*}*/);
 
-  /* Parse interface members (just skip declarations) */
+  /* Parse interface members */
   while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
     if (ls->t.token == TK_FUNC) {
+      TString *mname;
       luaX_next(ls);  /* skip 'func' */
-      str_checkname(ls);  /* method name */
+      mname = str_checkname(ls);  /* method name */
       skip_generic_params(ls);
-      checknext(ls, '(');
-      /* skip parameter list */
-      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
-        luaX_next(ls);
-      }
-      checknext(ls, ')');
-      skip_type_annotation(ls);
-      /* If there's a body, parse it */
-      if (ls->t.token == '{') {
-        /* skip the body - it's a default implementation */
-        int depth = 1;
-        luaX_next(ls);
-        while (depth > 0 && ls->t.token != TK_EOS) {
-          if (ls->t.token == '{') depth++;
-          else if (ls->t.token == '}') depth--;
-          if (depth > 0) luaX_next(ls);
+      /* Parse method - might be abstract (no body) or default (with body).
+      ** body_or_abstract handles both: compiles body if '{' found,
+      ** otherwise skips the abstract declaration. */
+      {
+        expdesc mv, mb;
+        int has_body;
+        buildvar(ls, iname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, mname);
+          luaK_indexed(fs, &mv, &mkey);
         }
-        luaX_next(ls);  /* skip final '}' */
+        ls->in_struct_method = 1;
+        has_body = body_or_abstract(ls, &mb, 1, ls->linenumber);
+        ls->in_struct_method = 0;
+        if (has_body) {
+          luaK_storevar(fs, &mv, &mb);
+          luaK_fixline(fs, line);
+        }
       }
     }
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
+      TString *metamethod_name;
+      int op_token;
       luaX_next(ls);  /* skip 'operator' */
       checknext(ls, TK_FUNC);  /* expect 'func' */
-      /* skip operator token(s) */
-      if (ls->t.token == '[') {
+      /* Read operator token and map to metamethod name */
+      op_token = ls->t.token;
+      if (op_token == '[') {
         luaX_next(ls);  /* skip '[' */
         checknext(ls, ']');
+        metamethod_name = luaS_new(ls->L, "__index");
       }
       else {
+        switch (op_token) {
+          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
+          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
+          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
+          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
+          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
+          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
+          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
+          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
+          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
+          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
+          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
+          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
+          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
+          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
+          default: {
+            if (ls->t.token == TK_NAME) {
+              const char *opname = getstr(ls->t.seminfo.ts);
+              if (strcmp(opname, "toString") == 0) {
+                metamethod_name = luaS_new(ls->L, "__tostring");
+              } else {
+                char mm[64];
+                snprintf(mm, sizeof(mm), "__%s", opname);
+                metamethod_name = luaS_new(ls->L, mm);
+              }
+            } else {
+              luaX_syntaxerror(ls, "unsupported operator for overloading");
+              metamethod_name = NULL;
+            }
+            break;
+          }
+        }
         luaX_next(ls);  /* skip operator token */
       }
       skip_generic_params(ls);
-      checknext(ls, '(');
-      /* skip parameter list */
-      while (ls->t.token != ')' && ls->t.token != TK_EOS) {
-        luaX_next(ls);
-      }
-      checknext(ls, ')');
-      skip_type_annotation(ls);
-      /* skip body if present (default implementation) */
-      if (ls->t.token == '{') {
-        int depth = 1;
-        luaX_next(ls);
-        while (depth > 0 && ls->t.token != TK_EOS) {
-          if (ls->t.token == '{') depth++;
-          else if (ls->t.token == '}') depth--;
-          if (depth > 0) luaX_next(ls);
+      /* Parse operator method - might be abstract or have default body.
+      ** body_or_abstract handles (params): Type { body } or just
+      ** (params): Type for abstract declarations. */
+      {
+        expdesc mv, mb;
+        int has_body;
+        buildvar(ls, iname, &mv);
+        {
+          expdesc mkey;
+          luaK_exp2anyregup(fs, &mv);
+          codestring(&mkey, metamethod_name);
+          luaK_indexed(fs, &mv, &mkey);
         }
-        luaX_next(ls);  /* skip final '}' */
+        ls->in_struct_method = 1;
+        has_body = body_or_abstract(ls, &mb, 1, ls->linenumber);
+        ls->in_struct_method = 0;
+        if (has_body) {
+          luaK_storevar(fs, &mv, &mb);
+          luaK_fixline(fs, line);
+        }
       }
     }
     else {
@@ -4268,6 +4459,9 @@ static void extendstat (LexState *ls, int line) {
   FuncState *fs = ls->fs;
   TString *tname;
   int builtin;
+#define MAX_EXT_IFACES 16
+  TString *ext_iface_names[MAX_EXT_IFACES];
+  int next_ifaces = 0;
 
   luaX_next(ls);  /* skip 'extend' */
   skip_generic_params(ls);  /* skip possible generic params before name */
@@ -4281,7 +4475,12 @@ static void extendstat (LexState *ls, int line) {
       /* This is '<:' interface implementation */
       luaX_next(ls);  /* skip '<' (consumes lookahead ':') */
       luaX_next(ls);  /* skip ':' */
-      while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+      while (ls->t.token == TK_NAME || ls->t.token == '&') {
+        if (ls->t.token == TK_NAME && next_ifaces < MAX_EXT_IFACES) {
+          ext_iface_names[next_ifaces++] = ls->t.seminfo.ts;
+        }
+        luaX_next(ls);
+      }
     }
     else {
       /* This is generic params '<T, U, ...>' */
@@ -4293,7 +4492,12 @@ static void extendstat (LexState *ls, int line) {
         if (la == ':') {
           luaX_next(ls);  /* skip '<' */
           luaX_next(ls);  /* skip ':' */
-          while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+          while (ls->t.token == TK_NAME || ls->t.token == '&') {
+            if (ls->t.token == TK_NAME && next_ifaces < MAX_EXT_IFACES) {
+              ext_iface_names[next_ifaces++] = ls->t.seminfo.ts;
+            }
+            luaX_next(ls);
+          }
         }
       }
     }
@@ -4301,7 +4505,12 @@ static void extendstat (LexState *ls, int line) {
   /* also handle '<=' for backward compatibility */
   if (ls->t.token == TK_LE) {
     luaX_next(ls);
-    while (ls->t.token == TK_NAME || ls->t.token == '&') luaX_next(ls);
+    while (ls->t.token == TK_NAME || ls->t.token == '&') {
+      if (ls->t.token == TK_NAME && next_ifaces < MAX_EXT_IFACES) {
+        ext_iface_names[next_ifaces++] = ls->t.seminfo.ts;
+      }
+      luaX_next(ls);
+    }
   }
 
   builtin = is_builtin_type(ls, tname);
@@ -4445,6 +4654,25 @@ parse_ext_b_opbody:
                luaK_codeABC(fs, OP_CALL, base2, 3, 1));
       fs->freereg = cast_byte(base2);
     }
+
+    /* Apply interface defaults to the proxy table */
+    {
+      int ii;
+      for (ii = 0; ii < next_ifaces; ii++) {
+        expdesc fn, arg1, arg2;
+        int base2;
+        buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
+        luaK_exp2nextreg(fs, &fn);
+        base2 = fn.u.info;
+        buildvar(ls, tname, &arg1);
+        luaK_exp2nextreg(fs, &arg1);
+        buildvar(ls, ext_iface_names[ii], &arg2);
+        luaK_exp2nextreg(fs, &arg2);
+        init_exp(&fn, VCALL,
+                 luaK_codeABC(fs, OP_CALL, base2, 3, 1));
+        fs->freereg = cast_byte(base2);
+      }
+    }
   }
   else {
     /* For user-defined types: add methods directly to the type table */
@@ -4539,6 +4767,25 @@ parse_ext_u_opbody:
     }
 
     check_match(ls, /*{*/ '}', TK_EXTEND, line);
+
+    /* Apply interface defaults to the user-defined type */
+    {
+      int ii;
+      for (ii = 0; ii < next_ifaces; ii++) {
+        expdesc fn, arg1, arg2;
+        int base2;
+        buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
+        luaK_exp2nextreg(fs, &fn);
+        base2 = fn.u.info;
+        buildvar(ls, tname, &arg1);
+        luaK_exp2nextreg(fs, &arg1);
+        buildvar(ls, ext_iface_names[ii], &arg2);
+        luaK_exp2nextreg(fs, &arg2);
+        init_exp(&fn, VCALL,
+                 luaK_codeABC(fs, OP_CALL, base2, 3, 1));
+        fs->freereg = cast_byte(base2);
+      }
+    }
   }
 }
 
@@ -5457,7 +5704,7 @@ static void matchstat_returning (LexState *ls, int line) {
 
 
 static void exprstat (LexState *ls) {
-  /* stat -> func | assignment */
+  /* stat -> func | assignment | compound_assignment */
   FuncState *fs = ls->fs;
   struct LHS_assign v;
   suffixedexp(ls, &v.v);
@@ -5465,11 +5712,63 @@ static void exprstat (LexState *ls) {
     v.prev = NULL;
     restassign(ls, &v, 1);
   }
-  else {  /* stat -> func */
-    Instruction *inst;
-    check_condition(ls, v.v.k == VCALL, "syntax error");
-    inst = &getinstruction(fs, &v.v);
-    SETARG_C(*inst, 1);  /* call statement uses no results */
+  else if ((ls->t.token == '+' || ls->t.token == '-' ||
+            ls->t.token == '*' || ls->t.token == '/') &&
+           luaX_lookahead(ls) == '=') {
+    /* Compound assignment: x += e  =>  x = x + e */
+    int op_token = ls->t.token;
+    BinOpr opr;
+    expdesc lhs_copy, rhs, result;
+    int line2 = ls->linenumber;
+    switch (op_token) {
+      case '+': opr = OPR_ADD; break;
+      case '-': opr = OPR_SUB; break;
+      case '*': opr = OPR_MUL; break;
+      case '/': opr = OPR_DIV; break;
+      default: lua_assert(0); opr = OPR_ADD; break;
+    }
+    luaX_next(ls);  /* skip operator (+, -, etc.) */
+    luaX_next(ls);  /* skip '=' (was consumed by lookahead) */
+    /* Save lhs for the store, and create a copy for the read */
+    lhs_copy = v.v;
+    /* Read the current value of the lhs */
+    luaK_exp2nextreg(fs, &lhs_copy);
+    /* Parse the right-hand expression */
+    expr(ls, &rhs);
+    /* Combine: lhs_copy OP rhs */
+    luaK_infix(fs, opr, &lhs_copy);
+    luaK_posfix(fs, opr, &lhs_copy, &rhs, line2);
+    result = lhs_copy;
+    /* Store back to the original lhs */
+    luaK_storevar(fs, &v.v, &result);
+  }
+  else {  /* stat -> func or expression statement */
+    /* Continue parsing binary operators if present */
+    {
+      BinOpr op = getbinopr(ls->t.token);
+      while (op != OPR_NOBINOPR && priority[op].left > 0) {
+        expdesc e2;
+        BinOpr nextop;
+        int line2 = ls->linenumber;
+        luaX_next(ls);
+        luaK_infix(fs, op, &v.v);
+        nextop = subexpr(ls, &e2, priority[op].right);
+        luaK_posfix(fs, op, &v.v, &e2, line2);
+        op = nextop;
+      }
+    }
+    if (v.v.k == VCALL) {
+      Instruction *inst;
+      inst = &getinstruction(fs, &v.v);
+      SETARG_C(*inst, 1);  /* call statement uses no results */
+    }
+    else {
+      /* In Cangjie, any expression can be used as a statement
+      ** (e.g. operator calls for side effects like `that << this`).
+      ** The result is discarded. */
+      luaK_exp2nextreg(fs, &v.v);
+      fs->freereg--;
+    }
   }
 }
 
@@ -5574,6 +5873,31 @@ static void statlist_autoreturning (LexState *ls) {
             v.prev = NULL;
             restassign(ls, &v, 1);
           }
+          else if ((ls->t.token == '+' || ls->t.token == '-' ||
+                    ls->t.token == '*' || ls->t.token == '/') &&
+                   luaX_lookahead(ls) == '=') {
+            /* Compound assignment: x += e2  =>  x = x + e2 */
+            int op_token = ls->t.token;
+            BinOpr opr;
+            expdesc lhs_copy, rhs, result;
+            int line2 = ls->linenumber;
+            switch (op_token) {
+              case '+': opr = OPR_ADD; break;
+              case '-': opr = OPR_SUB; break;
+              case '*': opr = OPR_MUL; break;
+              case '/': opr = OPR_DIV; break;
+              default: lua_assert(0); opr = OPR_ADD; break;
+            }
+            luaX_next(ls);  /* skip operator */
+            luaX_next(ls);  /* skip '=' */
+            lhs_copy = e;
+            luaK_exp2nextreg(fs, &lhs_copy);
+            expr(ls, &rhs);
+            luaK_infix(fs, opr, &lhs_copy);
+            luaK_posfix(fs, opr, &lhs_copy, &rhs, line2);
+            result = lhs_copy;
+            luaK_storevar(fs, &e, &result);
+          }
           else {
             /* Continue parsing as full expression (binary ops, ??, etc.) */
             {
@@ -5600,11 +5924,20 @@ static void statlist_autoreturning (LexState *ls) {
               return;
             }
             else {
-              /* Intermediate expression statement (function call) */
-              Instruction *inst;
-              check_condition(ls, e.k == VCALL, "syntax error");
-              inst = &getinstruction(fs, &e);
-              SETARG_C(*inst, 1);
+              /* Intermediate expression statement - could be function call
+              ** or operator expression used for side effects. */
+              if (e.k == VCALL) {
+                Instruction *inst;
+                inst = &getinstruction(fs, &e);
+                SETARG_C(*inst, 1);
+              }
+              else {
+                /* Non-call expression used as statement (e.g., operator
+                ** invocations like `that << this` for side effects).
+                ** Evaluate and discard the result. */
+                luaK_exp2nextreg(fs, &e);
+                fs->freereg = luaY_nvarstack(fs);
+              }
             }
           }
         }
