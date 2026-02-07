@@ -179,7 +179,7 @@ static int cangjie_call_handler (lua_State *L) {
       int fi;
       lua_pop(L, 1);
       for (fi = 1; fi <= nf && fi <= nargs; fi++) {
-        char fieldkey[32];
+        char fieldkey[32];  /* "__field_" + up to 20 digits + NUL */
         snprintf(fieldkey, sizeof(fieldkey), "__field_%d", fi);
         lua_getfield(L, 1, fieldkey);  /* get field name */
         if (lua_isstring(L, -1)) {

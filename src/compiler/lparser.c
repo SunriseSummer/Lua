@@ -3218,7 +3218,8 @@ static void structstat (LexState *ls, int line) {
   int saved_nfields = ls->nfields;
   int saved_in_struct = ls->in_struct_method;
   int has_init = 0;
-  TString *var_fields[64];
+#define MAX_VAR_FIELDS 64
+  TString *var_fields[MAX_VAR_FIELDS];
   int nvarfields = 0;
 
   /* Reset field tracking for this struct */
@@ -3493,7 +3494,7 @@ parse_operator_body:
         ls->struct_fields[ls->nfields++] = fname;
       }
       /* Track var fields for auto-constructor */
-      if (is_var && nvarfields < 64) {
+      if (is_var && nvarfields < MAX_VAR_FIELDS) {
         var_fields[nvarfields++] = fname;
       }
       skip_type_annotation(ls);

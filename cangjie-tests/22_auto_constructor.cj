@@ -16,10 +16,9 @@ let b = B(1, "hello")
 println(b.x)  // 1
 println(b.y)  // hello
 
-// No args uses defaults (via default value handling at runtime)
+// No args: auto-constructor has no args to assign, fields remain unset (nil)
 let c = A()
-println(c.x)  // should be nil since no init assigns defaults
-// This is OK - auto-constructor only works when args are provided
+println(c.x)  // nil - no init and no args, so fields are not assigned
 
 // Class with explicit init should still work
 class C {
