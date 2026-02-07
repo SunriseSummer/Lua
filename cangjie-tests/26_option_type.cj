@@ -1,40 +1,46 @@
-// Built-in Option type
+// Test: Built-in Option type (Some, None)
+// Validates isSome/isNone, getOrThrow, getOrDefault, match, coalescing, and ?Type
+
+// --- Check tags ---
 let a = Some(42)
 let b = None
 
-// Check tags
-println(a.isSome())   // true
-println(a.isNone())   // false
-println(b.isSome())   // false
-println(b.isNone())   // true
+if (a.isSome() != true) { println("FAIL: a.isSome() expected true"); return () }
+if (a.isNone() != false) { println("FAIL: a.isNone() expected false"); return () }
+if (b.isSome() != false) { println("FAIL: b.isSome() expected false"); return () }
+if (b.isNone() != true) { println("FAIL: b.isNone() expected true"); return () }
 
-// getOrThrow
-println(a.getOrThrow())  // 42
+// --- getOrThrow ---
+if (a.getOrThrow() != 42) { println("FAIL: a.getOrThrow() expected 42, got ${a.getOrThrow()}"); return () }
 
-// getOrDefault (takes () -> T function)
-println(a.getOrDefault({ => 0 }))  // 42
-println(b.getOrDefault({ => 0 }))  // 0
+// --- getOrDefault ---
+if (a.getOrDefault({ => 0 }) != 42) { println("FAIL: a.getOrDefault expected 42"); return () }
+if (b.getOrDefault({ => 0 }) != 0) { println("FAIL: b.getOrDefault expected 0"); return () }
 
-// Pattern matching with Option
+// --- Pattern matching with Option ---
+var matchA: String = ""
 match (a) {
-  case Some(v) => println("Some: ${v}")  // Some: 42
-  case None => println("None")
+  case Some(v) => matchA = "Some: ${v}"
+  case None => matchA = "None"
 }
+if (matchA != "Some: 42") { println("FAIL: match a expected 'Some: 42', got '${matchA}'"); return () }
 
+var matchB: String = ""
 match (b) {
-  case Some(v) => println("Some: ${v}")
-  case None => println("None")  // None
+  case Some(v) => matchB = "Some: ${v}"
+  case None => matchB = "None"
 }
+if (matchB != "None") { println("FAIL: match b expected 'None', got '${matchB}'"); return () }
 
-// Coalescing operator ??
+// --- Coalescing operator ?? ---
 let x = a ?? 0
-println(x)  // 42 (unwrapped from Some)
+if (x != 42) { println("FAIL: a ?? 0 expected 42, got ${x}"); return () }
 let y = b ?? 99
-println(y)  // 99 (default for None)
+if (y != 99) { println("FAIL: b ?? 99 expected 99, got ${y}"); return () }
 
-// ?Type in type annotations (just syntax, skipped)
+// --- ?Type in type annotations ---
 let c: ?Int64 = Some(10)
 let d: ?String = None
-println(c.getOrThrow())  // 10
+if (c.getOrThrow() != 10) { println("FAIL: c.getOrThrow() expected 10, got ${c.getOrThrow()}"); return () }
 
 println("PASS: 26_option_type")

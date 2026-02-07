@@ -1,6 +1,7 @@
 // Test: Enum Operator Overloading
+// Validates +, -, == operators on enums, toString, and combined operators with methods
 
-// Enum with operator + overloading
+// --- Enum with operator overloading ---
 enum Money {
   | Yuan(Int64)
 
@@ -35,22 +36,24 @@ enum Money {
   }
 }
 
-// Test + operator
+// --- Test + operator ---
 let m1 = Yuan(100)
 let m2 = Yuan(200)
 let m3 = m1 + m2
-println("100 + 200 = " + tostring(m3.value()))
+if (m3.value() != 300) { println("FAIL: m3.value() expected 300, got ${m3.value()}"); return () }
 
-// Test - operator
+// --- Test - operator ---
 let m4 = m3 - m1
-println("300 - 100 = " + tostring(m4.value()))
+if (m4.value() != 200) { println("FAIL: m4.value() expected 200, got ${m4.value()}"); return () }
 
-// Test == operator
+// --- Test == operator ---
 let m5 = Yuan(200)
-println("m2 == m5: " + tostring(m2 == m5))
-println("m1 == m2: " + tostring(m1 == m2))
+let eqTrue = m2 == m5
+if (eqTrue != true) { println("FAIL: m2==m5 expected true, got ${eqTrue}"); return () }
+let eqFalse = m1 == m2
+if (eqFalse != false) { println("FAIL: m1==m2 expected false, got ${eqFalse}"); return () }
 
-// Enum with toString operator
+// --- Enum with toString operator ---
 enum Color {
   | Red
   | Green
@@ -66,9 +69,10 @@ enum Color {
 }
 
 let c = Red
-println("Color: " + tostring(c))
+let colorStr = tostring(c)
+if (colorStr != "Red") { println("FAIL: Color toString expected 'Red', got '${colorStr}'"); return () }
 
-// Enum with multiple operators and methods combined
+// --- Enum with multiple operators and methods combined ---
 enum Vec2 {
   | V(Int64, Int64)
 
@@ -96,6 +100,7 @@ enum Vec2 {
 let v1 = V(1, 2)
 let v2 = V(3, 4)
 let v3 = v1 + v2
-println("(1,2) + (3,4) = (" + tostring(v3.x()) + "," + tostring(v3.y()) + ")")
+if (v3.x() != 4) { println("FAIL: Vec2 v3.x() expected 4, got ${v3.x()}"); return () }
+if (v3.y() != 6) { println("FAIL: Vec2 v3.y() expected 6, got ${v3.y()}"); return () }
 
 println("PASS: 28_enum_operators")
