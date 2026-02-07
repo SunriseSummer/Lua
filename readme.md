@@ -151,7 +151,7 @@ MathUtils.add(3, 4)  // 通过类型名调用，结果为 7
 
 #### operator func（操作符函数重载）
 
-在 struct/class 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作。
+在 struct/class/enum 中通过 `operator func` 重载运算符，使自定义类型支持 `+`、`-`、`*`、`==` 等操作。
 在 `interface` 和 `extend` 中也支持 `operator func` 声明和实现：
 
 ```cangjie
@@ -348,6 +348,21 @@ enum Expr {
   | Add(Expr, Expr)
   | Sub(Expr, Expr)
 }
+
+// 枚举操作符重载
+enum Money {
+  | Yuan(Int64)
+
+  operator func +(other: Money): Money {
+    match (self) {
+      case Yuan(a) => match (other) {
+        case Yuan(b) => return Yuan(a + b)
+      }
+    }
+  }
+}
+
+let total = Yuan(100) + Yuan(200)  // Yuan(300)
 ```
 
 支持的枚举特性：
@@ -358,6 +373,7 @@ enum Expr {
 - **行内构造器**：支持 `Empty | Leaf(Int64) | Node(Int64, Tree, Tree)` 行内语法（首个构造器无需 `|` 前缀）
 - **泛型枚举**：`enum Option<T> { | Some(T) | None }`
 - **成员函数**：枚举类型内可定义 `func`，通过 `this` 引用当前枚举实例
+- **操作符重载**：在枚举中支持 `operator func` 重载运算符（`+`、`-`、`*`、`==` 等），使枚举实例支持算术和比较操作
 - **直接访问**：无命名冲突时可直接使用枚举项名字 `Red`，也可使用限定名 `Color.Red`
 
 ### Option 类型
@@ -450,6 +466,68 @@ func eval(e) {
 - **if-let 模式匹配**：`if (let Pattern <- expr) { ... }` 解构并判断
 - **while-let 模式匹配**：`while (let Pattern <- expr) { ... }` 循环解构
 - **与逻辑表达式混合**：`if (let Some(v) <- expr && v > 0)` 或 `if (let Some(v) <- expr || fallback)`
+
+### 表达式求值
+
+#### if 表达式
+
+if 语句可以用作表达式，其值为所执行分支最后一个表达式的值。如果没有分支被执行，值为 nil：
+
+```cangjie
+let x = if (score >= 90) { "A" } else if (score >= 80) { "B" } else { "C" }
+
+// 没有 else 分支时，未匹配的 if 表达式值为 nil
+let y = if (false) { 42 }  // y == nil
+```
+
+#### match 表达式
+
+match 语句可以用作表达式，其值为所匹配分支最后一个表达式的值。如果没有分支被匹配，值为 nil：
+
+```cangjie
+let name = match (day) {
+  case 1 => "Monday"
+  case 2 => "Tuesday"
+  case _ => "Other"
+}
+```
+
+#### 代码块表达式
+
+代码块 `{ ... }` 可以用作表达式，值为其中最后一个表达式的值。空代码块的值为 nil：
+
+```cangjie
+let sum = {
+  var s = 0
+  for (i in 0..100) {
+    s = s + i
+  }
+  s
+}
+```
+
+#### 函数隐式返回
+
+函数体中如果最后一个语句是表达式（不是 return），则该表达式的值作为函数的返回值：
+
+```cangjie
+func add(a: Int64, b: Int64): Int64 {
+  a + b
+}
+
+func greet(name: String): String {
+  "Hello, " + name + "!"
+}
+```
+
+#### 未确定求值规则的表达式
+
+对于 while、for 等尚未确定求值规则的表达式，其值始终为 nil：
+
+```cangjie
+let r = while (false) { println("unreachable") }  // r == nil
+let f = for (i in 0..0) { println(i) }             // f == nil
+```
 
 #### if-let 和 while-let
 
@@ -574,7 +652,7 @@ let grid = Array<Array<Int64>>(3, { i: Int64 =>
 - **缺失名称**：`struct`/`class`/`func` 后必须有名称
 - **空类型注解**：`let x: = 10` 等冒号后缺少类型名的情况
 - **非法成员**：`struct`/`class` 体内允许 `func`、`init`、`let`、`var`、`static func`、`operator func`
-- **非法枚举内容**：`enum` 体内只允许 `|`、构造器名或 `func`
+- **非法枚举内容**：`enum` 体内只允许 `|`、构造器名、`func` 或 `operator func`
 - **非法接口内容**：`interface` 体内只允许 `func` 声明
 
 ### 语义错误
@@ -596,7 +674,7 @@ let grid = Array<Array<Int64>>(3, { i: Int64 =>
 6. **隐式 this**：仅在 `struct/class` 体内声明的 `var/let` 字段名可被隐式解析为 `self.field`，局部变量同名时局部变量优先
 7. **访问控制**：不支持 `public`/`private`/`protected` 访问修饰符
 8. **元组嵌套字面量**：不支持直接嵌套元组字面量 `((1,2), (3,4))`，需通过变量间接嵌套
-9. **枚举类型**：支持带参数的枚举构造器、递归枚举、泛型枚举和成员函数
+9. **枚举类型**：支持带参数的枚举构造器、递归枚举、泛型枚举、成员函数和操作符重载
 10. **模式匹配**：支持枚举模式、常量模式、通配符模式、类型模式和元组模式，但不支持守卫条件（where）
 11. **异常处理**：不支持 `try/catch/finally`，使用 Lua 的 `pcall` 替代
 12. **文件模块**：不支持仓颉的 `package`/`import` 模块系统，使用 Lua 的 `require` 替代
@@ -605,6 +683,7 @@ let grid = Array<Array<Int64>>(3, { i: Int64 =>
 15. **幂运算**：`**` 运算结果为浮点数（遵循 Lua 底层实现），如 `2 ** 10` 返回 `1024.0`
 16. **默认值检测**：默认值检测基于 nil 判断（仅当参数为 nil 时使用默认值），传递 `false` 不会被错误地替换为默认值
 17. **Unit 类型**：`()` 映射为 nil，可用作表达式或空操作语句
+18. **表达式求值**：if、match、代码块可用作表达式，其值为所执行分支（或代码块）最后一个表达式的值；函数体支持隐式返回最后一个表达式的值；while/for 等未确定求值规则的表达式其值为 nil
 
 ## 构建与测试
 
@@ -705,9 +784,9 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（28 个）
-│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（4 个）
-│   ├── usages/                   #   综合应用案例（4 个）
+│   ├── *.cj                      #   基础语言特性测试（29 个）
+│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
+│   ├── usages/                   #   综合应用案例（6 个）
 │   └── diagnosis/                #   错误检测和诊断测试（4 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
