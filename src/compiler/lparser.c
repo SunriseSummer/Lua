@@ -1284,8 +1284,8 @@ static void parlist (LexState *ls) {
   /* reserve registers for parameters (plus vararg parameter, if present) */
   luaK_reserveregs(fs, fs->nactvar);
   /* Emit default value preamble: if param == nil then param = default end
-  ** Note: uses truthiness test, so `false` as param value is treated as nil.
-  ** This is a known limitation for Bool parameters with default values. */
+  ** Uses nil-equality check (OP_EQ with a nil register) so that passing
+  ** 'false' explicitly is not confused with an omitted parameter. */
   {
     int i;
     /* firstparam: the register index of the first parameter.
@@ -1296,17 +1296,19 @@ static void parlist (LexState *ls) {
     for (i = 0; i < ndef; i++) {
       int reg = firstparam + def_param[i];
       int skip_jmp;
-      expdesc defv, var_e, cond_e;
-      /* Build condition: test if param register is truthy */
-      init_exp(&cond_e, VNONRELOC, reg);
-      /* goiftrue: emit code that falls through if true, jumps if false.
-      ** After goiftrue, the false list (cond_e.f) contains jumps to the
-      ** code that should execute when the param is nil/false. */
-      luaK_goiftrue(fs, &cond_e);
-      /* Skip past default when param is truthy */
+      expdesc defv, var_e;
+      int nil_reg;
+      /* Load nil into a temporary register for comparison */
+      nil_reg = fs->freereg;
+      luaK_reserveregs(fs, 1);
+      luaK_nil(fs, nil_reg, 1);
+      /* OP_EQ: if ((R[reg] == R[nil_reg]) ~= k) then pc++
+      ** With k=0: if param IS nil, cond(1)!=k(0) → pc++ (skip jump, execute default).
+      **           if param is NOT nil, cond(0)==k(0) → donextjump (skip default). */
+      luaK_codeABCk(fs, OP_EQ, reg, nil_reg, 0, 0);
       skip_jmp = luaK_jump(fs);
-      /* Patch false-list to here (default assignment) */
-      luaK_patchtohere(fs, cond_e.f);
+      /* Free the temporary nil register */
+      fs->freereg = cast_byte(nil_reg);
       /* Default value assignment: R[reg] = default */
       if (def_is_complex[i]) {
         /* Complex default: restore lexer state and parse expression now.
@@ -2914,90 +2916,127 @@ static void checktoclose (FuncState *fs, int level) {
 ** Supports optional type annotations: let x: Int64 = 42
 ** ============================================================
 */
+/*
+** Check whether we are at the top level of a REPL (interactive) chunk.
+** In REPL mode the source name is "=stdin" and the function is the main
+** chunk (no enclosing function) at the outermost block scope.
+*/
+static int is_repl_toplevel (LexState *ls) {
+  FuncState *fs = ls->fs;
+  const char *src = getstr(ls->source);
+  return (src[0] == '=' && strcmp(src, "=stdin") == 0 &&
+          fs->prev == NULL && fs->bl->previous == NULL);
+}
+
+/*
+** Skip a type annotation after ':' in let/var declarations.
+** This is shared between the local and global paths of letvarstat.
+*/
+static void skip_letvar_type (LexState *ls) {
+  int depth = 0;
+  int has_type = 0;
+  if (ls->t.token == '(') {
+    has_type = 1;
+    depth++;
+    luaX_next(ls);
+    while (depth > 0 && ls->t.token != TK_EOS) {
+      if (ls->t.token == '(') depth++;
+      else if (ls->t.token == ')') depth--;
+      if (depth > 0) luaX_next(ls);
+    }
+    if (ls->t.token == ')') luaX_next(ls);
+    if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+      luaX_next(ls);
+      luaX_next(ls);
+      while (ls->t.token == TK_NAME ||
+             (ls->t.token == '<') ||
+             (ls->t.token == '>' && depth > 0) ||
+             (ls->t.token == ',' && depth > 0)) {
+        if (ls->t.token == '<') depth++;
+        else if (ls->t.token == '>') depth--;
+        luaX_next(ls);
+      }
+    }
+  }
+  else {
+    while (ls->t.token == TK_NAME ||
+           (ls->t.token == '<') ||
+           (ls->t.token == '>' && depth > 0) ||
+           (ls->t.token == ',' && depth > 0)) {
+      has_type = 1;
+      if (ls->t.token == '<') depth++;
+      else if (ls->t.token == '>') depth--;
+      luaX_next(ls);
+    }
+  }
+  if (!has_type) {
+    luaX_syntaxerror(ls, "type name expected after ':'");
+  }
+}
+
 static void letvarstat (LexState *ls, int isconst) {
   /* stat -> LET|VAR NAME [':' type] ['=' explist] */
   FuncState *fs = ls->fs;
-  int toclose = -1;
-  Vardesc *var;
-  int vidx;
-  int nvars = 0;
-  int nexps;
-  expdesc e;
-  lu_byte defkind = isconst ? RDKCONST : VDKREG;
-  do {
-    TString *vname = str_checkname(ls);  /* get variable name */
-    /* optional type annotation ': Type' - parse and validate */
-    if (testnext(ls, ':')) {
-      int depth = 0;
-      int has_type = 0;  /* track if at least one type token was consumed */
-      /* Also accept '(' for function types like (Int64, Int64) -> Bool */
-      if (ls->t.token == '(') {
-        has_type = 1;
-        depth++;
-        luaX_next(ls);
-        while (depth > 0 && ls->t.token != TK_EOS) {
-          if (ls->t.token == '(') depth++;
-          else if (ls->t.token == ')') depth--;
-          if (depth > 0) luaX_next(ls);
-        }
-        if (ls->t.token == ')') luaX_next(ls);
-        /* Check for function return type: -> Type */
-        if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
-          luaX_next(ls);  /* skip '-' */
-          luaX_next(ls);  /* skip '>' */
-          /* consume the return type */
-          while (ls->t.token == TK_NAME ||
-                 (ls->t.token == '<') ||
-                 (ls->t.token == '>' && depth > 0) ||
-                 (ls->t.token == ',' && depth > 0)) {
-            if (ls->t.token == '<') depth++;
-            else if (ls->t.token == '>') depth--;
-            luaX_next(ls);
-          }
-        }
-      }
-      else {
-        while (ls->t.token == TK_NAME ||
-               (ls->t.token == '<') ||
-               (ls->t.token == '>' && depth > 0) ||
-               (ls->t.token == ',' && depth > 0)) {
-          has_type = 1;
-          if (ls->t.token == '<') depth++;
-          else if (ls->t.token == '>') depth--;
-          luaX_next(ls);
-        }
-      }
-      if (!has_type) {
-        luaX_syntaxerror(ls, "type name expected after ':'");
-      }
+  /* In REPL mode at top level, generate global assignments so that
+  ** variables survive across interactive lines. */
+  if (is_repl_toplevel(ls)) {
+    TString *vname = str_checkname(ls);
+    if (testnext(ls, ':'))
+      skip_letvar_type(ls);
+    if (testnext(ls, '=')) {
+      expdesc v, e;
+      buildvar(ls, vname, &v);
+      expr(ls, &e);
+      luaK_storevar(fs, &v, &e);
     }
-    vidx = new_varkind(ls, vname, defkind);
-    nvars++;
-  } while (testnext(ls, ','));
-  if (testnext(ls, '='))
-    nexps = explist(ls, &e);
-  else {
-    /* In Cangjie, 'let' declarations must have an initializer */
-    if (isconst) {
-      luaX_syntaxerror(ls,
-          "'let' declaration requires an initializer ('= expression')");
+    else {
+      if (isconst)
+        luaX_syntaxerror(ls,
+            "'let' declaration requires an initializer ('= expression')");
     }
-    e.k = VVOID;
-    nexps = 0;
+    return;
   }
-  var = getlocalvardesc(fs, vidx);
-  if (nvars == nexps &&
-      var->vd.kind == RDKCONST &&
-      luaK_exp2const(fs, &e, &var->k)) {
-    var->vd.kind = RDKCTC;
-    adjustlocalvars(ls, nvars - 1);
-    fs->nactvar++;
+  {
+    int toclose = -1;
+    Vardesc *var;
+    int vidx;
+    int nvars = 0;
+    int nexps;
+    expdesc e;
+    lu_byte defkind = isconst ? RDKCONST : VDKREG;
+    do {
+      TString *vname = str_checkname(ls);  /* get variable name */
+      /* optional type annotation ': Type' - parse and validate */
+      if (testnext(ls, ':'))
+        skip_letvar_type(ls);
+      vidx = new_varkind(ls, vname, defkind);
+      nvars++;
+    } while (testnext(ls, ','));
+    if (testnext(ls, '='))
+      nexps = explist(ls, &e);
+    else {
+      /* In Cangjie, 'let' declarations must have an initializer */
+      if (isconst) {
+        luaX_syntaxerror(ls,
+            "'let' declaration requires an initializer ('= expression')");
+      }
+      e.k = VVOID;
+      nexps = 0;
+    }
+    var = getlocalvardesc(fs, vidx);
+    if (nvars == nexps &&
+        var->vd.kind == RDKCONST &&
+        luaK_exp2const(fs, &e, &var->k)) {
+      var->vd.kind = RDKCTC;
+      adjustlocalvars(ls, nvars - 1);
+      fs->nactvar++;
+    }
+    else {
+      adjust_assign(ls, nvars, nexps, &e);
+      adjustlocalvars(ls, nvars);
+    }
+    checktoclose(fs, toclose);
   }
-  else {
-    adjust_assign(ls, nvars, nexps, &e);
-    adjustlocalvars(ls, nvars);
-  }
-  checktoclose(fs, toclose);
 }
 
 
