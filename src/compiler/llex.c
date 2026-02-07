@@ -50,7 +50,7 @@ static const char *const luaX_tokens [] = {
     "return", "struct", "super", "this", "true", "var", "while",
     "//", "..", "...", "==", ">=", "<=", "!=",
     "<<", ">>", "::", "=>", "..=",
-    "&&", "||", "!", "**",
+    "&&", "||", "!", "**", "??",
     "<eof>",
     "<number>", "<integer>", "<name>", "<string>"
 };
@@ -693,6 +693,11 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         next(ls);
         if (check_next1(ls, '*')) return TK_POW;  /* '**' */
         else return '*';
+      }
+      case '?': {  /* '?' or '??' coalescing */
+        next(ls);
+        if (check_next1(ls, '?')) return TK_COALESCE;  /* '??' */
+        else return '?';
       }
       case '^': {  /* '^' bitwise XOR */
         next(ls);
