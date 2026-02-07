@@ -26,7 +26,7 @@
 
 ### 运算符
 
-- **算术运算**：`+`、`-`、`*`、`/`、`%`、`**`（幂运算）
+- **算术运算**：`+`、`-`、`*`、`/`、`%`（截断取模，符号跟随被除数）、`**`（幂运算）
 - **比较运算**：`==`、`!=`、`>`、`<`、`>=`、`<=`
 - **逻辑运算**：
   - `&&`: 逻辑与
@@ -856,7 +856,9 @@ bash run_tests.sh
 │   │   ├── lcode.c               #   代码生成器
 │   │   ├── ldump.c               #   字节码序列化
 │   │   ├── llex.c                #   词法分析器（支持仓颉关键字、运算符、字符串插值）
-│   │   ├── lparser.c             #   语法分析器（支持仓颉语法：struct/class/enum/match/lambda 等）
+│   │   ├── lparser.c             #   语法分析器核心（变量、表达式、语句、函数、控制流）
+│   │   ├── lparser_cj_types.c    #   仓颉类型定义解析（struct/class/interface/extend/enum）
+│   │   ├── lparser_cj_match.c    #   仓颉模式匹配与表达式形式（match/if/block 表达式）
 │   │   └── lundump.c             #   字节码反序列化
 │   ├── libs/                     # 标准库与运行时库
 │   │   ├── lauxlib.c             #   辅助库
@@ -886,10 +888,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（39 个）
+│   ├── *.cj                      #   基础语言特性测试（46 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
 │   ├── usages/                   #   综合应用案例（9 个）
-│   └── diagnosis/                #   错误检测和诊断测试（4 个）
+│   └── diagnosis/                #   错误检测和诊断测试（5 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
