@@ -88,7 +88,9 @@ typedef struct LexState {
   int in_struct_method;  /* nonzero if parsing inside a struct/class method */
   TString *current_class_name;  /* name of the class/struct being parsed */
   /* Persistent field registry: stores fields for each defined class/struct
-  ** so that child classes can inherit field names for implicit 'this'. */
+  ** so that child classes can inherit field names for implicit 'this'.
+  ** MAX_CLASS_FIELDS is smaller than struct_fields[64] because struct_fields
+  ** accumulates inherited fields from parents, while this stores per-class. */
 #define MAX_CLASS_REGISTRY 64
 #define MAX_CLASS_FIELDS 32
   struct {
