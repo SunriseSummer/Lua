@@ -2036,6 +2036,12 @@ static void suffixedops (LexState *ls, expdesc *v) {
       }
       case '[': {  /* '[' exp ']' or '[' exp '..' exp ']' (range) */
         luaX_next(ls);  /* skip '[' */
+        /* Discharge v (table) to a register BEFORE parsing the index
+        ** expression.  When v is an indexed expression (e.g. arr[s]),
+        ** we must materialise it first; otherwise a function call
+        ** inside the brackets (e.g. getIdx()) may allocate registers
+        ** that collide with the deferred GETTABLE discharge of v. */
+        luaK_exp2anyregup(fs, v);
         {
           expdesc start_e;
           /* Use subexpr with limit 9 so '..' is NOT consumed as concat

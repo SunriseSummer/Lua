@@ -11,17 +11,18 @@ expectEq(a, 0x4E50, "Int64('乐') == 0x4E50")
 let a2 = Int64('A')
 expectEq(a2, 65, "Int64('A') == 65")
 
-// Note: Int64('0') returns 0 (parsed as number, not code point 48)
-// because '0' and "0" are identical at runtime
+// Rune (single character) to Unicode code point
+// Int64('0') returns 48 (Unicode code point of '0')
 let a3 = Int64('0')
-expectEq(a3, 0, "Int64('0') == 0")
+expectEq(a3, 48, "Int64('0') == 48")
 
-// String to integer
+// String to integer (multi-character strings are parsed as numbers)
 let c = Int64("1234567")
 expectEq(c, 1234567, "Int64(\"1234567\")")
 
+// Single-character string is treated as Rune (returns code point)
 let c2 = Int64("0")
-expectEq(c2, 0, "Int64(\"0\")")
+expectEq(c2, 48, "Int64(\"0\") == 48")
 
 let c3 = Int64("-42")
 expectEq(c3, -42, "Int64(\"-42\")")

@@ -398,8 +398,8 @@ static int utf8_encode (lua_Integer cp, char *buf) {
 
 /* Int64(value) - convert to integer.
 ** For numbers: truncates float to integer, passes integer through.
-** For strings: first tries numeric parsing ("123" -> 123);
-**   if that fails, treats a single UTF-8 character as Rune-to-code-point.
+** For strings: single UTF-8 character (Rune) returns its Unicode code point;
+**   multi-character strings try numeric parsing ("123" -> 123).
 ** For booleans: true -> 1, false -> 0.
 */
 int luaB_cangjie_int64 (lua_State *L) {
@@ -418,7 +418,15 @@ int luaB_cangjie_int64 (lua_State *L) {
       const char *s = lua_tolstring(L, 1, &len);
       if (len == 0)
         return luaL_error(L, "cannot convert empty string to Int64");
-      /* First, try to parse as a number */
+      /* Single UTF-8 character: treat as Rune, return Unicode code point */
+      {
+        long cp = utf8_decode_single(s, len);
+        if (cp >= 0) {
+          lua_pushinteger(L, (lua_Integer)cp);
+          return 1;
+        }
+      }
+      /* Multi-character string: try to parse as a number */
       if (lua_stringtonumber(L, s) != 0) {
         if (lua_isinteger(L, -1)) {
           return 1;
@@ -426,14 +434,6 @@ int luaB_cangjie_int64 (lua_State *L) {
           lua_Number n = lua_tonumber(L, -1);
           lua_pop(L, 1);
           lua_pushinteger(L, (lua_Integer)n);
-          return 1;
-        }
-      }
-      /* Not a number string - treat as single UTF-8 char (Rune to code point) */
-      {
-        long cp = utf8_decode_single(s, len);
-        if (cp >= 0) {
-          lua_pushinteger(L, (lua_Integer)cp);
           return 1;
         }
       }
