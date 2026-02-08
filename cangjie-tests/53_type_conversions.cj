@@ -71,15 +71,15 @@ expectEq(f4, 3.14, "Float64(3.14) == 3.14")
 
 // -- Section: String() conversions --
 
-// Integer to character (via code point)
+// Integer to string
 let g = String(65)
-expectEq(g, "A", "String(65) == \"A\"")
+expectEq(g, "65", "String(65) == \"65\"")
 
-let g2 = String(48)
-expectEq(g2, "0", "String(48) == \"0\"")
+let g2 = String(0)
+expectEq(g2, "0", "String(0) == \"0\"")
 
-let g3 = String(0x4E50)
-expectEq(g3, "乐", "String(0x4E50) == \"乐\"")
+let g3 = String(-42)
+expectEq(g3, "-42", "String(-42) == \"-42\"")
 
 // Float to string
 let h = String(3.14)
@@ -125,9 +125,11 @@ expectEq(j3, "😀", "Rune(0x1F600) emoji")
 // -- Section: round-trip conversions --
 
 // Int64 -> String -> Int64
-let rt1 = Int64('A')
+let rt1 = 42
 let rt2 = String(rt1)
-expectEq(rt2, "A", "Int64->String round-trip")
+expectEq(rt2, "42", "Int64->String")
+let rt2b = Int64(rt2)
+expectEq(rt2b, 42, "String->Int64 round-trip")
 
 // Rune -> Int64 -> Rune
 let rt3 = Int64('乐')

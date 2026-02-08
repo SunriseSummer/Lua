@@ -466,7 +466,7 @@ int luaB_cangjie_float64 (lua_State *L) {
 
 
 /* String(value) - convert to string
-** - String(65) -> UTF-8 character for code point 65 = "A"
+** - String(65) -> "65" (number to string representation)
 ** - String(3.14) -> "3.14"
 ** - String(true) -> "true"
 ** - String(false) -> "false"
@@ -474,22 +474,9 @@ int luaB_cangjie_float64 (lua_State *L) {
 int luaB_cangjie_string (lua_State *L) {
   switch (lua_type(L, 1)) {
     case LUA_TNUMBER: {
-      if (lua_isinteger(L, 1)) {
-        /* Integer -> UTF-8 character for that code point */
-        lua_Integer cp = lua_tointeger(L, 1);
-        char buf[8];
-        int len = utf8_encode(cp, buf);
-        if (len == 0) {
-          return luaL_error(L, "invalid Unicode code point: %I",
-                            (LUAI_UACINT)cp);
-        }
-        lua_pushlstring(L, buf, (size_t)len);
-        return 1;
-      } else {
-        /* Float -> string representation */
-        luaL_tolstring(L, 1, NULL);
-        return 1;
-      }
+      /* Number -> string representation (both integer and float) */
+      luaL_tolstring(L, 1, NULL);
+      return 1;
     }
     case LUA_TBOOLEAN: {
       lua_pushstring(L, lua_toboolean(L, 1) ? "true" : "false");
