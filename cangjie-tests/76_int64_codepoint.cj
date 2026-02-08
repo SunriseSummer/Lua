@@ -27,26 +27,26 @@ expectEq(Int64("A"), 65, "Int64(\"A\") code point fallback")
 expectEq(Int64("z"), 122, "Int64(\"z\") code point fallback")
 expectEq(Int64("乐"), 0x4E50, "Int64(\"乐\") unicode fallback")
 
-// --- Section: String.toRune() -> code point for all chars including digits ---
-expectEq("0".toRune(), 48, "\"0\".toRune() == 48")
-expectEq("A".toRune(), 65, "\"A\".toRune() == 65")
-expectEq("乐".toRune(), 0x4E50, "\"乐\".toRune() == 0x4E50")
+// --- Section: Rune() from string -> code point for all chars including digits ---
+expectEq(Rune("0"), 48, "Rune(\"0\") == 48")
+expectEq(Rune("A"), 65, "Rune(\"A\") == 65")
+expectEq(Rune("乐"), 0x4E50, "Rune(\"乐\") == 0x4E50")
 
-// --- Section: String indexing + toRune ---
+// --- Section: String indexing + Rune() ---
 let text = "Hello"
-expectEq(text[0].toRune(), 72, "text[0].toRune() H=72")
-expectEq(text[1].toRune(), 101, "text[1].toRune() e=101")
+expectEq(Rune(text[0]), 72, "Rune(text[0]) H=72")
+expectEq(Rune(text[1]), 101, "Rune(text[1]) e=101")
 
-// Digit chars: Int64 parses as number, toRune returns code point
+// Digit chars: Int64 parses as number, Rune() returns code point
 let digits = "0123456789"
 expectEq(Int64(digits[0]), 0, "Int64(digits[0]) = 0 (number parse)")
-expectEq(digits[0].toRune(), 48, "digits[0].toRune() = 48 (code point)")
+expectEq(Rune(digits[0]), 48, "Rune(digits[0]) = 48 (code point)")
 
 // --- Section: Round-trip ---
 let cp = r'A'
 let r = Rune(cp)
 expectEq(r, "A", "Rune(r'A') == \"A\"")
-expectEq(r.toRune(), 65, "\"A\".toRune() == 65")
+expectEq(Rune(r), 65, "Rune(\"A\") == 65")
 
 // --- Section: Float truncation ---
 expectEq(Int64(3.14), 3, "Int64(3.14) truncates")

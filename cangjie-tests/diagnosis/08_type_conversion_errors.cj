@@ -20,7 +20,9 @@ expectRuntimeError("Bool bad string", "let x = Bool(\"yes\")", "cannot convert")
 // -- Section: Rune() error cases --
 expectRuntimeError("Rune negative", "let x = Rune(-1)", "invalid Unicode")
 expectRuntimeError("Rune too large", "let x = Rune(0x110000)", "invalid Unicode")
-expectRuntimeError("Rune multi-char", "let x = Rune(\"hello\")", "single character")
+expectRuntimeError("Rune empty string", 'let x = Rune("")', "cannot convert empty string")
+expectRuntimeError("Rune multi-char", "let x = Rune(\"hello\")", "single-character string")
+expectRuntimeError("Rune multi-char unicode", 'let x = Rune("你好")', "single-character string")
 
 if (!__test_failed) {
     println("PASS: 08_type_conversion_errors")

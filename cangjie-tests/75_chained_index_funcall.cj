@@ -36,11 +36,11 @@ class Table2D {
     let grid = Array(3, {i: Int64 => Array(100, {j: Int64 => i * 100 + j})})
 
     func lookup(row: Int64, text: String): Int64 {
-        return grid[row][text[0].toRune()]
+        return grid[row][Rune(text[0])]
     }
 
     func lookupChained(row: Int64, text: String, idx: Int64): Int64 {
-        return grid[row][text[idx].toRune()]
+        return grid[row][Rune(text[idx])]
     }
 }
 
@@ -89,8 +89,8 @@ class StateTable {
     func trace(text: String): Int64 {
         var s = 0
         var i = 0
-        while (i < text.size && tbl[s][text[i].toRune()] != 0) {
-            s = tbl[s][text[i].toRune()]
+        while (i < text.size && tbl[s][Rune(text[i])] != 0) {
+            s = tbl[s][Rune(text[i])]
             i = i + 1
         }
         return s

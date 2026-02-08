@@ -46,8 +46,8 @@ expectEq(emoji[3], "🎉", "emoji index 3")
 expectEq(emoji[2..=3], "😀🎉", "emoji slice")
 
 // --- Section: Indexed character is a single-char string ---
-// String indexing returns a string. Use .toRune() to get code point,
-// or compare with Rune() to convert code point to string.
+// String indexing returns a string. Use Rune() to get code point,
+// or compare with Rune(integer) to convert code point to string.
 
 // Compare indexed char with string
 expectEq(ascii[0], "h", "ascii[0] == 'h'")
@@ -58,16 +58,16 @@ expectTrue(ascii[0] == Rune(r'h'), "indexed char == Rune(r'h')")
 expectTrue(ascii[0] < Rune(r'z'), "indexed char < Rune(r'z')")
 expectTrue(ascii[4] > Rune(r'a'), "indexed char > Rune(r'a')")
 
-// String .toRune() returns code point (always, including digit chars)
-expectEq(ascii[0].toRune(), r'h', "ascii[0].toRune() == r'h'")
+// Rune() from string returns code point (always, including digit chars)
+expectEq(Rune(ascii[0]), r'h', "Rune(ascii[0]) == r'h'")
 
 // Int64 conversion of indexed character (code point fallback for non-numeric)
 expectEq(Int64(cjk[0]), 0x4F60, "Int64(cjk[0]) == 0x4F60 (你)")
 expectEq(Int64(mixed[5]), 0x4F60, "Int64(mixed[5]) == 0x4F60 (你)")
 expectEq(Int64(ascii[0]), 104, "Int64(ascii[0]) == 104 (h)")
 
-// .toRune() + Rune() round-trip
-expectEq(Rune(cjk[1].toRune()), cjk[1], "toRune round-trip on indexed char")
+// Rune() round-trip: string -> code point -> string
+expectEq(Rune(Rune(cjk[1])), cjk[1], "Rune round-trip on indexed char")
 
 // Emoji indexed character code point
 expectEq(Int64(emoji[2]), 0x1F600, "Int64(emoji[2]) == 0x1F600 (😀)")

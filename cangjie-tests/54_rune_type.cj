@@ -55,8 +55,9 @@ let cn1: Rune = r'\u{4f60}'  // 你
 let cn2: Rune = r'\u{597d}'  // 好
 expectTrue(cn1 < cn2, "r'你' < r'好'")
 
-// -- Section: Rune() conversion function (code point -> string) --
+// -- Section: Rune() conversion function --
 
+// Rune(integer) -> string character
 let r1 = Rune(65)
 expectEq(r1, "A", "Rune(65) == 'A'")
 
@@ -66,6 +67,12 @@ expectEq(r2, "乐", "Rune(0x4E50) == '乐'")
 // Rune() from Rune literal (integer -> string)
 expectEq(Rune(r'A'), "A", "Rune(r'A') == 'A'")
 expectEq(Rune(r'\u{4f60}'), "你", "Rune(r'你') == '你'")
+
+// Rune(string) -> integer code point (single-char String to Rune conversion)
+expectEq(Rune('x'), 120, "Rune('x') == 120")
+expectEq(Rune("好"), 0x597d, "Rune(\"好\") == 0x597d")
+expectEq(Rune('0'), 48, "Rune('0') == 48")
+expectEq(Rune("A"), 65, "Rune(\"A\") == 65")
 
 // -- Section: Int64() from Rune (passthrough since r'x' is already integer) --
 

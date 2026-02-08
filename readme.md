@@ -69,7 +69,7 @@ let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
 
 **Int64 转换规则**：`Int64(String)` 优先解析数字（`Int64("0")` = 0），解析失败时按单字符码点处理（`Int64("A")` = 65）；`Int64(Rune)` 直接透传整数码点。
 
-**String.toRune()**：单字符字符串转 Unicode 码点，不受数值解析影响（`"0".toRune()` = 48）。
+**Rune() 转换函数**：`Rune(integer)` 将码点转为对应字符串（`Rune(65)` = "A"）；`Rune(string)` 将单字符字符串转为码点整数（`Rune("0")` = 48），不受数值解析影响。
 
 也支持传统的 `tostring()`、`tonumber()` 转换函数。
 
@@ -109,7 +109,6 @@ let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
   - `s.trim()` / `s.trimStart()` / `s.trimEnd()` — 去除首尾空白
   - `s.toAsciiUpper()` / `s.toAsciiLower()` — ASCII 大小写转换
   - `s.count(sub)` — 统计子串出现次数
-  - `s.toRune()` — 单字符字符串转为 Unicode 码点整数
   - `s.toArray()` — 转为 `Array<Byte>`（UTF-8 字节数组）
   - `s.toRuneArray()` — 转为 `Array<Rune>`（Unicode 字符数组）
 

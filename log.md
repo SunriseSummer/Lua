@@ -33,19 +33,20 @@ attempt to index a nil value (field '?')
 - `Int64(String)`：优先尝试数值解析（`Int64("0")` = 0，`Int64("123")` = 123）；解析失败则返回单字符码点（`Int64("A")` = 65）
 - `Int64(Rune)`：Rune 字面量编译为整数，`Int64` 直接透传（`Int64(r'0')` = 48）
 
-### 新增 `String.toRune()` 方法
+### `Rune()` 双向转换函数
 
-用于将单字符字符串转换为 Unicode 码点整数，不受数值解析影响：
-- `"0".toRune()` = 48（始终返回码点，不会解析为数字 0）
-- `text[i].toRune()` = 对应字符的码点
+- `Rune(integer)` → 将码点转为 UTF-8 字符串（如 `Rune(65)` = "A"）
+- `Rune(string)` → 将单字符字符串转为码点整数（如 `Rune("0")` = 48）
+- 空字符串报错："Rune() cannot convert empty string"
+- 多字符字符串报错："Rune() requires a single-character string"
 
 ## 修复涉及的文件
 
 | 文件 | 修改内容 |
 |------|----------|
-| `src/compiler/lparser.c` | `suffixedops()` 中 `[` 分支：在 `subexpr` 前先 discharge 表达式 |
+| `src/compiler/lparser.c` | `suffixedops()` 中 `[` 分支：在 `subexpr` 前先 discharge 表达式；`:Rune` 类型标注对字符串字面量报错 |
 | `src/compiler/llex.c` | `r'x'` / `r"x"` 编译为 `TK_INT` 整数码点 |
-| `src/libs/lbaselib_cj.c` | `Int64` 恢复为数值优先；新增 `String.toRune()` 方法 |
+| `src/libs/lbaselib_cj.c` | `Int64` 恢复为数值优先；`Rune()` 支持字符串到码点转换 |
 
 ## 新增/更新测试
 

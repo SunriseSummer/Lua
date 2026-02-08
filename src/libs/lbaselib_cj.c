@@ -537,22 +537,26 @@ int luaB_cangjie_bool (lua_State *L) {
 }
 
 
-/* Rune(codepoint) - convert integer code point to UTF-8 character string
-** - Rune(0x4E50) -> '乐'
-** - Rune(65) -> 'A'
-** Also accepts a single-character string (identity).
+/* Rune(value) - type conversion to/from Rune (integer code point).
+** - Rune(0x4E50) -> "乐"  (integer code point -> UTF-8 string)
+** - Rune(65) -> "A"
+** - Rune('x') -> 120      (single-char string -> integer code point)
+** - Rune("好") -> 0x597d
 */
 int luaB_cangjie_rune (lua_State *L) {
   if (lua_type(L, 1) == LUA_TSTRING) {
-    /* If it's a single UTF-8 character string, return as-is */
+    /* Single-char string -> integer code point */
     size_t slen;
     const char *s = lua_tolstring(L, 1, &slen);
-    long cp = utf8_decode_single(s, slen);
+    long cp;
+    if (slen == 0)
+      return luaL_error(L, "Rune() cannot convert empty string");
+    cp = utf8_decode_single(s, slen);
     if (cp >= 0) {
-      lua_pushvalue(L, 1);
+      lua_pushinteger(L, (lua_Integer)cp);
       return 1;
     }
-    return luaL_error(L, "Rune() expects a single character or integer");
+    return luaL_error(L, "Rune() requires a single-character string");
   }
   {
     lua_Integer cp = luaL_checkinteger(L, 1);
@@ -2018,22 +2022,6 @@ static int str_count_cj (lua_State *L) {
   return 1;
 }
 
-/* str_toRune: return the integer code point of a single-char string.
-** Used as a bound method: s.toRune() -> Int64 code point */
-static int str_toRune (lua_State *L) {
-  size_t len;
-  const char *s = luaL_checklstring(L, 1, &len);
-  long cp;
-  if (len == 0)
-    return luaL_error(L, "toRune() cannot convert empty string");
-  cp = utf8_decode_single(s, len);
-  if (cp < 0)
-    return luaL_error(L, "toRune() requires a single-character string");
-  lua_pushinteger(L, (lua_Integer)cp);
-  return 1;
-}
-
-
 /* String.fromUtf8(byteArray) -> String */
 static int str_fromUtf8 (lua_State *L) {
   luaL_Buffer b;
@@ -2087,7 +2075,6 @@ static const StrMethod str_methods[] = {
   {"indexOf", str_indexOf_cj},
   {"lastIndexOf", str_lastIndexOf_cj},
   {"count", str_count_cj},
-  {"toRune", str_toRune},
   {NULL, NULL}
 };
 
