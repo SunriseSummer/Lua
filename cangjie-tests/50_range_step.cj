@@ -85,12 +85,12 @@ for (i in 5..5) {
 }
 expectEq(sum, 0, "empty exclusive range 5..5")
 
-// --- Section: Large step skipping all ---
+// --- Section: Large step ---
 sum = 0
 for (i in 0..3:10) {
     sum = sum + i
 }
-expectEq(sum, 0, "large step skipping: 0..3:10 => only 0")
+expectEq(sum, 0, "large step: 0..3:10 => i=0 only, sum=0")
 
 if (!__test_failed) {
     println("PASS: 50_range_step")
