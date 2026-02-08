@@ -1590,16 +1590,504 @@ int luaB_array_slice_set (lua_State *L) {
 
 /*
 ** ============================================================
-** Cangjie string indexing and slicing support
+** UTF-8 helpers (reused from lutf8lib.c)
+** ============================================================
+*/
+
+#define MAXUNICODE_CJ	0x10FFFFu
+#define iscont_cj(c)	(((c) & 0xC0) == 0x80)
+
+/*
+** Decode one UTF-8 sequence, returning NULL if byte sequence is invalid.
+** The 'limits' array stores the minimum code point for each sequence length,
+** to reject overlong encodings: [0]=force error for no continuation bytes,
+** [1]=2-byte min 0x80, [2]=3-byte min 0x800, [3]=4-byte min 0x10000,
+** [4]=5-byte min 0x200000, [5]=6-byte min 0x4000000.
+*/
+static const char *utf8_decode_cj (const char *s, l_uint32 *val) {
+  static const l_uint32 limits[] =
+        {~(l_uint32)0, 0x80, 0x800, 0x10000u, 0x200000u, 0x4000000u};
+  unsigned int c = (unsigned char)s[0];
+  l_uint32 res = 0;
+  if (c < 0x80)
+    res = c;
+  else {
+    int count = 0;
+    for (; c & 0x40; c <<= 1) {
+      unsigned int cc = (unsigned char)s[++count];
+      if (!iscont_cj(cc))
+        return NULL;
+      res = (res << 6) | (cc & 0x3F);
+    }
+    res |= ((l_uint32)(c & 0x7F) << (count * 5));
+    if (count > 5 || res > 0x7FFFFFFFu || res < limits[count])
+      return NULL;
+    s += count;
+  }
+  /* check for invalid code points: surrogates */
+  if (res > MAXUNICODE_CJ || (0xD800u <= res && res <= 0xDFFFu))
+    return NULL;
+  if (val) *val = res;
+  return s + 1;
+}
+
+
+/*
+** Count UTF-8 characters in a string of byte length 'len'.
+** Returns character count, or -1 if invalid UTF-8.
+*/
+static lua_Integer utf8_charcount (const char *s, size_t len) {
+  lua_Integer n = 0;
+  size_t pos = 0;
+  while (pos < len) {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    if (next == NULL) return -1;  /* invalid UTF-8 */
+    pos = (size_t)(next - s);
+    n++;
+  }
+  return n;
+}
+
+
+/*
+** Get byte offset of the n-th (0-based) UTF-8 character.
+** Returns the byte offset, or -1 if out of range.
+*/
+static lua_Integer utf8_byte_offset (const char *s, size_t len,
+                                     lua_Integer charIdx) {
+  lua_Integer n = 0;
+  size_t pos = 0;
+  if (charIdx < 0) return -1;
+  while (pos < len) {
+    if (n == charIdx) return (lua_Integer)pos;
+    {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    if (next == NULL) return -1;
+    pos = (size_t)(next - s);
+    n++;
+    }
+  }
+  if (n == charIdx) return (lua_Integer)pos;  /* one past the end */
+  return -1;
+}
+
+
+/*
+** ============================================================
+** Cangjie string member methods (built-in)
+** ============================================================
+*/
+
+/* bound method helper: wraps (cfunc, self) into a closure that
+   calls cfunc with self as first argument */
+static int str_bound_call (lua_State *L) {
+  int nargs = lua_gettop(L);
+  int i;
+  lua_pushvalue(L, lua_upvalueindex(1));  /* push cfunc */
+  lua_pushvalue(L, lua_upvalueindex(2));  /* push self (string) */
+  for (i = 1; i <= nargs; i++)
+    lua_pushvalue(L, i);  /* push call arguments */
+  lua_call(L, nargs + 1, LUA_MULTRET);
+  return lua_gettop(L) - nargs;
+}
+
+/* s:isEmpty() -> Bool */
+static int str_isEmpty (lua_State *L) {
+  size_t len;
+  luaL_checklstring(L, 1, &len);
+  lua_pushboolean(L, len == 0);
+  return 1;
+}
+
+/* s:contains(sub) -> Bool */
+static int str_contains (lua_State *L) {
+  size_t slen, sublen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *sub = luaL_checklstring(L, 2, &sublen);
+  if (sublen == 0) { lua_pushboolean(L, 1); return 1; }
+  lua_pushboolean(L, strstr(s, sub) != NULL);
+  return 1;
+}
+
+/* s:startsWith(prefix) -> Bool */
+static int str_startsWith (lua_State *L) {
+  size_t slen, plen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *prefix = luaL_checklstring(L, 2, &plen);
+  lua_pushboolean(L, plen <= slen && memcmp(s, prefix, plen) == 0);
+  return 1;
+}
+
+/* s:endsWith(suffix) -> Bool */
+static int str_endsWith (lua_State *L) {
+  size_t slen, suflen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *suffix = luaL_checklstring(L, 2, &suflen);
+  lua_pushboolean(L, suflen <= slen &&
+                  memcmp(s + slen - suflen, suffix, suflen) == 0);
+  return 1;
+}
+
+/* s:replace(old, new) -> String */
+static int str_replace_cj (lua_State *L) {
+  size_t slen, oldlen, newlen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *old = luaL_checklstring(L, 2, &oldlen);
+  const char *newstr = luaL_checklstring(L, 3, &newlen);
+  luaL_Buffer b;
+  const char *p;
+  luaL_buffinit(L, &b);
+  if (oldlen == 0) {
+    /* empty old string: just return original */
+    lua_pushvalue(L, 1);
+    return 1;
+  }
+  while ((p = strstr(s, old)) != NULL) {
+    luaL_addlstring(&b, s, (size_t)(p - s));
+    luaL_addlstring(&b, newstr, newlen);
+    s = p + oldlen;
+  }
+  luaL_addstring(&b, s);
+  luaL_pushresult(&b);
+  return 1;
+}
+
+/*
+** s:split(sep) -> Array<String> (0-based table with .size)
+** Note: For invalid UTF-8 bytes (when sep is empty), we fall back to
+** single-byte handling to gracefully handle Lua's arbitrary byte strings.
+*/
+static int str_split_cj (lua_State *L) {
+  size_t slen, seplen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *sep = luaL_checklstring(L, 2, &seplen);
+  int idx = 0;
+  const char *p;
+  lua_newtable(L);
+  if (seplen == 0) {
+    /* split into UTF-8 characters */
+    size_t pos = 0;
+    while (pos < slen) {
+      const char *next = utf8_decode_cj(s + pos, NULL);
+      size_t clen;
+      if (next == NULL) {
+        /* fallback: single byte */
+        next = s + pos + 1;
+      }
+      clen = (size_t)(next - (s + pos));
+      lua_pushlstring(L, s + pos, clen);
+      lua_rawseti(L, -2, idx++);
+      pos = (size_t)(next - s);
+    }
+  } else {
+    while ((p = strstr(s, sep)) != NULL) {
+      lua_pushlstring(L, s, (size_t)(p - s));
+      lua_rawseti(L, -2, idx++);
+      s = p + seplen;
+    }
+    lua_pushstring(L, s);
+    lua_rawseti(L, -2, idx++);
+  }
+  lua_pushinteger(L, idx);
+  lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, idx);
+  lua_setfield(L, -2, "size");
+  return 1;
+}
+
+/* s:trim() -> String (remove leading/trailing whitespace) */
+static int str_trim_cj (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  const char *start = s;
+  const char *end = s + len;
+  while (start < end && (*start == ' ' || *start == '\t' ||
+         *start == '\n' || *start == '\r'))
+    start++;
+  while (end > start && (*(end-1) == ' ' || *(end-1) == '\t' ||
+         *(end-1) == '\n' || *(end-1) == '\r'))
+    end--;
+  lua_pushlstring(L, start, (size_t)(end - start));
+  return 1;
+}
+
+/* s:trimStart() -> String */
+static int str_trimStart_cj (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  const char *start = s;
+  const char *end = s + len;
+  while (start < end && (*start == ' ' || *start == '\t' ||
+         *start == '\n' || *start == '\r'))
+    start++;
+  lua_pushlstring(L, start, (size_t)(end - start));
+  return 1;
+}
+
+/* s:trimEnd() -> String */
+static int str_trimEnd_cj (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  const char *end = s + len;
+  while (end > s && (*(end-1) == ' ' || *(end-1) == '\t' ||
+         *(end-1) == '\n' || *(end-1) == '\r'))
+    end--;
+  lua_pushlstring(L, s, (size_t)(end - s));
+  return 1;
+}
+
+/* s:toAsciiUpper() -> String */
+static int str_toAsciiUpper (lua_State *L) {
+  size_t len, i;
+  const char *s = luaL_checklstring(L, 1, &len);
+  luaL_Buffer b;
+  luaL_buffinit(L, &b);
+  for (i = 0; i < len; i++) {
+    char c = s[i];
+    if (c >= 'a' && c <= 'z') c = (char)(c - 32);
+    luaL_addchar(&b, c);
+  }
+  luaL_pushresult(&b);
+  return 1;
+}
+
+/* s:toAsciiLower() -> String */
+static int str_toAsciiLower (lua_State *L) {
+  size_t len, i;
+  const char *s = luaL_checklstring(L, 1, &len);
+  luaL_Buffer b;
+  luaL_buffinit(L, &b);
+  for (i = 0; i < len; i++) {
+    char c = s[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+    luaL_addchar(&b, c);
+  }
+  luaL_pushresult(&b);
+  return 1;
+}
+
+/* s:toArray() -> Array<Byte> (UTF-8 byte array, 0-based) */
+static int str_toArray_cj (lua_State *L) {
+  size_t len, i;
+  const char *s = luaL_checklstring(L, 1, &len);
+  lua_newtable(L);
+  for (i = 0; i < len; i++) {
+    lua_pushinteger(L, (lua_Integer)((unsigned char)s[i]));
+    lua_rawseti(L, -2, (lua_Integer)i);
+  }
+  lua_pushinteger(L, (lua_Integer)len);
+  lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, (lua_Integer)len);
+  lua_setfield(L, -2, "size");
+  return 1;
+}
+
+/*
+** s:toRuneArray() -> Array<Rune> (UTF-8 character array, 0-based)
+** Invalid UTF-8 bytes are treated as single-byte characters to gracefully
+** handle Lua's arbitrary byte strings.
+*/
+static int str_toRuneArray_cj (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  int idx = 0;
+  size_t pos = 0;
+  lua_newtable(L);
+  while (pos < len) {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    size_t clen;
+    if (next == NULL) {
+      next = s + pos + 1;
+    }
+    clen = (size_t)(next - (s + pos));
+    lua_pushlstring(L, s + pos, clen);
+    lua_rawseti(L, -2, idx++);
+    pos = (size_t)(next - s);
+  }
+  lua_pushinteger(L, idx);
+  lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, idx);
+  lua_setfield(L, -2, "size");
+  return 1;
+}
+
+/*
+** s:indexOf(sub [, fromIndex]) -> Int64 or -1
+** Returns character position. Invalid UTF-8 bytes are counted as single
+** characters for position calculation.
+*/
+static int str_indexOf_cj (lua_State *L) {
+  size_t slen, sublen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *sub = luaL_checklstring(L, 2, &sublen);
+  lua_Integer fromCharIdx = luaL_optinteger(L, 3, 0);
+  lua_Integer byteOff, charIdx;
+  const char *found;
+  size_t pos;
+  if (fromCharIdx < 0) fromCharIdx = 0;
+  byteOff = utf8_byte_offset(s, slen, fromCharIdx);
+  if (byteOff < 0) {
+    lua_pushinteger(L, -1);
+    return 1;
+  }
+  found = strstr(s + byteOff, sub);
+  if (found == NULL) {
+    lua_pushinteger(L, -1);
+    return 1;
+  }
+  /* Convert byte position to char index */
+  charIdx = 0;
+  pos = 0;
+  while (pos < (size_t)(found - s)) {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    if (next == NULL) { pos++; charIdx++; continue; }
+    pos = (size_t)(next - s);
+    charIdx++;
+  }
+  lua_pushinteger(L, charIdx);
+  return 1;
+}
+
+/*
+** s:lastIndexOf(sub [, fromIndex]) -> Int64 or -1
+** Returns character position. Invalid UTF-8 bytes are counted as single
+** characters for position calculation.
+*/
+static int str_lastIndexOf_cj (lua_State *L) {
+  size_t slen, sublen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *sub = luaL_checklstring(L, 2, &sublen);
+  lua_Integer charCount = utf8_charcount(s, slen);
+  lua_Integer fromCharIdx = luaL_optinteger(L, 3, charCount);
+  lua_Integer byteOff, lastBytePos, charIdx;
+  size_t pos;
+  const char *search_end;
+  if (charCount < 0) charCount = 0;
+  if (fromCharIdx > charCount) fromCharIdx = charCount;
+  if (fromCharIdx < 0) fromCharIdx = 0;
+  byteOff = utf8_byte_offset(s, slen, fromCharIdx);
+  if (byteOff < 0) byteOff = (lua_Integer)slen;
+  /* Search backwards from byteOff */
+  search_end = s + byteOff;
+  lastBytePos = -1;
+  {
+    const char *p = s;
+    while (p <= search_end && (size_t)(p - s) + sublen <= slen) {
+      if (memcmp(p, sub, sublen) == 0) {
+        lastBytePos = (lua_Integer)(p - s);
+      }
+      p++;
+    }
+  }
+  if (lastBytePos < 0) {
+    lua_pushinteger(L, -1);
+    return 1;
+  }
+  /* Convert byte position to char index */
+  charIdx = 0;
+  pos = 0;
+  while ((lua_Integer)pos < lastBytePos) {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    if (next == NULL) { pos++; charIdx++; continue; }
+    pos = (size_t)(next - s);
+    charIdx++;
+  }
+  lua_pushinteger(L, charIdx);
+  return 1;
+}
+
+/* s:count(sub) -> Int64 */
+static int str_count_cj (lua_State *L) {
+  size_t slen, sublen;
+  const char *s = luaL_checklstring(L, 1, &slen);
+  const char *sub = luaL_checklstring(L, 2, &sublen);
+  lua_Integer count = 0;
+  const char *p;
+  if (sublen == 0) {
+    /* count of empty string: utf8 char count + 1 */
+    lua_Integer cc = utf8_charcount(s, slen);
+    lua_pushinteger(L, cc < 0 ? 1 : cc + 1);
+    return 1;
+  }
+  p = s;
+  while ((p = strstr(p, sub)) != NULL) {
+    count++;
+    p += sublen;
+  }
+  lua_pushinteger(L, count);
+  return 1;
+}
+
+/* String.fromUtf8(byteArray) -> String */
+static int str_fromUtf8 (lua_State *L) {
+  luaL_Buffer b;
+  lua_Integer n, i;
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_getfield(L, 1, "size");
+  n = lua_isnil(L, -1) ? 0 : lua_tointeger(L, -1);
+  lua_pop(L, 1);
+  if (n <= 0) {
+    lua_getfield(L, 1, "__n");
+    n = lua_isnil(L, -1) ? 0 : lua_tointeger(L, -1);
+    lua_pop(L, 1);
+  }
+  luaL_buffinit(L, &b);
+  for (i = 0; i < n; i++) {
+    lua_Integer byteVal;
+    lua_rawgeti(L, 1, i);
+    byteVal = lua_tointeger(L, -1);
+    lua_pop(L, 1);
+    if (byteVal < 0 || byteVal > 255) {
+      return luaL_error(L, "byte value %I out of range [0, 255] at index %I",
+                        (long long)byteVal, (long long)i);
+    }
+    luaL_addchar(&b, (char)(unsigned char)byteVal);
+  }
+  luaL_pushresult(&b);
+  return 1;
+}
+
+
+/* Method dispatch table for string methods */
+typedef struct {
+  const char *name;
+  lua_CFunction func;
+} StrMethod;
+
+static const StrMethod str_methods[] = {
+  {"isEmpty", str_isEmpty},
+  {"contains", str_contains},
+  {"startsWith", str_startsWith},
+  {"endsWith", str_endsWith},
+  {"replace", str_replace_cj},
+  {"split", str_split_cj},
+  {"trim", str_trim_cj},
+  {"trimStart", str_trimStart_cj},
+  {"trimEnd", str_trimEnd_cj},
+  {"toAsciiUpper", str_toAsciiUpper},
+  {"toAsciiLower", str_toAsciiLower},
+  {"toArray", str_toArray_cj},
+  {"toRuneArray", str_toRuneArray_cj},
+  {"indexOf", str_indexOf_cj},
+  {"lastIndexOf", str_lastIndexOf_cj},
+  {"count", str_count_cj},
+  {NULL, NULL}
+};
+
+
+/*
+** ============================================================
+** Cangjie string indexing and slicing support (UTF-8 aware)
 ** ============================================================
 */
 
 /*
 ** __cangjie_str_index(s, key)
 ** Used as __index metamethod for strings.
-** If key is an integer, return the character at that 0-based position
-** (as a single-character string).
-** If key is "size", return the string length.
+** If key is an integer, return the UTF-8 character (Rune) at that
+** 0-based character position.
+** If key is "size", return the UTF-8 character count.
+** If key is a built-in method name, return a bound method.
 ** Otherwise, delegate to the string library table.
 */
 int luaB_str_index (lua_State *L) {
@@ -1607,18 +2095,46 @@ int luaB_str_index (lua_State *L) {
   const char *s = luaL_checklstring(L, 1, &len);
   if (lua_type(L, 2) == LUA_TNUMBER) {
     lua_Integer idx = lua_tointeger(L, 2);
-    if (idx < 0 || idx >= (lua_Integer)len) {
+    lua_Integer charCount = utf8_charcount(s, len);
+    lua_Integer byteOff;
+    const char *next;
+    size_t clen;
+    if (charCount < 0) charCount = (lua_Integer)len;  /* fallback */
+    if (idx < 0 || idx >= charCount) {
       return luaL_error(L, "string index %I out of range (size %I)",
-                        (long long)idx, (long long)len);
+                        (long long)idx, (long long)charCount);
     }
-    lua_pushlstring(L, s + idx, 1);
+    byteOff = utf8_byte_offset(s, len, idx);
+    if (byteOff < 0 || (size_t)byteOff >= len) {
+      return luaL_error(L, "string index %I out of range (size %I)",
+                        (long long)idx, (long long)charCount);
+    }
+    next = utf8_decode_cj(s + byteOff, NULL);
+    if (next == NULL) next = s + byteOff + 1;
+    clen = (size_t)(next - (s + byteOff));
+    lua_pushlstring(L, s + byteOff, clen);
     return 1;
   }
   if (lua_type(L, 2) == LUA_TSTRING) {
     const char *key = lua_tostring(L, 2);
     if (strcmp(key, "size") == 0) {
-      lua_pushinteger(L, (lua_Integer)len);
+      lua_Integer charCount = utf8_charcount(s, len);
+      if (charCount < 0) charCount = (lua_Integer)len;
+      lua_pushinteger(L, charCount);
       return 1;
+    }
+    /* Check built-in string methods */
+    {
+      const StrMethod *m;
+      for (m = str_methods; m->name != NULL; m++) {
+        if (strcmp(key, m->name) == 0) {
+          /* Return a bound method: closure(cfunc, self) */
+          lua_pushcfunction(L, m->func);
+          lua_pushvalue(L, 1);  /* push self string */
+          lua_pushcclosure(L, str_bound_call, 2);
+          return 1;
+        }
+      }
     }
     /* Delegate to string library table (upvalue 1) */
     lua_pushvalue(L, lua_upvalueindex(1));  /* push string lib table */
@@ -1645,7 +2161,7 @@ int luaB_str_newindex (lua_State *L) {
 /*
 ** __cangjie_str_slice(s, start, end, inclusive)
 ** Returns a substring from s[start] to s[end-1] (exclusive)
-** or s[start] to s[end] (inclusive).  0-based indices.
+** or s[start] to s[end] (inclusive).  0-based character indices (UTF-8).
 */
 int luaB_str_slice (lua_State *L) {
   size_t len;
@@ -1653,17 +2169,56 @@ int luaB_str_slice (lua_State *L) {
   lua_Integer start = luaL_checkinteger(L, 2);
   lua_Integer end = luaL_checkinteger(L, 3);
   int inclusive = lua_toboolean(L, 4);
-  lua_Integer count;
+  lua_Integer charCount = utf8_charcount(s, len);
+  lua_Integer startByte, endByte;
+  if (charCount < 0) charCount = (lua_Integer)len;
   if (!inclusive) end--;
   if (start < 0) start = 0;
-  if (end >= (lua_Integer)len) end = (lua_Integer)len - 1;
-  count = end - start + 1;
-  if (count <= 0) {
+  if (end >= charCount) end = charCount - 1;
+  if (end < start) {
+    lua_pushliteral(L, "");
+    return 1;
+  }
+  startByte = utf8_byte_offset(s, len, start);
+  endByte = utf8_byte_offset(s, len, end + 1);
+  if (startByte < 0) startByte = 0;
+  if (endByte < 0) endByte = (lua_Integer)len;
+  if (endByte <= startByte) {
     lua_pushliteral(L, "");
   }
   else {
-    lua_pushlstring(L, s + start, (size_t)count);
+    lua_pushlstring(L, s + startByte, (size_t)(endByte - startByte));
   }
+  return 1;
+}
+
+
+/*
+** __cangjie_byte_array_from_string(s)
+** Convert string to Array<Byte> (same as s:toArray())
+*/
+int luaB_byte_array_from_string (lua_State *L) {
+  return str_toArray_cj(L);
+}
+
+/*
+** __cangjie_string_from_byte_array(arr)
+** Convert Array<Byte> to String (UTF-8)
+*/
+int luaB_string_from_byte_array (lua_State *L) {
+  return str_fromUtf8(L);
+}
+
+/*
+** __cangjie_str_len(s)
+** Return UTF-8 character count for __len metamethod.
+*/
+static int luaB_str_len_utf8 (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  lua_Integer charCount = utf8_charcount(s, len);
+  if (charCount < 0) charCount = (lua_Integer)len;
+  lua_pushinteger(L, charCount);
   return 1;
 }
 
@@ -1686,6 +2241,14 @@ int luaB_setup_string_meta (lua_State *L) {
   /* Set __newindex */
   lua_pushcfunction(L, luaB_str_newindex);
   lua_setfield(L, -2, "__newindex");
+  /* Set __len to return UTF-8 character count */
+  lua_pushcfunction(L, luaB_str_len_utf8);
+  lua_setfield(L, -2, "__len");
+
+  /* Register String.fromUtf8 as a global helper */
+  lua_pushcfunction(L, str_fromUtf8);
+  lua_setglobal(L, "__cangjie_string_from_byte_array");
+
   lua_pop(L, 2);  /* pop metatable and "" */
   return 0;
 }

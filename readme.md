@@ -84,11 +84,41 @@ let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
 
 ### 字符串
 
+- **原生 UTF-8 支持**：字符串默认采用 UTF-8 编解码，索引、切片、长度等操作均基于 Unicode 字符（而非字节）
 - **插值字符串**：`"Hello, ${name}!"` 支持在 `${}` 中嵌入任意表达式
 - **字符串拼接**：可以使用 `+` 拼接两个字符串，也支持 Lua 风格的 `..`
-- **索引取值**：`s[0]` 返回第 0 个字符（0-based，单字符字符串）
-- **切片取值**：`s[1..4]`（排他）、`s[0..=2]`（包含）返回子字符串
-- **长度属性**：`s.size` 返回字符串长度
+- **索引取值**：`s[0]` 返回第 0 个 Unicode 字符（Rune 类型，0-based）
+- **切片取值**：`s[1..4]`（排他）、`s[0..=2]`（包含）返回子字符串，基于字符位置
+- **长度属性**：`s.size` 返回 Unicode 字符数量（非字节数）
+- **常用成员方法**（参考仓颉 String 设计）：
+  - `s.isEmpty()` — 判断字符串是否为空
+  - `s.contains(sub)` — 是否包含子串
+  - `s.startsWith(prefix)` / `s.endsWith(suffix)` — 前缀/后缀判断
+  - `s.indexOf(sub [, fromIndex])` — 查找子串首次出现的字符位置（返回 -1 表示未找到）
+  - `s.lastIndexOf(sub [, fromIndex])` — 查找子串最后出现的字符位置
+  - `s.replace(old, new)` — 替换所有匹配的子串
+  - `s.split(sep)` — 按分隔符拆分，返回 0-based 数组；传空串按 Unicode 字符拆分
+  - `s.trim()` / `s.trimStart()` / `s.trimEnd()` — 去除首尾空白
+  - `s.toAsciiUpper()` / `s.toAsciiLower()` — ASCII 大小写转换
+  - `s.count(sub)` — 统计子串出现次数
+  - `s.toArray()` — 转为 `Array<Byte>`（UTF-8 字节数组）
+  - `s.toRuneArray()` — 转为 `Array<Rune>`（Unicode 字符数组）
+
+```cangjie
+let s = "Hello你好😀"
+println(s.size)        // 8（Unicode 字符数，非字节数）
+println(s[5])          // "你"（返回 Rune 字符）
+println(s[5..=6])      // "你好"
+println(s.isEmpty())   // false
+println(s.contains("你好"))  // true
+println(s.indexOf("你好"))   // 5
+println(s.toArray().size)    // 15（UTF-8 字节数）
+println(s.toRuneArray().size) // 8（Unicode 字符数）
+
+// Array<Byte> 与 String 互转
+let bytes: Array<Byte> = s.toArray()       // String -> Array<Byte>
+let restored = __cangjie_string_from_byte_array(bytes)  // Array<Byte> -> String
+```
 
 ### 控制流
 
@@ -720,6 +750,27 @@ let squares = Array<Int64>(4, { i: Int64 => i * i })  // [0, 1, 4, 9]
 let grid = Array<Array<Int64>>(3, { i: Int64 =>
   Array<Int64>(3, { j: Int64 => i * 3 + j })
 })
+```
+
+### Array\<Byte\> 与字符串互转
+
+`Array<Byte>`（UInt8 的别名是 Byte）用于表示原始字节序列，支持 String 与 Array\<Byte\> 之间按 UTF-8 编码互转：
+
+```cangjie
+// String -> Array<Byte>（UTF-8 字节数组）
+let s = "Hello你好"
+let bytes: Array<Byte> = s.toArray()
+println(bytes.size)    // 11（5 + 3 + 3 字节）
+println(bytes[0])      // 72（H 的 ASCII/UTF-8 码）
+
+// Array<Byte> -> String
+let restored = __cangjie_string_from_byte_array(bytes)
+println(restored)      // "Hello你好"
+
+// String -> Array<Rune>（Unicode 字符数组）
+let runes: Array<Rune> = s.toRuneArray()
+println(runes.size)    // 7（Unicode 字符数）
+println(runes[5])      // "你"
 ```
 
 ### 数组切片，区间索引
