@@ -46,15 +46,15 @@ let llo: Rune = r'\u{597d}'  // 0x597d (好)
 let s = 'a'                  // 字符串 "a"
 ```
 
-Rune 类型（整数码点）支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。使用 `Rune(code_point)` 可将码点转为对应的字符串。
+Rune 类型（整数码点）支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。可以通过字符 Unicode 码点值构造对应的 Rune 实例，即 `Rune(code_point)`。
 
 ### 类型转换
 
 支持内置类型的构造函数风格转换：
 
 ```cangjie
-let a = Int64(r'乐')        // Rune 字面量为整数码点 (0x4E50)
-let b = Float64("3.14")     // 字符串转为浮点数
+let a = Int64(r'乐')        // Rune 字符转为对应的整型 Unicode 码点值 (0x4E50)
+let b = Float64("3.14")     // 字符串解析为浮点数
 let c = Int64("1234567")    // 字符串解析为整数
 let d = Bool("true")        // 字符串转为布尔值
 let e = Int64(3.14)         // 浮点数转为整数（截断）
@@ -62,14 +62,14 @@ let f = Float64(42)         // 整数转为浮点数
 let g = String(65)          // 整数转为字符串 "65"
 let h = String(3.14)        // 浮点数转为字符串
 let i = String(true)        // 布尔值转为字符串
-let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
+let j = Rune(0x4E50)        // 通过整型 Unicode 码点值构造 Rune 实例
 ```
 
 **Rune 字面量**：仅 `r'x'` / `r"x"` 表示 Rune 字面量，编译时转为整数码点（如 `r'A'` = 65、`r'0'` = 48）；`'x'` 和 `"x"` 都表示字符串。
 
-**Int64 转换规则**：`Int64(String)` 优先解析数字（`Int64("0")` = 0），解析失败时按单字符码点处理（`Int64("A")` = 65）；`Int64(Rune)` 直接透传整数码点。
+**Int64 转换规则**：`Int64(String)` 将表示数字的字符串解析为对应整数（`Int64("0")` = 0），解析失败时报错；`Int64(Rune)` 直接透传整数码点。
 
-**Rune() 转换函数**：`Rune(integer)` 将码点转为对应字符串（`Rune(65)` = "A"）；`Rune(string)` 将单字符字符串转为码点整数（`Rune("0")` = 48），不受数值解析影响。
+**Rune() 转换函数**：`Rune(integer)` 是通过整型 Unicode 码点值构造 Rune 类型实例；`Rune(string)` 将仅含单个字符的字符串转为对应的整型 Unicode 码点值（`Rune("0")` = 48），如果 string 长度不为 1，转换会报错。
 
 也支持传统的 `tostring()`、`tonumber()` 转换函数。
 

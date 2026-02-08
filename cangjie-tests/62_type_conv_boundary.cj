@@ -34,11 +34,11 @@ expectEq(Bool(false), false, "Bool identity false")
 
 // --- Section: Rune conversion edge cases ---
 let r1 = Rune(65)
-expectEq(Int64(r1), 65, "Rune(65) -> Int64 is 65")
+expectEq(Rune(r1), 65, "Rune(65) -> Rune() is 65")
 let r2 = Rune(0)
-expectEq(Int64(r2), 0, "Rune(0) -> Int64 is 0")
+expectEq(Rune(r2), 0, "Rune(0) -> Rune() is 0")
 let r3 = Rune(0x10FFFF)
-expectEq(Int64(r3), 0x10FFFF, "Rune(max) -> Int64")
+expectEq(Rune(r3), 0x10FFFF, "Rune(max) -> Rune()")
 
 // --- Section: Round-trip conversions ---
 let original = 12345

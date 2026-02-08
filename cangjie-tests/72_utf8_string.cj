@@ -61,16 +61,16 @@ expectTrue(ascii[4] > Rune(r'a'), "indexed char > Rune(r'a')")
 // Rune() from string returns code point (always, including digit chars)
 expectEq(Rune(ascii[0]), r'h', "Rune(ascii[0]) == r'h'")
 
-// Int64 conversion of indexed character (code point fallback for non-numeric)
-expectEq(Int64(cjk[0]), 0x4F60, "Int64(cjk[0]) == 0x4F60 (你)")
-expectEq(Int64(mixed[5]), 0x4F60, "Int64(mixed[5]) == 0x4F60 (你)")
-expectEq(Int64(ascii[0]), 104, "Int64(ascii[0]) == 104 (h)")
+// Rune() conversion of indexed character to code point
+expectEq(Rune(cjk[0]), 0x4F60, "Rune(cjk[0]) == 0x4F60 (你)")
+expectEq(Rune(mixed[5]), 0x4F60, "Rune(mixed[5]) == 0x4F60 (你)")
+expectEq(Rune(ascii[0]), 104, "Rune(ascii[0]) == 104 (h)")
 
 // Rune() round-trip: string -> code point -> string
 expectEq(Rune(Rune(cjk[1])), cjk[1], "Rune round-trip on indexed char")
 
 // Emoji indexed character code point
-expectEq(Int64(emoji[2]), 0x1F600, "Int64(emoji[2]) == 0x1F600 (😀)")
+expectEq(Rune(emoji[2]), 0x1F600, "Rune(emoji[2]) == 0x1F600 (😀)")
 
 // --- Section: String for-in with UTF-8 ---
 let chars = "你好"
