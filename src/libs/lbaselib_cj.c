@@ -791,6 +791,8 @@ int luaB_tuple (lua_State *L) {
   }
   lua_pushinteger(L, nargs);
   lua_setfield(L, tbl, "__n");
+  lua_pushinteger(L, nargs);
+  lua_setfield(L, tbl, "size");
   lua_pushboolean(L, 1);
   lua_setfield(L, tbl, "__tuple");
   return 1;
@@ -1064,6 +1066,8 @@ int luaB_array_init (lua_State *L) {
   }
   lua_pushinteger(L, size);
   lua_setfield(L, tbl, "__n");
+  lua_pushinteger(L, size);
+  lua_setfield(L, tbl, "size");
   return 1;
 }
 
@@ -1234,13 +1238,20 @@ int luaB_option_init (lua_State *L) {
 
 
 /*
-** __cangjie_array_slice(arr, start, end, inclusive)
-** Returns a new 0-based array from arr[start] to arr[end-1] (exclusive)
-** or arr[start] to arr[end] (inclusive).
+** __cangjie_array_slice(arr_or_str, start, end, inclusive)
+** For tables: returns a new 0-based array from arr[start] to arr[end-1]
+** (exclusive) or arr[start] to arr[end] (inclusive).
+** For strings: returns a substring.
 */
 int luaB_array_slice (lua_State *L) {
-  lua_Integer start, end, i, count;
+  lua_Integer start, end, count;
   int inclusive;
+  if (lua_type(L, 1) == LUA_TSTRING) {
+    /* Delegate to string slice */
+    return luaB_str_slice(L);
+  }
+  {
+  lua_Integer i;
   luaL_checktype(L, 1, LUA_TTABLE);
   start = luaL_checkinteger(L, 2);
   end = luaL_checkinteger(L, 3);
@@ -1255,7 +1266,10 @@ int luaB_array_slice (lua_State *L) {
   }
   lua_pushinteger(L, count);
   lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, count);
+  lua_setfield(L, -2, "size");
   return 1;
+  }
 }
 
 
@@ -1278,5 +1292,102 @@ int luaB_array_slice_set (lua_State *L) {
     lua_geti(L, 5, i);
     lua_seti(L, 1, start + i);
   }
+  return 0;
+}
+
+
+/*
+** __cangjie_str_index(s, key)
+** Used as __index metamethod for strings.
+** If key is an integer, return the character at that 0-based position
+** (as a single-character string).
+** If key is "size", return the string length.
+** Otherwise, delegate to the string library table.
+*/
+int luaB_str_index (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  if (lua_type(L, 2) == LUA_TNUMBER) {
+    lua_Integer idx = lua_tointeger(L, 2);
+    if (idx < 0 || idx >= (lua_Integer)len) {
+      return luaL_error(L, "string index %I out of range (size %I)",
+                        (long long)idx, (long long)len);
+    }
+    lua_pushlstring(L, s + idx, 1);
+    return 1;
+  }
+  if (lua_type(L, 2) == LUA_TSTRING) {
+    const char *key = lua_tostring(L, 2);
+    if (strcmp(key, "size") == 0) {
+      lua_pushinteger(L, (lua_Integer)len);
+      return 1;
+    }
+    /* Delegate to string library table (upvalue 1) */
+    lua_pushvalue(L, lua_upvalueindex(1));  /* push string lib table */
+    lua_pushvalue(L, 2);                    /* push key */
+    lua_gettable(L, -2);                    /* get string[key] */
+    return 1;
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+
+/*
+** __cangjie_str_newindex(s, key, value)
+** Used as __newindex metamethod for strings.
+** Strings are immutable in Cangjie/Lua.
+*/
+int luaB_str_newindex (lua_State *L) {
+  return luaL_error(L,
+      "strings are immutable; use string concatenation to build new strings");
+}
+
+
+/*
+** __cangjie_str_slice(s, start, end, inclusive)
+** Returns a substring from s[start] to s[end-1] (exclusive)
+** or s[start] to s[end] (inclusive).  0-based indices.
+*/
+int luaB_str_slice (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  lua_Integer start = luaL_checkinteger(L, 2);
+  lua_Integer end = luaL_checkinteger(L, 3);
+  int inclusive = lua_toboolean(L, 4);
+  lua_Integer count;
+  if (!inclusive) end--;
+  if (start < 0) start = 0;
+  if (end >= (lua_Integer)len) end = (lua_Integer)len - 1;
+  count = end - start + 1;
+  if (count <= 0) {
+    lua_pushliteral(L, "");
+  }
+  else {
+    lua_pushlstring(L, s + start, (size_t)count);
+  }
+  return 1;
+}
+
+
+/*
+** Set up string metatable for Cangjie-style indexing.
+** Called during interpreter initialization.
+*/
+int luaB_setup_string_meta (lua_State *L) {
+  lua_pushliteral(L, "");           /* push any string */
+  if (!lua_getmetatable(L, -1)) {   /* get its metatable */
+    lua_pop(L, 1);
+    return 0;
+  }
+  /* Stack: "" metatable */
+  /* Set __index to luaB_str_index with string lib as upvalue */
+  lua_getfield(L, -1, "__index");   /* get current __index (= string lib) */
+  lua_pushcclosure(L, luaB_str_index, 1);  /* create closure with upvalue */
+  lua_setfield(L, -2, "__index");   /* metatable.__index = closure */
+  /* Set __newindex */
+  lua_pushcfunction(L, luaB_str_newindex);
+  lua_setfield(L, -2, "__newindex");
+  lua_pop(L, 2);  /* pop metatable and "" */
   return 0;
 }
