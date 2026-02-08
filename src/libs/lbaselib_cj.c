@@ -2023,7 +2023,10 @@ static int str_count_cj (lua_State *L) {
 static int str_toRune (lua_State *L) {
   size_t len;
   const char *s = luaL_checklstring(L, 1, &len);
-  long cp = utf8_decode_single(s, len);
+  long cp;
+  if (len == 0)
+    return luaL_error(L, "toRune() cannot convert empty string");
+  cp = utf8_decode_single(s, len);
   if (cp < 0)
     return luaL_error(L, "toRune() requires a single-character string");
   lua_pushinteger(L, (lua_Integer)cp);

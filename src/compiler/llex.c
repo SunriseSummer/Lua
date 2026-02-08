@@ -821,8 +821,11 @@ static int llex (LexState *ls, SemInfo *seminfo) {
               if ((size_t)nbytes != rlen)
                 lexerror(ls, "Rune literal must be a single character",
                          TK_STRING);
-              for (idx = 1; idx < nbytes; idx++)
+              for (idx = 1; idx < nbytes; idx++) {
+                if (((unsigned char)rs[idx] & 0xC0) != 0x80)
+                  lexerror(ls, "invalid UTF-8 in Rune literal", TK_STRING);
                 cp = (cp << 6) | ((unsigned char)rs[idx] & 0x3F);
+              }
             }
             seminfo->i = (lua_Integer)cp;
             return TK_INT;

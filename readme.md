@@ -26,34 +26,36 @@
 
 #### Rune 类型
 
-字符类型使用 `Rune` 表示，可以表示 Unicode 字符集中的所有字符。Rune 字面量支持以下三种形式：
+字符类型使用 `Rune` 表示，可以表示 Unicode 字符集中的所有字符。Rune 字面量**仅**使用 `r` 前缀形式，编译时转为整数码点：
 
 ```cangjie
-// 单个字符 - 直接使用单引号或 r 前缀
-let a: Rune = 'a'
-let b: Rune = r'b'
-let c: Rune = r"c"
+// r 前缀表示 Rune 字面量（编译为整数码点）
+let a: Rune = r'a'           // 97
+let b: Rune = r"b"           // 98
 
 // 转义字符
-let slash: Rune = r'\\'
-let newLine: Rune = r'\n'
-let tab: Rune = r'\t'
+let slash: Rune = r'\\'      // 92
+let newLine: Rune = r'\n'    // 10
+let tab: Rune = r'\t'        // 9
 
 // 通用字符 - \u{十六进制码值}
-let he: Rune = r'\u{4f60}'   // 你
-let llo: Rune = r'\u{597d}'  // 好
+let he: Rune = r'\u{4f60}'   // 0x4f60 (你)
+let llo: Rune = r'\u{597d}'  // 0x597d (好)
+
+// 注意：'x' 和 "x" 都是字符串，不是 Rune
+let s = 'a'                  // 字符串 "a"
 ```
 
-Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。
+Rune 类型（整数码点）支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。使用 `Rune(code_point)` 可将码点转为对应的字符串。
 
 ### 类型转换
 
 支持内置类型的构造函数风格转换：
 
 ```cangjie
-let a = Int64('乐')         // 字符转为 Unicode 码值 (0x4E50)
+let a = Int64(r'乐')        // Rune 字面量为整数码点 (0x4E50)
 let b = Float64("3.14")     // 字符串转为浮点数
-let c = Int64("1234567")    // 多字符字符串解析为整数
+let c = Int64("1234567")    // 字符串解析为整数
 let d = Bool("true")        // 字符串转为布尔值
 let e = Int64(3.14)         // 浮点数转为整数（截断）
 let f = Float64(42)         // 整数转为浮点数
@@ -63,7 +65,11 @@ let i = String(true)        // 布尔值转为字符串
 let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
 ```
 
-`Int64` 对字符串参数的行为：单个 UTF-8 字符视为 Rune，返回 Unicode 码点（如 `Int64('A')` = 65、`Int64('0')` = 48）；多字符字符串按数字解析（如 `Int64("123")` = 123）。
+**Rune 字面量**：仅 `r'x'` / `r"x"` 表示 Rune 字面量，编译时转为整数码点（如 `r'A'` = 65、`r'0'` = 48）；`'x'` 和 `"x"` 都表示字符串。
+
+**Int64 转换规则**：`Int64(String)` 优先解析数字（`Int64("0")` = 0），解析失败时按单字符码点处理（`Int64("A")` = 65）；`Int64(Rune)` 直接透传整数码点。
+
+**String.toRune()**：单字符字符串转 Unicode 码点，不受数值解析影响（`"0".toRune()` = 48）。
 
 也支持传统的 `tostring()`、`tonumber()` 转换函数。
 
@@ -103,6 +109,7 @@ let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
   - `s.trim()` / `s.trimStart()` / `s.trimEnd()` — 去除首尾空白
   - `s.toAsciiUpper()` / `s.toAsciiLower()` — ASCII 大小写转换
   - `s.count(sub)` — 统计子串出现次数
+  - `s.toRune()` — 单字符字符串转为 Unicode 码点整数
   - `s.toArray()` — 转为 `Array<Byte>`（UTF-8 字节数组）
   - `s.toRuneArray()` — 转为 `Array<Rune>`（Unicode 字符数组）
 
