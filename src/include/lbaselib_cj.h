@@ -38,4 +38,11 @@ LUAI_FUNC int luaB_str_newindex (lua_State *L);
 LUAI_FUNC int luaB_str_slice (lua_State *L);
 LUAI_FUNC int luaB_setup_string_meta (lua_State *L);
 
+/* Cangjie type conversion functions */
+LUAI_FUNC int luaB_cangjie_int64 (lua_State *L);
+LUAI_FUNC int luaB_cangjie_float64 (lua_State *L);
+LUAI_FUNC int luaB_cangjie_string (lua_State *L);
+LUAI_FUNC int luaB_cangjie_bool (lua_State *L);
+LUAI_FUNC int luaB_cangjie_rune (lua_State *L);
+
 #endif
