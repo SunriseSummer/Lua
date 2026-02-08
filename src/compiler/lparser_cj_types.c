@@ -4,14 +4,20 @@
 ** This file is #include'd from lparser.c and shares its static context.
 **
 ** Contents:
-**   skip_type_annotation  — Skip Cangjie type annotations (: Type)
-**   skip_generic_params   — Skip generic type parameters (<T, U>)
-**   check_type_redefine   — Detect duplicate type names in same scope
-**   structstat            — Parse struct/class definitions
-**   interfacestat         — Parse interface definitions
-**   is_builtin_type       — Check for built-in type names
-**   extendstat            — Parse extend declarations
-**   enumstat              — Parse enum definitions
+**   skip_type_annotation      — Skip Cangjie type annotations (: Type)
+**   skip_generic_params       — Skip generic type parameters (<T, U>)
+**   check_type_redefine       — Detect duplicate type names in same scope
+**   map_operator_to_metamethod — Map operator token to metamethod TString*
+**   emit_runtime_call1        — Emit a 1-arg runtime function call
+**   emit_runtime_call2        — Emit a 2-arg runtime function call
+**   parse_method_into         — Parse method body and store into TypeName.key
+**   parse_operator_method     — Full operator parsing + body + store
+**   apply_interfaces          — Emit __cangjie_apply_interface calls
+**   structstat                — Parse struct/class definitions
+**   interfacestat             — Parse interface definitions
+**   is_builtin_type           — Check for built-in type names
+**   extendstat                — Parse extend declarations
+**   enumstat                  — Parse enum definitions
 **
 ** See Copyright Notice in lua.h
 */
@@ -127,6 +133,179 @@ static void check_type_redefine (LexState *ls, TString *name) {
   }
   else {
     luaX_syntaxerror(ls, "too many type definitions in one scope (limit 128)");
+  }
+}
+
+
+/*
+** ============================================================
+** Shared helpers for type definition parsing
+** ============================================================
+*/
+
+
+/*
+** Map the current operator token to a Lua metamethod name.
+** Handles single-char ops (+, -, *, ...), multi-char ops (<<, >>),
+** the '[]' subscript operator, and named operators (e.g. toString).
+** For '[]', consumes both '[' and ']' tokens internally.
+** For all other operators, the current token is NOT advanced — the
+** caller must call luaX_next(ls) afterwards unless *was_bracket is set.
+** Sets *was_bracket to 1 if the operator was '[]', 0 otherwise.
+** Returns the metamethod TString*, or NULL on error (after syntax error).
+*/
+static TString *map_operator_to_metamethod (LexState *ls, int *was_bracket) {
+  int op = ls->t.token;
+  *was_bracket = 0;
+  switch (op) {
+    case '+': return luaS_new(ls->L, "__add");
+    case '-': return luaS_new(ls->L, "__sub");
+    case '*': return luaS_new(ls->L, "__mul");
+    case '/': return luaS_new(ls->L, "__div");
+    case '%': return luaS_new(ls->L, "__mod");
+    case TK_POW: return luaS_new(ls->L, "__pow");
+    case TK_EQ: return luaS_new(ls->L, "__eq");
+    case '<': return luaS_new(ls->L, "__lt");
+    case TK_LE: return luaS_new(ls->L, "__le");
+    case TK_SHL: return luaS_new(ls->L, "__shl");
+    case TK_SHR: return luaS_new(ls->L, "__shr");
+    case '&': return luaS_new(ls->L, "__band");
+    case '|': return luaS_new(ls->L, "__bor");
+    case '^': return luaS_new(ls->L, "__bxor");
+    case '~': return luaS_new(ls->L, "__bnot");
+    case '#': return luaS_new(ls->L, "__len");
+    case TK_IDIV: return luaS_new(ls->L, "__idiv");
+    case '[': {
+      luaX_next(ls);  /* skip '[' */
+      checknext(ls, ']');
+      *was_bracket = 1;
+      return luaS_new(ls->L, "__index");
+    }
+    default: {
+      if (ls->t.token == TK_NAME) {
+        const char *opname = getstr(ls->t.seminfo.ts);
+        if (strcmp(opname, "toString") == 0) {
+          return luaS_new(ls->L, "__tostring");
+        }
+        else {
+          char mm[64];
+          if (strlen(opname) > 58)
+            luaX_syntaxerror(ls, "operator name too long");
+          snprintf(mm, sizeof(mm), "__%s", opname);
+          return luaS_new(ls->L, mm);
+        }
+      }
+      else {
+        luaX_syntaxerror(ls, "unsupported operator for overloading");
+        return NULL;  /* unreachable */
+      }
+    }
+  }
+}
+
+
+/*
+** Emit a call to a runtime function with 1 argument (by variable name).
+** Generates: funcname(arg)
+*/
+static void emit_runtime_call1 (LexState *ls, const char *funcname,
+                                TString *arg) {
+  FuncState *fs = ls->fs;
+  expdesc fn, a1;
+  int base2;
+  buildvar(ls, luaX_newstring(ls, funcname, strlen(funcname)), &fn);
+  luaK_exp2nextreg(fs, &fn);
+  base2 = fn.u.info;
+  buildvar(ls, arg, &a1);
+  luaK_exp2nextreg(fs, &a1);
+  init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 2, 1));
+  fs->freereg = cast_byte(base2);
+}
+
+
+/*
+** Emit a call to a runtime function with 2 arguments (by variable name).
+** Generates: funcname(arg1, arg2)
+*/
+static void emit_runtime_call2 (LexState *ls, const char *funcname,
+                                TString *arg1, TString *arg2) {
+  FuncState *fs = ls->fs;
+  expdesc fn, a1, a2;
+  int base2;
+  buildvar(ls, luaX_newstring(ls, funcname, strlen(funcname)), &fn);
+  luaK_exp2nextreg(fs, &fn);
+  base2 = fn.u.info;
+  buildvar(ls, arg1, &a1);
+  luaK_exp2nextreg(fs, &a1);
+  buildvar(ls, arg2, &a2);
+  luaK_exp2nextreg(fs, &a2);
+  init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 1));
+  fs->freereg = cast_byte(base2);
+}
+
+
+/*
+** Parse a method body and store it into typeName.methodName.
+** If 'use_abstract' is non-zero, body_or_abstract is used instead of body
+** (for interface methods that may be abstract declarations).
+** Sets ls->in_struct_method around the body parse.
+** Returns 1 if a body was compiled, 0 if abstract (only when use_abstract).
+*/
+static int parse_method_into (LexState *ls, TString *typeName,
+                              TString *methodName, int ismethod,
+                              int use_abstract, int line) {
+  FuncState *fs = ls->fs;
+  expdesc mv, mb;
+  int has_body = 1;
+  buildvar(ls, typeName, &mv);
+  {
+    expdesc mkey;
+    luaK_exp2anyregup(fs, &mv);
+    codestring(&mkey, methodName);
+    luaK_indexed(fs, &mv, &mkey);
+  }
+  ls->in_struct_method = 1;
+  if (use_abstract) {
+    has_body = body_or_abstract(ls, &mb, ismethod, ls->linenumber);
+  }
+  else {
+    body(ls, &mb, ismethod, ls->linenumber);
+  }
+  ls->in_struct_method = 0;
+  if (has_body) {
+    luaK_storevar(fs, &mv, &mb);
+    luaK_fixline(fs, line);
+  }
+  return has_body;
+}
+
+
+/*
+** Parse an operator method: reads the operator token after 'operator func',
+** maps it to a metamethod name, skips generic params, parses the body,
+** and stores it into typeName.__metamethod.
+** If 'use_abstract' is non-zero, body_or_abstract is used (for interfaces).
+*/
+static void parse_operator_method (LexState *ls, TString *typeName,
+                                   int use_abstract, int line) {
+  int was_bracket;
+  TString *mmname = map_operator_to_metamethod(ls, &was_bracket);
+  if (!was_bracket)
+    luaX_next(ls);  /* skip operator token ([] already consumed) */
+  skip_generic_params(ls);
+  parse_method_into(ls, typeName, mmname, 1, use_abstract, line);
+}
+
+
+/*
+** Emit __cangjie_apply_interface(typeName, iface) for each interface.
+*/
+static void apply_interfaces (LexState *ls, TString *typeName,
+                              TString **ifaceNames, int nifaces) {
+  int ii;
+  for (ii = 0; ii < nifaces; ii++) {
+    emit_runtime_call2(ls, "__cangjie_apply_interface",
+                       typeName, ifaceNames[ii]);
   }
 }
 
@@ -294,7 +473,6 @@ static void structstat (LexState *ls, int line) {
     }
     if (ls->t.token == TK_FUNC) {
       /* Method definition: func name(...) { ... } */
-      expdesc mv, mb;
       TString *mname;
       luaX_next(ls);  /* skip 'func' */
       mname = str_checkname(ls);
@@ -302,46 +480,19 @@ static void structstat (LexState *ls, int line) {
       if (ls->nfields < 64) {
         ls->struct_fields[ls->nfields++] = mname;
       }
-      /* skip generic type params on method */
       skip_generic_params(ls);
-      /* Build NAME.methodname */
-      buildvar(ls, sname, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, mname);
-        luaK_indexed(fs, &mv, &mkey);
-      }
-      /* Parse method body (with 'self' parameter and implicit this) */
-      ls->in_struct_method = 1;
-      body(ls, &mb, 1, ls->linenumber);
-      ls->in_struct_method = 0;
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      parse_method_into(ls, sname, mname, 1, 0, line);
     }
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "static")) {
       /* Static function: static func name(...) { ... } */
-      expdesc mv, mb;
       TString *mname;
       luaX_next(ls);  /* skip 'static' */
       checknext(ls, TK_FUNC);  /* expect 'func' */
       mname = str_checkname(ls);
       skip_generic_params(ls);
-      /* Build NAME.methodname (same storage, but no self) */
-      buildvar(ls, sname, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, mname);
-        luaK_indexed(fs, &mv, &mkey);
-      }
       /* Parse as regular function (no self) but with implicit this for field access */
-      ls->in_struct_method = 1;
-      body(ls, &mb, 0, ls->linenumber);  /* ismethod=0: no self param */
-      ls->in_struct_method = 0;
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      parse_method_into(ls, sname, mname, 0, 0, line);
       /* Mark as static: NAME["__static_funcname"] = true */
       {
         expdesc tab2, key2, val2;
@@ -370,79 +521,9 @@ static void structstat (LexState *ls, int line) {
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
       /* Operator overload: operator func +(other: Type): Type { ... } */
-      expdesc mv, mb;
-      TString *metamethod_name;
-      int op_token;
       luaX_next(ls);  /* skip 'operator' */
       checknext(ls, TK_FUNC);  /* expect 'func' */
-      /* Read operator token */
-      op_token = ls->t.token;
-      /* Map operator to Lua metamethod name */
-      switch (op_token) {
-        case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
-        case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
-        case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
-        case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
-        case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
-        case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
-        case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
-        case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
-        case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
-        case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
-        case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
-        case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
-        case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-        case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
-        case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
-        case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
-        case TK_IDIV: {
-          metamethod_name = luaS_new(ls->L, "__idiv"); break;
-        }
-        case '[': {
-          /* operator func [](index: Int64) for __index/__newindex */
-          luaX_next(ls);  /* skip '[' */
-          checknext(ls, ']');
-          /* Check if it's assignment (has '=') - simplified, treat as __index */
-          metamethod_name = luaS_new(ls->L, "__index");
-          goto parse_operator_body;
-        }
-        default: {
-          /* Try to handle func name like "toString" */
-          if (ls->t.token == TK_NAME) {
-            const char *opname = getstr(ls->t.seminfo.ts);
-            if (strcmp(opname, "toString") == 0) {
-              metamethod_name = luaS_new(ls->L, "__tostring");
-            }
-            else {
-              char mm[64];
-              snprintf(mm, sizeof(mm), "__%s", opname);
-              metamethod_name = luaS_new(ls->L, mm);
-            }
-          }
-          else {
-            luaX_syntaxerror(ls, "unsupported operator for overloading");
-            metamethod_name = NULL;  /* unreachable */
-          }
-          break;
-        }
-      }
-      luaX_next(ls);  /* skip operator token */
-parse_operator_body:
-      skip_generic_params(ls);
-      /* Build NAME.metamethod_name */
-      buildvar(ls, sname, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, metamethod_name);
-        luaK_indexed(fs, &mv, &mkey);
-      }
-      /* Parse operator method body (with 'self' parameter) */
-      ls->in_struct_method = 1;
-      body(ls, &mb, 1, ls->linenumber);
-      ls->in_struct_method = 0;
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      parse_operator_method(ls, sname, 0, line);
     }
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "init")) {
@@ -643,53 +724,15 @@ parse_operator_body:
   }
 
   /* Generate: __cangjie_setup_class(NAME) to enable Point(x,y) constructor */
-  {
-    expdesc fn, arg;
-    int base2;
-    buildvar(ls, luaX_newstring(ls, "__cangjie_setup_class", 21), &fn);
-    luaK_exp2nextreg(fs, &fn);
-    base2 = fn.u.info;
-    buildvar(ls, sname, &arg);
-    luaK_exp2nextreg(fs, &arg);
-    init_exp(&fn, VCALL,
-             luaK_codeABC(fs, OP_CALL, base2, 2, 1));
-    fs->freereg = cast_byte(base2);
-  }
+  emit_runtime_call1(ls, "__cangjie_setup_class", sname);
 
   /* If there's a parent class, generate: __cangjie_set_parent(NAME, PARENT) */
   if (parent_name != NULL) {
-    expdesc fn, arg1, arg2;
-    int base2;
-    buildvar(ls, luaX_newstring(ls, "__cangjie_set_parent", 20), &fn);
-    luaK_exp2nextreg(fs, &fn);
-    base2 = fn.u.info;
-    buildvar(ls, sname, &arg1);
-    luaK_exp2nextreg(fs, &arg1);
-    buildvar(ls, parent_name, &arg2);
-    luaK_exp2nextreg(fs, &arg2);
-    init_exp(&fn, VCALL,
-             luaK_codeABC(fs, OP_CALL, base2, 3, 1));
-    fs->freereg = cast_byte(base2);
+    emit_runtime_call2(ls, "__cangjie_set_parent", sname, parent_name);
   }
 
   /* Apply interface default implementations */
-  {
-    int ii;
-    for (ii = 0; ii < nifaces; ii++) {
-      expdesc fn, arg1, arg2;
-      int base2;
-      buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
-      luaK_exp2nextreg(fs, &fn);
-      base2 = fn.u.info;
-      buildvar(ls, sname, &arg1);
-      luaK_exp2nextreg(fs, &arg1);
-      buildvar(ls, iface_names[ii], &arg2);
-      luaK_exp2nextreg(fs, &arg2);
-      init_exp(&fn, VCALL,
-               luaK_codeABC(fs, OP_CALL, base2, 3, 1));
-      fs->freereg = cast_byte(base2);
-    }
-  }
+  apply_interfaces(ls, sname, iface_names, nifaces);
 
   reg = fs->freereg;
   fs->freereg = cast_byte(reg);
@@ -749,101 +792,15 @@ static void interfacestat (LexState *ls, int line) {
       luaX_next(ls);  /* skip 'func' */
       mname = str_checkname(ls);  /* method name */
       skip_generic_params(ls);
-      /* Parse method - might be abstract (no body) or default (with body).
-      ** body_or_abstract handles both: compiles body if '{' found,
-      ** otherwise skips the abstract declaration. */
-      {
-        expdesc mv, mb;
-        int has_body;
-        buildvar(ls, iname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, mname);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        ls->in_struct_method = 1;
-        has_body = body_or_abstract(ls, &mb, 1, ls->linenumber);
-        ls->in_struct_method = 0;
-        if (has_body) {
-          luaK_storevar(fs, &mv, &mb);
-          luaK_fixline(fs, line);
-        }
-      }
+      /* Parse method - might be abstract (no body) or default (with body). */
+      parse_method_into(ls, iname, mname, 1, 1, line);
     }
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
-      TString *metamethod_name;
-      int op_token;
+      /* Operator overload in interface (may be abstract or default) */
       luaX_next(ls);  /* skip 'operator' */
       checknext(ls, TK_FUNC);  /* expect 'func' */
-      /* Read operator token and map to metamethod name */
-      op_token = ls->t.token;
-      if (op_token == '[') {
-        luaX_next(ls);  /* skip '[' */
-        checknext(ls, ']');
-        metamethod_name = luaS_new(ls->L, "__index");
-      }
-      else {
-        switch (op_token) {
-          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
-          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
-          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
-          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
-          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
-          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
-          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
-          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
-          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
-          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
-          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
-          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
-          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
-          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
-          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
-          default: {
-            if (ls->t.token == TK_NAME) {
-              const char *opname = getstr(ls->t.seminfo.ts);
-              if (strcmp(opname, "toString") == 0) {
-                metamethod_name = luaS_new(ls->L, "__tostring");
-              } else {
-                char mm[64];
-                snprintf(mm, sizeof(mm), "__%s", opname);
-                metamethod_name = luaS_new(ls->L, mm);
-              }
-            } else {
-              luaX_syntaxerror(ls, "unsupported operator for overloading");
-              metamethod_name = NULL;
-            }
-            break;
-          }
-        }
-        luaX_next(ls);  /* skip operator token */
-      }
-      skip_generic_params(ls);
-      /* Parse operator method - might be abstract or have default body.
-      ** body_or_abstract handles (params): Type { body } or just
-      ** (params): Type for abstract declarations. */
-      {
-        expdesc mv, mb;
-        int has_body;
-        buildvar(ls, iname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, metamethod_name);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        ls->in_struct_method = 1;
-        has_body = body_or_abstract(ls, &mb, 1, ls->linenumber);
-        ls->in_struct_method = 0;
-        if (has_body) {
-          luaK_storevar(fs, &mv, &mb);
-          luaK_fixline(fs, line);
-        }
-      }
+      parse_operator_method(ls, iname, 1, line);
     }
     else {
       luaX_syntaxerror(ls, "expected 'func' declaration in interface body");
@@ -963,89 +920,20 @@ static void extendstat (LexState *ls, int line) {
 
     checknext(ls, '{' /*}*/);
 
-    /* Parse extension methods - add them directly to type proxy table
-    ** (same as user-defined type extend) */
+    /* Parse extension methods - add them directly to type proxy table */
     while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
       if (ls->t.token == TK_FUNC) {
-        expdesc mv, mb;
         TString *mname;
         luaX_next(ls);  /* skip 'func' */
         mname = str_checkname(ls);
         skip_generic_params(ls);
-        /* Build TypeName.methodname */
-        buildvar(ls, tname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, mname);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        body(ls, &mb, 1, ls->linenumber);
-        luaK_storevar(fs, &mv, &mb);
-        luaK_fixline(fs, line);
+        parse_method_into(ls, tname, mname, 1, 0, line);
       }
       else if (ls->t.token == TK_NAME &&
                ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
-        expdesc mv, mb;
-        TString *metamethod_name;
-        int op_token;
         luaX_next(ls);  /* skip 'operator' */
         checknext(ls, TK_FUNC);  /* expect 'func' */
-        op_token = ls->t.token;
-        switch (op_token) {
-          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
-          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
-          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
-          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
-          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
-          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
-          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
-          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
-          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
-          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
-          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
-          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
-          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
-          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
-          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
-          case '[': {
-            luaX_next(ls);  /* skip '[' */
-            checknext(ls, ']');
-            metamethod_name = luaS_new(ls->L, "__index");
-            goto parse_ext_b_opbody;
-          }
-          default: {
-            if (ls->t.token == TK_NAME) {
-              const char *opname = getstr(ls->t.seminfo.ts);
-              if (strcmp(opname, "toString") == 0) {
-                metamethod_name = luaS_new(ls->L, "__tostring");
-              } else {
-                char mm[64];
-                snprintf(mm, sizeof(mm), "__%s", opname);
-                metamethod_name = luaS_new(ls->L, mm);
-              }
-            } else {
-              luaX_syntaxerror(ls, "unsupported operator for overloading");
-              metamethod_name = NULL;
-            }
-            break;
-          }
-        }
-        luaX_next(ls);  /* skip operator token */
-parse_ext_b_opbody:
-        skip_generic_params(ls);
-        buildvar(ls, tname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, metamethod_name);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        body(ls, &mb, 1, ls->linenumber);
-        luaK_storevar(fs, &mv, &mb);
-        luaK_fixline(fs, line);
+        parse_operator_method(ls, tname, 0, line);
       }
       else {
         luaX_next(ls);
@@ -1074,23 +962,7 @@ parse_ext_b_opbody:
     }
 
     /* Apply interface defaults to the proxy table */
-    {
-      int ii;
-      for (ii = 0; ii < next_ifaces; ii++) {
-        expdesc fn, arg1, arg2;
-        int base2;
-        buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
-        luaK_exp2nextreg(fs, &fn);
-        base2 = fn.u.info;
-        buildvar(ls, tname, &arg1);
-        luaK_exp2nextreg(fs, &arg1);
-        buildvar(ls, ext_iface_names[ii], &arg2);
-        luaK_exp2nextreg(fs, &arg2);
-        init_exp(&fn, VCALL,
-                 luaK_codeABC(fs, OP_CALL, base2, 3, 1));
-        fs->freereg = cast_byte(base2);
-      }
-    }
+    apply_interfaces(ls, tname, ext_iface_names, next_ifaces);
   }
   else {
     /* For user-defined types: add methods directly to the type table */
@@ -1099,85 +971,17 @@ parse_ext_b_opbody:
     /* Parse extension methods */
     while (ls->t.token != /*{*/ '}' && ls->t.token != TK_EOS) {
       if (ls->t.token == TK_FUNC) {
-        expdesc mv, mb;
         TString *mname;
         luaX_next(ls);  /* skip 'func' */
         mname = str_checkname(ls);
         skip_generic_params(ls);
-        /* Build NAME.methodname */
-        buildvar(ls, tname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, mname);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        body(ls, &mb, 1, ls->linenumber);
-        luaK_storevar(fs, &mv, &mb);
-        luaK_fixline(fs, line);
+        parse_method_into(ls, tname, mname, 1, 0, line);
       }
       else if (ls->t.token == TK_NAME &&
                ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
-        expdesc mv, mb;
-        TString *metamethod_name;
-        int op_token;
         luaX_next(ls);  /* skip 'operator' */
         checknext(ls, TK_FUNC);  /* expect 'func' */
-        op_token = ls->t.token;
-        switch (op_token) {
-          case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
-          case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
-          case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
-          case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
-          case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
-          case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
-          case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
-          case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
-          case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
-          case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
-          case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
-          case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
-          case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
-          case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
-          case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
-          case '[': {
-            luaX_next(ls);  /* skip '[' */
-            checknext(ls, ']');
-            metamethod_name = luaS_new(ls->L, "__index");
-            goto parse_ext_u_opbody;
-          }
-          default: {
-            if (ls->t.token == TK_NAME) {
-              const char *opname = getstr(ls->t.seminfo.ts);
-              if (strcmp(opname, "toString") == 0) {
-                metamethod_name = luaS_new(ls->L, "__tostring");
-              } else {
-                char mm[64];
-                snprintf(mm, sizeof(mm), "__%s", opname);
-                metamethod_name = luaS_new(ls->L, mm);
-              }
-            } else {
-              luaX_syntaxerror(ls, "unsupported operator for overloading");
-              metamethod_name = NULL;
-            }
-            break;
-          }
-        }
-        luaX_next(ls);  /* skip operator token */
-parse_ext_u_opbody:
-        skip_generic_params(ls);
-        buildvar(ls, tname, &mv);
-        {
-          expdesc mkey;
-          luaK_exp2anyregup(fs, &mv);
-          codestring(&mkey, metamethod_name);
-          luaK_indexed(fs, &mv, &mkey);
-        }
-        body(ls, &mb, 1, ls->linenumber);
-        luaK_storevar(fs, &mv, &mb);
-        luaK_fixline(fs, line);
+        parse_operator_method(ls, tname, 0, line);
       }
       else {
         luaX_next(ls);
@@ -1188,23 +992,7 @@ parse_ext_u_opbody:
     check_match(ls, /*{*/ '}', TK_EXTEND, line);
 
     /* Apply interface defaults to the user-defined type */
-    {
-      int ii;
-      for (ii = 0; ii < next_ifaces; ii++) {
-        expdesc fn, arg1, arg2;
-        int base2;
-        buildvar(ls, luaX_newstring(ls, "__cangjie_apply_interface", 25), &fn);
-        luaK_exp2nextreg(fs, &fn);
-        base2 = fn.u.info;
-        buildvar(ls, tname, &arg1);
-        luaK_exp2nextreg(fs, &arg1);
-        buildvar(ls, ext_iface_names[ii], &arg2);
-        luaK_exp2nextreg(fs, &arg2);
-        init_exp(&fn, VCALL,
-                 luaK_codeABC(fs, OP_CALL, base2, 3, 1));
-        fs->freereg = cast_byte(base2);
-      }
-    }
+    apply_interfaces(ls, tname, ext_iface_names, next_ifaces);
   }
 }
 
@@ -1535,98 +1323,18 @@ static void enumstat (LexState *ls, int line) {
       ** Stored as NAME.methodname = function(self, ...) ... end
       ** Enum values will access via metatable __index = NAME
       */
-      expdesc mv, mb;
       TString *mname;
       luaX_next(ls);  /* skip 'func' */
       mname = str_checkname(ls);
-      /* skip generic type params on method */
       skip_generic_params(ls);
-      /* Build NAME.methodname */
-      buildvar(ls, ename, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, mname);
-        luaK_indexed(fs, &mv, &mkey);
-      }
-      /* Parse method body (with 'self' parameter for implicit this) */
-      ls->in_struct_method = 1;
-      body(ls, &mb, 1, ls->linenumber);
-      ls->in_struct_method = 0;
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      parse_method_into(ls, ename, mname, 1, 0, line);
     }
     else if (ls->t.token == TK_NAME &&
              ls->t.seminfo.ts == luaS_new(ls->L, "operator")) {
       /* Operator overload inside enum: operator func +(other: Type): Type { ... } */
-      expdesc mv, mb;
-      TString *metamethod_name;
-      int op_token;
       luaX_next(ls);  /* skip 'operator' */
       checknext(ls, TK_FUNC);  /* expect 'func' */
-      op_token = ls->t.token;
-      switch (op_token) {
-        case '+': metamethod_name = luaS_new(ls->L, "__add"); break;
-        case '-': metamethod_name = luaS_new(ls->L, "__sub"); break;
-        case '*': metamethod_name = luaS_new(ls->L, "__mul"); break;
-        case '/': metamethod_name = luaS_new(ls->L, "__div"); break;
-        case '%': metamethod_name = luaS_new(ls->L, "__mod"); break;
-        case TK_POW: metamethod_name = luaS_new(ls->L, "__pow"); break;
-        case TK_EQ: metamethod_name = luaS_new(ls->L, "__eq"); break;
-        case '<': metamethod_name = luaS_new(ls->L, "__lt"); break;
-        case TK_LE: metamethod_name = luaS_new(ls->L, "__le"); break;
-        case TK_SHL: metamethod_name = luaS_new(ls->L, "__shl"); break;
-        case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
-        case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
-        case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-        case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
-        case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
-        case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
-        case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
-        case '[': {
-          luaX_next(ls);  /* skip '[' */
-          checknext(ls, ']');
-          metamethod_name = luaS_new(ls->L, "__index");
-          goto enum_parse_operator_body;
-        }
-        default: {
-          if (ls->t.token == TK_NAME) {
-            const char *opname = getstr(ls->t.seminfo.ts);
-            if (strcmp(opname, "toString") == 0) {
-              metamethod_name = luaS_new(ls->L, "__tostring");
-            }
-            else {
-              char mm[64];
-              if (strlen(opname) > 58)
-                luaX_syntaxerror(ls, "operator name too long");
-              snprintf(mm, sizeof(mm), "__%s", opname);
-              metamethod_name = luaS_new(ls->L, mm);
-            }
-          }
-          else {
-            luaX_syntaxerror(ls, "unsupported operator for overloading");
-            metamethod_name = NULL;  /* unreachable */
-          }
-          break;
-        }
-      }
-      luaX_next(ls);  /* skip operator token */
-enum_parse_operator_body:
-      skip_generic_params(ls);
-      /* Build NAME.metamethod_name */
-      buildvar(ls, ename, &mv);
-      {
-        expdesc mkey;
-        luaK_exp2anyregup(fs, &mv);
-        codestring(&mkey, metamethod_name);
-        luaK_indexed(fs, &mv, &mkey);
-      }
-      /* Parse operator method body (with 'self' parameter) */
-      ls->in_struct_method = 1;
-      body(ls, &mb, 1, ls->linenumber);
-      ls->in_struct_method = 0;
-      luaK_storevar(fs, &mv, &mb);
-      luaK_fixline(fs, line);
+      parse_operator_method(ls, ename, 0, line);
     }
     else {
       luaX_syntaxerror(ls,
@@ -1638,16 +1346,5 @@ enum_parse_operator_body:
   check_match(ls, /*{*/ '}', TK_ENUM, line);
 
   /* Generate: __cangjie_setup_enum(NAME) to set up metatable for enum values */
-  {
-    expdesc fn, arg;
-    int base2;
-    buildvar(ls, luaX_newstring(ls, "__cangjie_setup_enum", 20), &fn);
-    luaK_exp2nextreg(fs, &fn);
-    base2 = fn.u.info;
-    buildvar(ls, ename, &arg);
-    luaK_exp2nextreg(fs, &arg);
-    init_exp(&fn, VCALL,
-             luaK_codeABC(fs, OP_CALL, base2, 2, 1));
-    fs->freereg = cast_byte(base2);
-  }
+  emit_runtime_call1(ls, "__cangjie_setup_enum", ename);
 }
