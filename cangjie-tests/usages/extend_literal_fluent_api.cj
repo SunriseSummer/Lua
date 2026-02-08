@@ -37,21 +37,21 @@ extend String {
         var result = ""
         var i = 0
         while (i < n) {
-            result = result .. this
+            result = result + this
             i = i + 1
         }
         result
     }
     func padLeft(width: Int64, ch: String): String {
         var s = this
-        while (#s < width) {
-            s = ch .. s
+        while (s.size < width) {
+            s = ch + s
         }
         s
     }
     func startsWith(prefix: String): Bool {
-        if (#prefix > #this) { return false }
-        string.sub(this, 1, #prefix) == prefix
+        if (prefix.size > this.size) { return false }
+        string.sub(this, 1, prefix.size) == prefix
     }
 }
 
@@ -89,7 +89,7 @@ var table_str = ""
 for (i in 1..6) {
     let num_str = tostring(i).padLeft(2, " ")
     let sq_str = tostring(i * i).padLeft(4, " ")
-    table_str = table_str .. num_str .. ":" .. sq_str .. " "
+    table_str = table_str + num_str + ":" + sq_str + " "
 }
 expectEq(table_str, " 1:   1  2:   4  3:   9  4:  16  5:  25 ", "formatted table")
 

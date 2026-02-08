@@ -15,6 +15,10 @@ extend Int64 {
     func isEven(): Bool {
         this % 2 == 0
     }
+    // Operator overloading in extend
+    operator func -(other: Int64): Int64 {
+        this - other
+    }
 }
 
 let x = 2
@@ -51,13 +55,13 @@ expectFalse((-2.5).isPositive(), "(-2.5).isPositive()")
 // -- Section: String literal method calls --
 extend String {
     func shout(): String {
-        this .. "!!!"
+        this + "!!!"
     }
     func greet(): String {
-        "Hello, " .. this .. "!"
+        "Hello, " + this + "!"
     }
     func isEmpty(): Bool {
-        #this == 0
+        this.size == 0
     }
 }
 
@@ -112,7 +116,7 @@ expectTrue(10.isEven() && 4.isEven(), "10.isEven() && 4.isEven()")
 expectFalse(3.isEven() || 5.isEven(), "3.isEven() || 5.isEven()")
 
 // String method in expression
-expectEq("a".shout() .. "b".shout(), "a!!!b!!!", "concat shout results")
+expectEq("a".shout() + "b".shout(), "a!!!b!!!", "concat shout results")
 
 // -- Section: Literal method call in various contexts --
 // In array constructor
@@ -138,6 +142,61 @@ expectEq([10, 20, 30][1], 20, "array literal index")
 // Statement-level literal method calls (void return)
 "test".shout()   // should not error
 true.toggle()    // should not error
+
+// -- Section: Operator overloading in extend --
+struct Vec2 {
+    var x: Int64 = 0
+    var y: Int64 = 0
+}
+
+extend Vec2 {
+    operator func +(other: Vec2): Vec2 {
+        Vec2(this.x + other.x, this.y + other.y)
+    }
+    operator func ==(other: Vec2): Bool {
+        this.x == other.x && this.y == other.y
+    }
+    operator func -(other: Vec2): Vec2 {
+        Vec2(this.x - other.x, this.y - other.y)
+    }
+    func toString(): String {
+        "(${this.x}, ${this.y})"
+    }
+}
+
+let v1 = Vec2(1, 2)
+let v2 = Vec2(3, 4)
+let v3 = v1 + v2
+expectEq(v3.x, 4, "Vec2 + x")
+expectEq(v3.y, 6, "Vec2 + y")
+
+let v4 = v2 - v1
+expectEq(v4.x, 2, "Vec2 - x")
+expectEq(v4.y, 2, "Vec2 - y")
+
+expectTrue(v1 == Vec2(1, 2), "Vec2 == true")
+expectFalse(v1 == v2, "Vec2 == false")
+expectEq(v3.toString(), "(4, 6)", "Vec2.toString()")
+
+// Operator overload on extend with interface
+interface Scalable {
+    operator func *(scale: Int64): Vec2
+}
+
+extend Vec2 <: Scalable {
+    operator func *(scale: Int64): Vec2 {
+        Vec2(this.x * scale, this.y * scale)
+    }
+}
+
+let v5 = Vec2(2, 3) * 5
+expectEq(v5.x, 10, "Vec2 * scale x")
+expectEq(v5.y, 15, "Vec2 * scale y")
+
+// Chained operator calls
+let v6 = Vec2(1, 1) + Vec2(2, 2) + Vec2(3, 3)
+expectEq(v6.x, 6, "chained Vec2 + x")
+expectEq(v6.y, 6, "chained Vec2 + y")
 
 if (!__test_failed) {
     println("PASS: 51_extend_literal_methods")
