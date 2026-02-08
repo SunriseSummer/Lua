@@ -419,7 +419,9 @@ int luaB_cangjie_int64 (lua_State *L) {
       const char *s = lua_tolstring(L, 1, &len);
       if (len == 0)
         return luaL_error(L, "cannot convert empty string to Int64");
-      /* Single UTF-8 character: treat as Rune, return code point */
+      /* If string decodes as exactly one UTF-8 character, treat as
+      ** Rune and return its Unicode code point (e.g. "A" -> 65).
+      ** utf8_decode_single returns -1 for multi-character strings. */
       {
         long cp = utf8_decode_single(s, len);
         if (cp >= 0) {
