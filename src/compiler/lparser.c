@@ -2045,7 +2045,7 @@ static void suffixedops (LexState *ls, expdesc *v) {
             /* Range subscript: arr[start..end] or arr[start..=end] */
             int inclusive = (ls->t.token == TK_DOTDOTEQ);
             expdesc end_e, fn_e, incl_e;
-            int base2, arr_reg;
+            int base2;
             luaX_next(ls);  /* skip '..' or '..=' */
             expr(ls, &end_e);
             checknext(ls, ']');
@@ -2053,29 +2053,45 @@ static void suffixedops (LexState *ls, expdesc *v) {
             ** corruption when v is an indexed expression (e.g., m.data[1])
             ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
             ** if fn were already loaded above the table register.
-            ** Strategy: put arr into nextreg, then fn, then swap them
-            ** with OP_MOVE so fn is at base and arr is at base+1. */
+            ** Then load fn and swap it with arr so fn is at base.
+            ** Discharge start_e and end_e AFTER the swap so that any
+            ** pending VRELOC results are placed at safe registers. */
+            /* Resolve arr (v) to a register first. This avoids register
+            ** corruption when v is an indexed expression (e.g., m.data[1])
+            ** whose VINDEXI/VINDEXSTR discharge would corrupt freereg
+            ** if fn were already loaded above the table register. */
             luaK_exp2nextreg(fs, v);  /* arr at freereg-1 */
+            /* Discharge start_e and end_e right after arr, so any pending
+            ** VRELOC results (e.g., from n - m) are placed in safe
+            ** registers before the fn-swap uses freereg as a temporary. */
+            luaK_exp2nextreg(fs, &start_e);
+            luaK_exp2nextreg(fs, &end_e);
             if (ls->t.token == '=') {
               /* Range assignment: arr[start..end] = values */
               expdesc rhs;
-              int arr_r;
+              int arr_r, start_r, end_r;
               luaX_next(ls);  /* skip '=' */
-              arr_r = fs->freereg - 1;  /* register where arr landed */
-              /* Build call: fn(arr, start, end, inclusive, values) */
+              /* Layout now: [..., arr, start, end] */
+              end_r = fs->freereg - 1;
+              start_r = fs->freereg - 2;
+              arr_r = fs->freereg - 3;
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice_set"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              /* Now: arr at arr_r, fn at arr_r+1. Swap: fn to arr_r, arr to arr_r+1 */
+              /* Layout: [..., arr, start, end, fn]
+              ** Desired: [..., fn, arr, start, end, incl, values]
+              ** Rearrange: move fn to arr_r, shift arr/start/end right by 1 */
               base2 = arr_r;
               {
-                int fn_r = arr_r + 1;
-                int tmp_r = fs->freereg;
-                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);  /* tmp = arr */
-                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);   /* arr_slot = fn */
-                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);   /* fn_slot = arr */
+                int fn_r = fs->freereg - 1;
+                int tmp = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);         /* save fn */
+                luaK_codeABC(fs, OP_MOVE, fn_r, end_r, 0);       /* shift end */
+                luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0);    /* shift start */
+                luaK_codeABC(fs, OP_MOVE, start_r, arr_r, 0);    /* shift arr */
+                luaK_codeABC(fs, OP_MOVE, arr_r, tmp, 0);        /* place fn */
               }
-              luaK_exp2nextreg(fs, &start_e);
-              luaK_exp2nextreg(fs, &end_e);
+              /* freereg still points past fn; set to after end */
+              fs->freereg = cast_byte(arr_r + 4);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
               luaK_exp2nextreg(fs, &incl_e);
               expr(ls, &rhs);
@@ -2087,21 +2103,23 @@ static void suffixedops (LexState *ls, expdesc *v) {
             }
             else {
               /* Range read: arr[start..end] */
-              int arr_r;
-              arr_r = fs->freereg - 1;  /* register where arr landed */
+              int arr_r, start_r, end_r;
+              end_r = fs->freereg - 1;
+              start_r = fs->freereg - 2;
+              arr_r = fs->freereg - 3;
               buildvar(ls, luaS_new(ls->L, "__cangjie_array_slice"), &fn_e);
               luaK_exp2nextreg(fs, &fn_e);
-              /* Now: arr at arr_r, fn at arr_r+1. Swap them. */
               base2 = arr_r;
               {
-                int fn_r = arr_r + 1;
-                int tmp_r = fs->freereg;
-                luaK_codeABC(fs, OP_MOVE, tmp_r, arr_r, 0);
-                luaK_codeABC(fs, OP_MOVE, arr_r, fn_r, 0);
-                luaK_codeABC(fs, OP_MOVE, fn_r, tmp_r, 0);
+                int fn_r = fs->freereg - 1;
+                int tmp = fs->freereg;
+                luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);
+                luaK_codeABC(fs, OP_MOVE, fn_r, end_r, 0);
+                luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0);
+                luaK_codeABC(fs, OP_MOVE, start_r, arr_r, 0);
+                luaK_codeABC(fs, OP_MOVE, arr_r, tmp, 0);
               }
-              luaK_exp2nextreg(fs, &start_e);
-              luaK_exp2nextreg(fs, &end_e);
+              fs->freereg = cast_byte(arr_r + 4);
               init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
               luaK_exp2nextreg(fs, &incl_e);
               /* 4 args (arr, start, end, inclusive) + 1 = 5; 1 result + 1 = 2 */
