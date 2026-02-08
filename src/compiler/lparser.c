@@ -1972,6 +1972,27 @@ static void primaryexp (LexState *ls, expdesc *v) {
       luaX_next(ls);
       return;
     }
+    case TK_RUNE: {
+      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
+      FuncState *fs = ls->fs;
+      expdesc fn, arg;
+      TString *rune_name = luaS_new(ls->L, "Rune");
+      int base;
+      lua_Integer cp = ls->t.seminfo.i;
+      luaX_next(ls);
+      /* Look up global 'Rune' function */
+      buildvar(ls, rune_name, &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base = fn.u.info;
+      /* Push integer code point as argument */
+      init_exp(&arg, VKINT, 0);
+      arg.u.ival = cp;
+      luaK_exp2nextreg(fs, &arg);
+      /* Emit call: Rune(cp) -> 1 result */
+      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
+      fs->freereg = base + 1;  /* call returns 1 result */
+      return;
+    }
     case TK_TRUE: {
       /* Bool literal true: allow suffix operations like true.method() */
       init_exp(v, VTRUE, 0);
@@ -2507,6 +2528,31 @@ static void simpleexp (LexState *ls, expdesc *v) {
     case TK_NIL: {
       init_exp(v, VNIL, 0);
       break;
+    }
+    case TK_RUNE: {
+      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
+      FuncState *fs = ls->fs;
+      expdesc fn, arg;
+      TString *rune_name = luaS_new(ls->L, "Rune");
+      int base;
+      lua_Integer cp = ls->t.seminfo.i;
+      luaX_next(ls);
+      buildvar(ls, rune_name, &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base = fn.u.info;
+      init_exp(&arg, VKINT, 0);
+      arg.u.ival = cp;
+      luaK_exp2nextreg(fs, &arg);
+      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
+      fs->freereg = base + 1;
+      /* Check for suffix operations on Rune literal */
+      if (ls->t.token == '.' || ls->t.token == '[' ||
+          ls->t.token == ':' ||
+          (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+        luaK_exp2nextreg(fs, v);
+        suffixedops(ls, v);
+      }
+      return;
     }
     case TK_TRUE: {
       init_exp(v, VTRUE, 0);
@@ -3691,16 +3737,12 @@ static void letvarstat (LexState *ls, int isconst) {
   ** variables survive across interactive lines. */
   if (is_repl_toplevel(ls)) {
     TString *vname = str_checkname(ls);
-    int is_rune = 0;
     if (testnext(ls, ':'))
-      is_rune = skip_letvar_type(ls);
+      skip_letvar_type(ls);
     if (testnext(ls, '=')) {
       expdesc v, e;
       buildvar(ls, vname, &v);
       expr(ls, &e);
-      if (is_rune && e.k == VKSTR)
-        luaX_syntaxerror(ls,
-            "cannot assign String literal to Rune type; use r'x' for Rune literals");
       luaK_storevar(fs, &v, &e);
     }
     else {
@@ -3716,7 +3758,6 @@ static void letvarstat (LexState *ls, int isconst) {
     int vidx;
     int nvars = 0;
     int nexps;
-    int is_rune = 0;
     expdesc e;
     lu_byte defkind = isconst ? RDKCONST : VDKREG;
     do {
@@ -3734,9 +3775,9 @@ static void letvarstat (LexState *ls, int isconst) {
           }
         }
       }
-      /* optional type annotation ': Type' - parse and validate */
+      /* optional type annotation ': Type' - parse and skip */
       if (testnext(ls, ':'))
-        is_rune = skip_letvar_type(ls);
+        skip_letvar_type(ls);
       vidx = new_varkind(ls, vname, defkind);
       nvars++;
     } while (testnext(ls, ','));
@@ -3751,10 +3792,6 @@ static void letvarstat (LexState *ls, int isconst) {
       e.k = VVOID;
       nexps = 0;
     }
-    /* Check: cannot assign String literal to Rune type */
-    if (is_rune && nvars == 1 && e.k == VKSTR)
-      luaX_syntaxerror(ls,
-          "cannot assign String literal to Rune type; use r'x' for Rune literals");
     var = getlocalvardesc(fs, vidx);
     if (nvars == nexps &&
         var->vd.kind == RDKCONST &&

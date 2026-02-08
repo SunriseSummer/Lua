@@ -53,24 +53,24 @@ expectEq(emoji[2..=3], "😀🎉", "emoji slice")
 expectEq(ascii[0], "h", "ascii[0] == 'h'")
 expectEq(cjk[0], "你", "cjk[0] == '你'")
 
-// Compare indexed char with Rune literal via Rune() conversion
-expectTrue(ascii[0] == Rune(r'h'), "indexed char == Rune(r'h')")
-expectTrue(ascii[0] < Rune(r'z'), "indexed char < Rune(r'z')")
-expectTrue(ascii[4] > Rune(r'a'), "indexed char > Rune(r'a')")
+// Compare indexed char Rune with Rune literal
+expectTrue(Rune(ascii[0]) == r'h', "Rune(indexed) == r'h'")
+expectTrue(Rune(ascii[0]) < r'z', "Rune(indexed) < r'z'")
+expectTrue(Rune(ascii[4]) > r'a', "Rune(indexed) > r'a'")
 
-// Rune() from string returns code point (always, including digit chars)
+// Rune() from string returns Rune instance
 expectEq(Rune(ascii[0]), r'h', "Rune(ascii[0]) == r'h'")
 
-// Rune() conversion of indexed character to code point
-expectEq(Rune(cjk[0]), 0x4F60, "Rune(cjk[0]) == 0x4F60 (你)")
-expectEq(Rune(mixed[5]), 0x4F60, "Rune(mixed[5]) == 0x4F60 (你)")
-expectEq(Rune(ascii[0]), 104, "Rune(ascii[0]) == 104 (h)")
+// Int64(Rune()) extracts code point from indexed character
+expectEq(Int64(Rune(cjk[0])), 0x4F60, "Int64(Rune(cjk[0])) == 0x4F60 (你)")
+expectEq(Int64(Rune(mixed[5])), 0x4F60, "Int64(Rune(mixed[5])) == 0x4F60 (你)")
+expectEq(Int64(Rune(ascii[0])), 104, "Int64(Rune(ascii[0])) == 104 (h)")
 
-// Rune() round-trip: string -> code point -> string
-expectEq(Rune(Rune(cjk[1])), cjk[1], "Rune round-trip on indexed char")
+// Rune() round-trip: string -> Rune -> string
+expectEq(String(Rune(cjk[1])), cjk[1], "Rune round-trip on indexed char")
 
 // Emoji indexed character code point
-expectEq(Rune(emoji[2]), 0x1F600, "Rune(emoji[2]) == 0x1F600 (😀)")
+expectEq(Int64(Rune(emoji[2])), 0x1F600, "Int64(Rune(emoji[2])) == 0x1F600 (😀)")
 
 // --- Section: String for-in with UTF-8 ---
 let chars = "你好"

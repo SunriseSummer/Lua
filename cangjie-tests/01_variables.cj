@@ -17,7 +17,7 @@ expectFalse(e, "let Bool e")
 
 // -- Section: Rune (character) type --
 let ch: Rune = r'A'
-expectEq(ch, 65, "Rune ch")
+expectEq(ch, r'A', "Rune ch")
 
 // -- Section: var declarations (mutable) --
 var x: Int64 = 1

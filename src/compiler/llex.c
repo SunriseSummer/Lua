@@ -52,7 +52,7 @@ static const char *const luaX_tokens [] = {
     "<<", ">>", "::", "=>", "..=",
     "&&", "||", "!", "**", "??",
     "<eof>",
-    "<number>", "<integer>", "<name>", "<string>"
+    "<number>", "<integer>", "<name>", "<string>", "<rune>"
 };
 
 
@@ -110,7 +110,7 @@ const char *luaX_token2str (LexState *ls, int token) {
 
 static const char *txtToken (LexState *ls, int token) {
   switch (token) {
-    case TK_NAME: case TK_STRING:
+    case TK_NAME: case TK_STRING: case TK_RUNE:
     case TK_FLT: case TK_INT:
       save(ls, '\0');
       return luaO_pushfstring(ls->L, "'%s'", luaZ_buffer(ls->buff));
@@ -793,22 +793,19 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           if (luaZ_bufflen(ls->buff) == 1 &&
               luaZ_buffer(ls->buff)[0] == 'r' &&
               (ls->current == '\'' || ls->current == '"')) {
-            /* Rune literal: r'x' or r"x" -> integer code point */
+            /* Rune literal: r'x' or r"x" -> TK_RUNE with code point.
+            ** Validates exactly one UTF-8 character. */
             const char *rs;
             size_t rlen;
             unsigned long cp;
             luaZ_resetbuffer(ls->buff);
             read_string(ls, ls->current, seminfo);
-            /* Extract the string content and decode as a single
-            ** UTF-8 character to produce its code point. */
             rs = getstr(seminfo->ts);
             rlen = tsslen(seminfo->ts);
             if (rlen == 0)
               lexerror(ls, "empty Rune literal", TK_STRING);
-            /* Decode UTF-8 lead byte */
             cp = (unsigned char)rs[0];
             if (cp <= 0x7F) {
-              /* ASCII: single byte */
               if (rlen != 1)
                 lexerror(ls, "Rune literal must be a single character",
                          TK_STRING);
@@ -828,7 +825,7 @@ static int llex (LexState *ls, SemInfo *seminfo) {
               }
             }
             seminfo->i = (lua_Integer)cp;
-            return TK_INT;
+            return TK_RUNE;
           }
           /* find or create string */
           ts = luaS_newlstr(ls->L, luaZ_buffer(ls->buff),

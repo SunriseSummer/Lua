@@ -1,20 +1,28 @@
 dofile("cangjie-tests/_testing.cj")
 
-// Test: Int64 and Rune conversion with strict r'x' rule
-// r'x' is a Rune literal (compiles to integer code point)
+// Test: Int64 and Rune conversion — Rune is a distinct type
+// r'x' is a Rune literal (distinct type, not integer)
 // 'x' and "x" are String literals
-// Int64(String) parses as number only, errors if parse fails
+// Int64(Rune) extracts code point; Int64(String) parses as number only
 
-// --- Section: r'x' Rune literals -> integer code points ---
-expectEq(r'0', 48, "r'0' == 48")
-expectEq(r'A', 65, "r'A' == 65")
-expectEq(r'a', 97, "r'a' == 97")
-expectEq(r' ', 32, "r' ' == 32")
-expectEq(r'-', 45, "r'-' == 45")
+// --- Section: r'x' Rune literals are Rune type ---
+expectEq(type(r'0'), "Rune", "type(r'0') == Rune")
+expectEq(type(r'A'), "Rune", "type(r'A') == Rune")
 
-// Int64 of Rune literal is integer passthrough
+// Rune != integer (strict type separation)
+expectFalse(r'0' == 48, "r'0' != 48")
+expectFalse(r'A' == 65, "r'A' != 65")
+
+// Rune equality
+expectTrue(r'0' == r'0', "r'0' == r'0'")
+expectTrue(r'A' == r'A', "r'A' == r'A'")
+
+// --- Section: Int64(Rune) extracts code point ---
 expectEq(Int64(r'0'), 48, "Int64(r'0') == 48")
 expectEq(Int64(r'A'), 65, "Int64(r'A') == 65")
+expectEq(Int64(r'a'), 97, "Int64(r'a') == 97")
+expectEq(Int64(r' '), 32, "Int64(r' ') == 32")
+expectEq(Int64(r'-'), 45, "Int64(r'-') == 45")
 
 // --- Section: String '0' and "0" -> number parse ---
 expectEq(Int64('0'), 0, "Int64('0') == 0")
@@ -27,26 +35,30 @@ expectRuntimeError("Int64 non-numeric char", 'let x = Int64("A")', "cannot conve
 expectRuntimeError("Int64 non-numeric unicode", 'let x = Int64("乐")', "cannot convert")
 expectRuntimeError("Int64 non-numeric z", 'let x = Int64("z")', "cannot convert")
 
-// --- Section: Rune() from string -> code point for all chars including digits ---
-expectEq(Rune("0"), 48, "Rune(\"0\") == 48")
-expectEq(Rune("A"), 65, "Rune(\"A\") == 65")
-expectEq(Rune("乐"), 0x4E50, "Rune(\"乐\") == 0x4E50")
+// --- Section: Rune() from string -> Rune instance ---
+expectEq(Rune("0"), r'0', "Rune(\"0\") == r'0'")
+expectEq(Rune("A"), r'A', "Rune(\"A\") == r'A'")
+expectEq(Rune("乐"), r'乐', "Rune(\"乐\") == r'乐'")
 
 // --- Section: String indexing + Rune() ---
 let text = "Hello"
-expectEq(Rune(text[0]), 72, "Rune(text[0]) H=72")
-expectEq(Rune(text[1]), 101, "Rune(text[1]) e=101")
+expectEq(Int64(Rune(text[0])), 72, "Int64(Rune(text[0])) H=72")
+expectEq(Int64(Rune(text[1])), 101, "Int64(Rune(text[1])) e=101")
 
-// Digit chars: Int64 parses as number, Rune() returns code point
+// Digit chars: Int64 parses string as number, Int64(Rune()) extracts code point
 let digits = "0123456789"
 expectEq(Int64(digits[0]), 0, "Int64(digits[0]) = 0 (number parse)")
-expectEq(Rune(digits[0]), 48, "Rune(digits[0]) = 48 (code point)")
+expectEq(Int64(Rune(digits[0])), 48, "Int64(Rune(digits[0])) = 48 (code point)")
 
 // --- Section: Round-trip ---
 let cp = r'A'
-let r = Rune(cp)
-expectEq(r, "A", "Rune(r'A') == \"A\"")
-expectEq(Rune(r), 65, "Rune(\"A\") == 65")
+expectEq(String(cp), "A", "String(r'A') == \"A\"")
+expectEq(Rune("A"), r'A', "Rune(\"A\") == r'A'")
+expectEq(Int64(Rune("A")), 65, "Int64(Rune(\"A\")) == 65")
+
+// --- Section: Rune(Rune(x)) identity ---
+expectEq(Rune(Rune(65)), Rune(65), "Rune(Rune(65)) == Rune(65)")
+expectEq(Rune(Rune(65)), r'A', "Rune(Rune(65)) == r'A'")
 
 // --- Section: Float truncation ---
 expectEq(Int64(3.14), 3, "Int64(3.14) truncates")

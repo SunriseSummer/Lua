@@ -29,24 +29,29 @@
 字符类型使用 `Rune` 表示，可以表示 Unicode 字符集中的所有字符。Rune 字面量**仅**使用 `r` 前缀形式，编译时转为整数码点：
 
 ```cangjie
-// r 前缀表示 Rune 字面量（编译为整数码点）
-let a: Rune = r'a'           // 97
-let b: Rune = r"b"           // 98
+// r 前缀表示 Rune 字面量（独立的 Rune 类型）
+let a: Rune = r'a'           // Rune 类型实例
+let b: Rune = r"b"           // r"x" 也是 Rune 字面量
 
 // 转义字符
-let slash: Rune = r'\\'      // 92
-let newLine: Rune = r'\n'    // 10
-let tab: Rune = r'\t'        // 9
+let slash: Rune = r'\\'      // 反斜杠
+let newLine: Rune = r'\n'    // 换行
+let tab: Rune = r'\t'        // 制表符
 
 // 通用字符 - \u{十六进制码值}
-let he: Rune = r'\u{4f60}'   // 0x4f60 (你)
-let llo: Rune = r'\u{597d}'  // 0x597d (好)
+let he: Rune = r'\u{4f60}'   // 你
+let llo: Rune = r'\u{597d}'  // 好
 
 // 注意：'x' 和 "x" 都是字符串，不是 Rune
 let s = 'a'                  // 字符串 "a"
 ```
 
-Rune 类型（整数码点）支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。可以通过字符 Unicode 码点值构造对应的 Rune 实例，即 `Rune(code_point)`。
+Rune 是独立的类型，与整型和字符串严格区分。Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。可以通过字符 Unicode 码点值构造对应的 Rune 实例，即 `Rune(code_point)`。
+
+- `Rune(65) != 65`（Rune 和整型是不同类型）
+- `Rune(65) == Rune(65) == r'A'`（相同码点的 Rune 值相等）
+- `Rune(Rune(65)) == Rune(65)`（Rune 的 Rune 转换是恒等操作）
+- `tostring(r'A')` = `"A"`（Rune 转字符串得到对应字符）
 
 ### 类型转换
 
@@ -63,15 +68,16 @@ let g = String(65)          // 整数转为字符串 "65"
 let h = String(3.14)        // 浮点数转为字符串
 let i = String(true)        // 布尔值转为字符串
 let j = Rune(0x4E50)        // 通过整型 Unicode 码点值构造 Rune 实例
+let k = String(r'A')        // Rune 转为字符串 "A"
 ```
 
-**Rune 字面量**：仅 `r'x'` / `r"x"` 表示 Rune 字面量，编译时转为整数码点（如 `r'A'` = 65、`r'0'` = 48）；`'x'` 和 `"x"` 都表示字符串。
+**Rune 字面量**：仅 `r'x'` / `r"x"` 表示 Rune 字面量；`'x'` 和 `"x"` 都表示字符串。
 
-**Int64 转换规则**：`Int64(String)` 将表示数字的字符串解析为对应整数（`Int64("0")` = 0），解析失败时报错；`Int64(Rune)` 直接透传整数码点。
+**Int64 转换规则**：`Int64(String)` 将表示数字的字符串解析为对应整数（`Int64("0")` = 0），解析失败时报错；`Int64(Rune)` 提取整型 Unicode 码点值（`Int64(r'A')` = 65）。
 
-**Rune() 转换函数**：`Rune(integer)` 是通过整型 Unicode 码点值构造 Rune 类型实例；`Rune(string)` 将仅含单个字符的字符串转为对应的整型 Unicode 码点值（`Rune("0")` = 48），如果 string 长度不为 1，转换会报错。
+**Rune() 转换函数**：`Rune(integer)` 是通过整型 Unicode 码点值构造 Rune 类型实例；`Rune(string)` 将仅含单个字符的字符串转为对应的 Rune 实例（`Rune("A")` == `r'A'`），如果 string 长度不为 1，转换会报错。`Rune(Rune)` 是恒等操作。
 
-也支持传统的 `tostring()`、`tonumber()` 转换函数。
+**String() 转换函数**：`String(Rune)` 将 Rune 转为对应的字符串（`String(r'A')` = `"A"`）；`String(integer)` 将整数转为十进制字符串（`String(65)` = `"65"`）。
 
 ### 运算符
 
