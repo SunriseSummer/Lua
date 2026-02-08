@@ -3835,8 +3835,12 @@ static void funcstat (LexState *ls, int line) {
 #include "lparser_cj_types.c"
 
 
-/* Cangjie pattern matching and expression forms */
+/* Cangjie pattern matching */
 #include "lparser_cj_match.c"
+
+
+/* Cangjie expression forms and auto-returning */
+#include "lparser_cj_expr.c"
 
 
 
