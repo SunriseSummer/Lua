@@ -25,6 +25,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "llimits.h"
+#include "lbaselib_cj.h"
 
 
 /*
@@ -1901,6 +1902,8 @@ static void createmetatable (lua_State *L) {
 LUAMOD_API int luaopen_string (lua_State *L) {
   luaL_newlib(L, strlib);
   createmetatable(L);
+  /* Set up Cangjie-style string indexing (s[i], s.size, etc.) */
+  luaB_setup_string_meta(L);
   return 1;
 }
 

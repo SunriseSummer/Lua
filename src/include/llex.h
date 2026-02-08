@@ -102,6 +102,7 @@ typedef struct LexState {
   /* Cangjie type definition tracking for redefinition detection */
   TString *defined_types[128];  /* type names defined at current scope level */
   int ndefined_types;  /* number of defined type names */
+  int in_range_limit;  /* nonzero when parsing limit of a range expression */
 } LexState;
 
 

@@ -566,6 +566,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_coalesce", luaB_coalesce},
   {"__cangjie_array_slice", luaB_array_slice},
   {"__cangjie_array_slice_set", luaB_array_slice_set},
+  {"__cangjie_str_slice", luaB_str_slice},
   {"__cangjie_iter", luaB_iter},
   {"Array", luaB_array_init},
   {"tonumber", luaB_tonumber},
