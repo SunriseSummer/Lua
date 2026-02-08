@@ -3622,16 +3622,24 @@ static int is_repl_toplevel (LexState *ls) {
 /*
 ** Skip a type annotation after ':' in let/var declarations.
 ** This is shared between the local and global paths of letvarstat.
+** Returns 1 if the type annotation is 'Rune', 0 otherwise.
 */
-static void skip_letvar_type (LexState *ls) {
+static int skip_letvar_type (LexState *ls) {
   int depth = 0;
   int has_type = 0;
+  int is_rune = 0;
   /* Handle leading '?' for ?Type sugar */
   if (ls->t.token == '?') {
     luaX_next(ls);  /* skip '?' */
   }
   for (;;) {
     if (ls->t.token == TK_NAME) {
+      /* Check if the top-level type name (depth==0) is 'Rune' */
+      if (!has_type && depth == 0) {
+        const char *tname = getstr(ls->t.seminfo.ts);
+        if (strcmp(tname, "Rune") == 0)
+          is_rune = 1;
+      }
       has_type = 1;
       luaX_next(ls);
     }
@@ -3673,6 +3681,7 @@ static void skip_letvar_type (LexState *ls) {
   if (!has_type) {
     luaX_syntaxerror(ls, "type name expected after ':'");
   }
+  return is_rune;
 }
 
 static void letvarstat (LexState *ls, int isconst) {
@@ -3682,12 +3691,16 @@ static void letvarstat (LexState *ls, int isconst) {
   ** variables survive across interactive lines. */
   if (is_repl_toplevel(ls)) {
     TString *vname = str_checkname(ls);
+    int is_rune = 0;
     if (testnext(ls, ':'))
-      skip_letvar_type(ls);
+      is_rune = skip_letvar_type(ls);
     if (testnext(ls, '=')) {
       expdesc v, e;
       buildvar(ls, vname, &v);
       expr(ls, &e);
+      if (is_rune && e.k == VKSTR)
+        luaX_syntaxerror(ls,
+            "cannot assign String literal to Rune type; use r'x' for Rune literals");
       luaK_storevar(fs, &v, &e);
     }
     else {
@@ -3703,6 +3716,7 @@ static void letvarstat (LexState *ls, int isconst) {
     int vidx;
     int nvars = 0;
     int nexps;
+    int is_rune = 0;
     expdesc e;
     lu_byte defkind = isconst ? RDKCONST : VDKREG;
     do {
@@ -3722,7 +3736,7 @@ static void letvarstat (LexState *ls, int isconst) {
       }
       /* optional type annotation ': Type' - parse and validate */
       if (testnext(ls, ':'))
-        skip_letvar_type(ls);
+        is_rune = skip_letvar_type(ls);
       vidx = new_varkind(ls, vname, defkind);
       nvars++;
     } while (testnext(ls, ','));
@@ -3737,6 +3751,10 @@ static void letvarstat (LexState *ls, int isconst) {
       e.k = VVOID;
       nexps = 0;
     }
+    /* Check: cannot assign String literal to Rune type */
+    if (is_rune && nvars == 1 && e.k == VKSTR)
+      luaX_syntaxerror(ls,
+          "cannot assign String literal to Rune type; use r'x' for Rune literals");
     var = getlocalvardesc(fs, vidx);
     if (nvars == nexps &&
         var->vd.kind == RDKCONST &&

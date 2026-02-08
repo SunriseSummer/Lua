@@ -15,6 +15,10 @@ expectEq(a2, 65, "Int64(r'A') == 65")
 let a3 = Int64('0')
 expectEq(a3, 0, "Int64('0') == 0")
 
+// r"0" is also a Rune literal: returns code point
+let a4 = Int64(r"0")
+expectEq(a4, 48, "Int64(r\"0\") == 48")
+
 // String to integer (multi-character strings are parsed as numbers)
 let c = Int64("1234567")
 expectEq(c, 1234567, "Int64(\"1234567\")")
