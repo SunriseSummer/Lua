@@ -24,13 +24,39 @@
 
 /*
 ** ============================================================
-** Cangjie OOP runtime support
-** Functions for class/struct instantiation, method binding,
-** inheritance chain walking, and type checking.
+** Shared metamethod name lists
+** These are the Lua metamethod names that need to be copied from
+** class/enum tables into instance metatables so that operators work.
 ** ============================================================
 */
 
-/* Upvalue-based bound method: when called, prepend the bound object */
+/* Metamethods copied for class instances (excludes __call). */
+static const char *const cj_class_metamethods[] = {
+  "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
+  "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
+  "__eq", "__lt", "__le", "__len", "__concat", "__tostring",
+  "__newindex",
+  NULL
+};
+
+/* Metamethods copied for enum values (includes __call, no __newindex). */
+static const char *const cj_enum_metamethods[] = {
+  "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
+  "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
+  "__eq", "__lt", "__le", "__len", "__concat", "__call",
+  "__tostring",
+  NULL
+};
+
+
+/*
+** ============================================================
+** Bound method helper and instance __index handler
+** ============================================================
+*/
+
+/* Upvalue-based bound method: when called, prepend the bound object.
+** Used by class instances, type extensions, enum values, and Option. */
 static int cangjie_bound_method (lua_State *L) {
   int nargs = lua_gettop(L);
   int i;
@@ -124,26 +150,19 @@ static int cangjie_call_handler (lua_State *L) {
   /* Copy metamethods from class table to instance metatable.
   ** Walk the class hierarchy (__parent chain) to inherit operator overloads. */
   {
-    static const char *const metamethods[] = {
-      "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
-      "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
-      "__eq", "__lt", "__le", "__len", "__concat", "__tostring",
-      "__newindex",
-      NULL
-    };
     int cls_walk;
     lua_pushvalue(L, 1);  /* start with the class table */
     cls_walk = lua_gettop(L);
     while (!lua_isnil(L, cls_walk)) {
       int mi;
-      for (mi = 0; metamethods[mi] != NULL; mi++) {
+      for (mi = 0; cj_class_metamethods[mi] != NULL; mi++) {
         /* Only set if not already set (child overrides parent) */
-        lua_getfield(L, mt, metamethods[mi]);
+        lua_getfield(L, mt, cj_class_metamethods[mi]);
         if (lua_isnil(L, -1)) {
           lua_pop(L, 1);
-          lua_getfield(L, cls_walk, metamethods[mi]);
+          lua_getfield(L, cls_walk, cj_class_metamethods[mi]);
           if (!lua_isnil(L, -1)) {
-            lua_setfield(L, mt, metamethods[mi]);
+            lua_setfield(L, mt, cj_class_metamethods[mi]);
           }
           else {
             lua_pop(L, 1);
@@ -198,6 +217,12 @@ static int cangjie_call_handler (lua_State *L) {
   return 1;
 }
 
+/*
+** ============================================================
+** Class setup and instantiation
+** ============================================================
+*/
+
 int luaB_setup_class (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);  /* cls must be a table */
   /* Create metatable for cls: { __call = cangjie_call_handler } */
@@ -210,28 +235,12 @@ int luaB_setup_class (lua_State *L) {
 
 
 /*
-** __cangjie_extend_type(typename, methods_table) - Set up a type extension
-** so that built-in type values (numbers, strings, booleans) can call
-** methods defined in the extension. Uses debug.setmetatable to set up
-** a shared metatable with __index pointing to the methods table.
-**
-** The __index handler wraps method lookups to auto-bind the value as
-** the first argument (self), matching Cangjie's method call semantics.
+** ============================================================
+** Type extension support
+** Enables built-in types (Int64, Float64, String, Bool) to have
+** extension methods callable via dot syntax.
+** ============================================================
 */
-static int cangjie_type_bound_method (lua_State *L) {
-  /* upvalue 1 = the original function, upvalue 2 = the bound value */
-  int nargs = lua_gettop(L);
-  int i;
-  int top_before;
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self (the value) */
-  for (i = 1; i <= nargs; i++) {
-    lua_pushvalue(L, i);  /* push original args */
-  }
-  top_before = nargs;
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - top_before;
-}
 
 static int cangjie_type_index_handler (lua_State *L) {
   /* Arguments: value, key */
@@ -246,7 +255,7 @@ static int cangjie_type_index_handler (lua_State *L) {
       /* Wrap function to auto-bind the value as self */
       lua_pushvalue(L, -1);  /* function */
       lua_pushvalue(L, 1);   /* the value (self) */
-      lua_pushcclosure(L, cangjie_type_bound_method, 2);
+      lua_pushcclosure(L, cangjie_bound_method, 2);
       return 1;
     }
     return 1;  /* return non-nil value as-is */
@@ -294,7 +303,9 @@ static int cangjie_float64_call (lua_State *L) {
   return luaB_cangjie_float64(L);
 }
 
-/* __call wrappers for other type tables (shift table arg, delegate to standalone) */
+/* __call wrappers: remove the table-self first argument, then delegate
+** to the standalone conversion function.  Each built-in type table
+** (Int64, Float64, String, Bool) uses one of these as its __call. */
 static int cangjie_int64_call (lua_State *L) {
   lua_remove(L, 1);
   return luaB_cangjie_int64(L);
@@ -638,6 +649,12 @@ int luaB_extend_type (lua_State *L) {
 
 
 /*
+** ============================================================
+** Inheritance and type-checking support
+** ============================================================
+*/
+
+/*
 ** __cangjie_copy_to_type(target_table, source_table) - Copy all entries
 ** from source_table into target_table. Used to populate type proxy tables.
 */
@@ -790,6 +807,12 @@ int luaB_is_instance (lua_State *L) {
 
 
 /*
+** ============================================================
+** Iterator support
+** ============================================================
+*/
+
+/*
 ** __cangjie_iter(value) - Create an iterator for for-in loops.
 ** If value is a table (array), returns a value-only iterator
 ** (skipping array indices). For other iterables, pass through.
@@ -893,6 +916,12 @@ int luaB_match_tuple (lua_State *L) {
 
 
 /*
+** ============================================================
+** Enum support
+** ============================================================
+*/
+
+/*
 ** __cangjie_setup_enum(enum_table) - Set up enum table so that enum values
 ** (both constructor results and static values) get a metatable with __index
 ** pointing to the enum table, enabling method calls on enum values via this.
@@ -960,20 +989,14 @@ int luaB_setup_enum (lua_State *L) {
   lua_pushcclosure(L, cangjie_enum_index_handler, 1);
   lua_setfield(L, -2, "__index");  /* mt.__index = handler */
 
-  /* Copy metamethods (__add, __sub, __mul, etc.) from enum table to metatable.
+  /* Copy metamethods from enum table to metatable.
   ** Lua requires metamethods to be directly in the metatable, not behind __index. */
   {
-    static const char *metamethods[] = {
-      "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm",
-      "__idiv", "__band", "__bor", "__bxor", "__bnot", "__shl", "__shr",
-      "__eq", "__lt", "__le", "__len", "__concat", "__call",
-      "__tostring", NULL
-    };
     int mi;
-    for (mi = 0; metamethods[mi] != NULL; mi++) {
-      lua_getfield(L, 1, metamethods[mi]);
+    for (mi = 0; cj_enum_metamethods[mi] != NULL; mi++) {
+      lua_getfield(L, 1, cj_enum_metamethods[mi]);
       if (!lua_isnil(L, -1)) {
-        lua_setfield(L, -2, metamethods[mi]);  /* mt[metamethod] = value */
+        lua_setfield(L, -2, cj_enum_metamethods[mi]);  /* mt[metamethod] = value */
       }
       else {
         lua_pop(L, 1);
@@ -1564,6 +1587,12 @@ int luaB_array_slice_set (lua_State *L) {
   return 0;
 }
 
+
+/*
+** ============================================================
+** Cangjie string indexing and slicing support
+** ============================================================
+*/
 
 /*
 ** __cangjie_str_index(s, key)

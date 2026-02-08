@@ -933,13 +933,17 @@ bash run_tests.sh
 │   │   ├── ldump.c               #   字节码序列化
 │   │   ├── llex.c                #   词法分析器（支持仓颉关键字、运算符、字符串插值）
 │   │   ├── lparser.c             #   语法分析器核心（变量、表达式、语句、函数、控制流）
-│   │   ├── lparser_cj_types.c    #   仓颉类型定义解析（struct/class/interface/extend/enum）
-│   │   ├── lparser_cj_match.c    #   仓颉模式匹配与表达式形式（match/if/block 表达式）
+│   │   ├── lparser_cj_types.c    #   仓颉类型定义解析（struct/class/interface/extend/enum），
+│   │   │                         #     提供共享辅助函数：运算符到元方法映射、方法体解析、
+│   │   │                         #     运行时调用生成、接口应用等
+│   │   ├── lparser_cj_match.c    #   仓颉模式匹配与表达式形式（match/if/block 表达式），
+│   │   │                         #     统一匹配语句/表达式实现，共享自动返回解析逻辑
 │   │   └── lundump.c             #   字节码反序列化
 │   ├── libs/                     # 标准库与运行时库
 │   │   ├── lauxlib.c             #   辅助库
 │   │   ├── lbaselib.c            #   基础库（Lua 标准函数）
-│   │   ├── lbaselib_cj.c         #   仓颉运行时支持（类/结构体/枚举/元组/继承/模式匹配）
+│   │   ├── lbaselib_cj.c         #   仓颉运行时支持（OOP 实例化与方法绑定、继承链、
+│   │   │                         #     枚举运行时、元组、类型转换、Option、模式匹配）
 │   │   ├── lcorolib.c            #   协程库
 │   │   ├── ldblib.c              #   调试库
 │   │   ├── linit.c               #   库初始化
@@ -964,10 +968,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（68 个）
+│   ├── *.cj                      #   基础语言特性测试（72 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
-│   ├── usages/                   #   综合应用案例（15 个）
-│   └── diagnosis/                #   错误检测和诊断测试（9 个）
+│   ├── usages/                   #   综合应用案例（16 个）
+│   └── diagnosis/                #   错误检测和诊断测试（10 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
