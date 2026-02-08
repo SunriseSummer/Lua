@@ -53,7 +53,7 @@ Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），�
 ```cangjie
 let a = Int64('乐')         // 字符转为 Unicode 码值 (0x4E50)
 let b = Float64("3.14")     // 字符串转为浮点数
-let c = Int64("1234567")    // 字符串转为整数
+let c = Int64("1234567")    // 多字符字符串转为整数
 let d = Bool("true")        // 字符串转为布尔值
 let e = Int64(3.14)         // 浮点数转为整数（截断）
 let f = Float64(42)         // 整数转为浮点数
@@ -61,7 +61,12 @@ let g = String(65)          // 整数转为字符串 "65"
 let h = String(3.14)        // 浮点数转为字符串
 let i = String(true)        // 布尔值转为字符串
 let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
+let k = Int64('0')          // 字符 '0' 的码值 (48)，非数值 0
+let l = Int64('9')          // 字符 '9' 的码值 (57)
 ```
+
+> **注意**：`Int64()` 对单字符字符串（Rune）返回其 Unicode 码值，对多字符数字字符串执行数值解析。
+> 例如 `Int64('0')` 返回 48（码值），而 `Int64("123")` 返回 123（数值）。
 
 也支持传统的 `tostring()`、`tonumber()` 转换函数。
 
@@ -936,8 +941,9 @@ bash run_tests.sh
 │   │   ├── lparser_cj_types.c    #   仓颉类型定义解析（struct/class/interface/extend/enum），
 │   │   │                         #     提供共享辅助函数：运算符到元方法映射、方法体解析、
 │   │   │                         #     运行时调用生成、接口应用等
-│   │   ├── lparser_cj_match.c    #   仓颉模式匹配与表达式形式（match/if/block 表达式），
-│   │   │                         #     统一匹配语句/表达式实现，共享自动返回解析逻辑
+│   │   ├── lparser_cj_match.c    #   仓颉模式匹配（match 语句/匹配分支/枚举解构/元组模式等）
+│   │   ├── lparser_cj_expr.c    #   仓颉表达式形式与自动返回解析（block/if/match 表达式，
+│   │   │                         #     自动返回语句列表解析逻辑）
 │   │   └── lundump.c             #   字节码反序列化
 │   ├── libs/                     # 标准库与运行时库
 │   │   ├── lauxlib.c             #   辅助库
