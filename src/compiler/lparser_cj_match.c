@@ -4,21 +4,23 @@
 ** This file is #include'd from lparser.c and shares its static context.
 **
 ** Contents:
-**   match_case_body           — Parse match case body statements
-**   match_bind_enum_params    — Bind enum constructor parameters
-**   match_emit_tag_check      — Emit tag check for enum patterns
-**   match_emit_type_check     — Emit type check for type patterns
-**   match_emit_tuple_check    — Emit tuple pattern check
-**   match_bind_tuple_elem     — Bind tuple element variables
-**   match_emit_tuple_subpattern — Emit nested tuple sub-patterns
-**   matchstat_impl            — Main match statement implementation
-**   matchstat                 — Entry point for match statement
-**   matchstat_returning       — Match statement with auto-return
-**   statlist_autoreturning    — Statement list with implicit return
-**   blockexpr                 — Block expression { stmts; expr }
-**   ifexpr                    — If expression (produces value)
-**   match_case_body_returning — Match case with auto-return
-**   matchexpr                 — Match expression (produces value)
+**   match_case_body              — Parse match case body statements
+**   match_bind_enum_params       — Bind enum constructor parameters
+**   match_emit_tag_check         — Emit tag check for enum patterns
+**   match_emit_type_check        — Emit type check for type patterns
+**   match_emit_tuple_check       — Emit tuple pattern check
+**   match_bind_tuple_elem        — Bind tuple element variables
+**   match_emit_tuple_subpattern  — Emit nested tuple sub-patterns
+**   is_match_case_end            — Check for end of match case body
+**   matchstat_impl               — Main match statement implementation
+**   matchstat                    — Entry point for match statement
+**   matchstat_returning          — Match statement with auto-return
+**   statlist_autoreturning_ex    — Parameterized auto-returning body
+**   statlist_autoreturning       — Auto-returning body (block context)
+**   blockexpr                    — Block expression { stmts; expr }
+**   ifexpr                       — If expression (produces value)
+**   match_case_body_returning    — Match case with auto-return
+**   matchexpr                    — Match expression (produces value)
 **
 ** See Copyright Notice in lua.h
 */
@@ -240,6 +242,17 @@ static int match_emit_tuple_subpattern (LexState *ls, TString *match_var_name,
 ** type patterns, tuple patterns, nested patterns.
 ** ============================================================
 */
+
+/*
+** Check whether current token ends a match case body.
+** Returns true if token is 'case', '}', or end-of-stream.
+*/
+static int is_match_case_end (LexState *ls) {
+  return ls->t.token == TK_CASE ||
+         ls->t.token == /*{*/ '}' ||
+         ls->t.token == TK_EOS;
+}
+
 static void match_case_body_returning (LexState *ls);
 static void matchstat_impl (LexState *ls, int line, int autoreturn) {
   /*
@@ -493,8 +506,14 @@ static void matchstat_returning (LexState *ls, int line) {
 }
 
 
-static void statlist_autoreturning (LexState *ls) {
-  while (!block_follow(ls, 1)) {
+/*
+** Auto-returning statement list implementation.
+** Parses statements until the end of the enclosing block, auto-returning
+** the last expression.  When 'in_match_case' is 0, end-of-block is
+** determined by block_follow(); when non-zero, by is_match_case_end().
+*/
+static void statlist_autoreturning_ex (LexState *ls, int in_match_case) {
+  while (!(in_match_case ? is_match_case_end(ls) : block_follow(ls, 1))) {
     if (ls->t.token == TK_RETURN) {
       statement(ls);
       return;  /* explicit return */
@@ -516,7 +535,7 @@ static void statlist_autoreturning (LexState *ls) {
             ifstat_returning(ls, line2);
           else
             matchstat_returning(ls, line2);
-          if (block_follow(ls, 1))
+          if (in_match_case ? is_match_case_end(ls) : block_follow(ls, 1))
             return;  /* was the last statement; branches already auto-return */
         }
         else {
@@ -527,6 +546,7 @@ static void statlist_autoreturning (LexState *ls) {
       else {
         /* Potential expression - could be assignment, call, or last expr */
         FuncState *fs = ls->fs;
+        int at_end;
         enterlevel(ls);
         /* Check for Unit literal '()' */
         if (tok == '(' && luaX_lookahead(ls) == ')') {
@@ -585,8 +605,10 @@ static void statlist_autoreturning (LexState *ls) {
               }
             }
             /* Check what follows */
-            if (block_follow(ls, 1)) {
-              /* Last expression before '}' - auto-return */
+            at_end = in_match_case ? is_match_case_end(ls)
+                                   : block_follow(ls, 1);
+            if (at_end) {
+              /* Last expression - auto-return */
               luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
               lua_assert(fs->f->maxstacksize >= fs->freereg &&
                          fs->freereg >= luaY_nvarstack(fs));
@@ -616,7 +638,8 @@ static void statlist_autoreturning (LexState *ls) {
           /* Non-NAME token: literal, unary op, etc. Parse as full expression */
           expdesc e;
           expr(ls, &e);
-          if (block_follow(ls, 1)) {
+          at_end = in_match_case ? is_match_case_end(ls) : block_follow(ls, 1);
+          if (at_end) {
             luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
             lua_assert(fs->f->maxstacksize >= fs->freereg &&
                        fs->freereg >= luaY_nvarstack(fs));
@@ -638,6 +661,14 @@ static void statlist_autoreturning (LexState *ls) {
       }
     }
   }
+}
+
+/*
+** Auto-returning statement list for block contexts (if, block expressions).
+** End-of-block is determined by block_follow().
+*/
+static void statlist_autoreturning (LexState *ls) {
+  statlist_autoreturning_ex(ls, 0);
 }
 
 
@@ -767,6 +798,8 @@ static void ifexpr (LexState *ls, expdesc *v, int line) {
 /*
 ** Match case body with auto-returning: parse statements until next
 ** 'case' or '}', with the last expression auto-returned.
+** Braces-style body delegates to statlist_autoreturning (block context);
+** bare-style body uses statlist_autoreturning_ex with match-case end check.
 */
 static void match_case_body_returning (LexState *ls) {
   if (ls->t.token == '{') {
@@ -777,116 +810,7 @@ static void match_case_body_returning (LexState *ls) {
   }
   else {
     /* Cangjie-style: statements until next 'case' or '}' */
-    while (ls->t.token != TK_CASE &&
-           ls->t.token != /*{*/ '}' &&
-           ls->t.token != TK_EOS) {
-      if (ls->t.token == TK_RETURN) {
-        statement(ls);
-        return;
-      }
-      {
-        int tok = ls->t.token;
-        int is_keyword_stat = (tok == TK_LET || tok == TK_VAR || tok == TK_WHILE ||
-                               tok == TK_FOR || tok == TK_FUNC || tok == TK_STRUCT ||
-                               tok == TK_CLASS || tok == TK_ENUM || tok == TK_INTERFACE ||
-                               tok == TK_EXTEND || tok == TK_BREAK || tok == TK_CONTINUE ||
-                               tok == ';' || tok == TK_DBCOLON || tok == TK_IF ||
-                               tok == TK_MATCH);
-        if (is_keyword_stat) {
-          /* if/match as last statement: use auto-returning branches */
-          if ((tok == TK_IF || tok == TK_MATCH)) {
-            int line2 = ls->linenumber;
-            if (tok == TK_IF)
-              ifstat_returning(ls, line2);
-            else
-              matchstat_returning(ls, line2);
-            if (ls->t.token == TK_CASE ||
-                ls->t.token == /*{*/ '}' ||
-                ls->t.token == TK_EOS)
-              return;  /* was the last statement */
-          }
-          else {
-            statement(ls);
-          }
-        }
-        else {
-          FuncState *fs = ls->fs;
-          enterlevel(ls);
-          if (tok == '(' && luaX_lookahead(ls) == ')') {
-            luaX_next(ls);
-            luaX_next(ls);
-          }
-          else if (tok == TK_NAME || tok == TK_THIS) {
-            expdesc e;
-            suffixedexp(ls, &e);
-            if (ls->t.token == '=' || ls->t.token == ',') {
-              struct LHS_assign v;
-              v.v = e;
-              v.prev = NULL;
-              restassign(ls, &v, 1);
-            }
-            else {
-              /* Continue parsing binary ops */
-              {
-                BinOpr op = getbinopr(ls->t.token);
-                while (op != OPR_NOBINOPR && priority[op].left > 0) {
-                  expdesc e2;
-                  BinOpr nextop;
-                  int line2 = ls->linenumber;
-                  luaX_next(ls);
-                  luaK_infix(fs, op, &e);
-                  nextop = subexpr(ls, &e2, priority[op].right);
-                  luaK_posfix(fs, op, &e, &e2, line2);
-                  op = nextop;
-                }
-              }
-              if (ls->t.token == TK_CASE ||
-                  ls->t.token == /*{*/ '}' ||
-                  ls->t.token == TK_EOS) {
-                /* Last expression - auto-return */
-                luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
-                lua_assert(fs->f->maxstacksize >= fs->freereg &&
-                           fs->freereg >= luaY_nvarstack(fs));
-                fs->freereg = luaY_nvarstack(fs);
-                leavelevel(ls);
-                return;
-              }
-              else {
-                Instruction *inst;
-                check_condition(ls, e.k == VCALL, "syntax error");
-                inst = &getinstruction(fs, &e);
-                SETARG_C(*inst, 1);
-              }
-            }
-          }
-          else {
-            /* Non-NAME: literal, unary, etc. - parse full expression */
-            expdesc e;
-            expr(ls, &e);
-            if (ls->t.token == TK_CASE ||
-                ls->t.token == /*{*/ '}' ||
-                ls->t.token == TK_EOS) {
-              luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
-              lua_assert(fs->f->maxstacksize >= fs->freereg &&
-                         fs->freereg >= luaY_nvarstack(fs));
-              fs->freereg = luaY_nvarstack(fs);
-              leavelevel(ls);
-              return;
-            }
-            else {
-              if (e.k == VCALL) {
-                Instruction *inst = &getinstruction(fs, &e);
-                SETARG_C(*inst, 1);
-              }
-            }
-          }
-          lua_assert(fs->f->maxstacksize >= fs->freereg &&
-                     fs->freereg >= luaY_nvarstack(fs));
-          fs->freereg = luaY_nvarstack(fs);
-          leavelevel(ls);
-        }
-      }
-    }
+    statlist_autoreturning_ex(ls, 1);
   }
 }
 
@@ -894,6 +818,7 @@ static void match_case_body_returning (LexState *ls) {
 /*
 ** Match expression: match (expr) { case ... => expr }
 ** Wraps in IIFE where each case branch auto-returns its last expression.
+** Reuses matchstat_impl with autoreturn=1, same pattern as blockexpr/ifexpr.
 */
 static void matchexpr (LexState *ls, expdesc *v, int line) {
   FuncState new_fs;
@@ -908,200 +833,8 @@ static void matchexpr (LexState *ls, expdesc *v, int line) {
   open_func(ls, &new_fs, &bl);
   new_fs.f->numparams = 0;
 
-  /* Parse match expression body - replicates matchstat but with auto-return */
-  {
-    FuncState *fs = ls->fs;
-    expdesc match_val;
-    int jmp_to_end[256];
-    int njumps = 0;
-    TString *match_var_name;
-
-    luaX_next(ls);  /* skip 'match' */
-    checknext(ls, '(');
-    expr(ls, &match_val);
-    checknext(ls, ')');
-
-    match_var_name = luaX_newstring(ls, "__match_val", 11);
-    {
-      new_varkind(ls, match_var_name, VDKREG);
-      luaK_exp2nextreg(fs, &match_val);
-      adjustlocalvars(ls, 1);
-    }
-
-    checknext(ls, '{' /*}*/);
-
-    while (ls->t.token == TK_CASE && ls->t.token != TK_EOS) {
-      BlockCnt bl2;
-      luaX_next(ls);  /* skip 'case' */
-
-      /* Wildcard pattern */
-      if (ls->t.token == TK_NAME &&
-          strcmp(getstr(ls->t.seminfo.ts), "_") == 0 &&
-          luaX_lookahead(ls) == TK_ARROW) {
-        luaX_next(ls);
-        checknext(ls, TK_ARROW);
-        enterblock(fs, &bl2, 0);
-        match_case_body_returning(ls);
-        leaveblock(fs);
-        if (njumps < 256)
-          jmp_to_end[njumps++] = luaK_jump(fs);
-      }
-      /* Tuple pattern */
-      else if (ls->t.token == '(') {
-        int npatterns = 0;
-        TString *tpat_names[32];
-        TString *tpat_tags[32];
-        int condjmp;
-
-        luaX_next(ls);
-        while (ls->t.token != ')' && ls->t.token != TK_EOS) {
-          if (ls->t.token == TK_NAME) {
-            TString *nm = ls->t.seminfo.ts;
-            if (strcmp(getstr(nm), "_") == 0) {
-              if (npatterns < 32) { tpat_names[npatterns] = NULL; tpat_tags[npatterns] = NULL; npatterns++; }
-            } else {
-              if (npatterns < 32) { tpat_names[npatterns] = nm; tpat_tags[npatterns] = NULL; npatterns++; }
-            }
-            luaX_next(ls);
-          }
-          if (!testnext(ls, ',')) break;
-        }
-        checknext(ls, ')');
-        checknext(ls, TK_ARROW);
-
-        condjmp = match_emit_tuple_check(ls, match_var_name, npatterns);
-        enterblock(fs, &bl2, 0);
-        {
-          int ti;
-          for (ti = 0; ti < npatterns; ti++) {
-            if (tpat_names[ti] != NULL) {
-              match_bind_tuple_elem(ls, match_var_name, tpat_names[ti], ti);
-            } else {
-              char dn[16]; TString *dname;
-              snprintf(dn, sizeof(dn), "__td%d", ti);
-              dname = luaX_newstring(ls, dn, (size_t)strlen(dn));
-              match_bind_tuple_elem(ls, match_var_name, dname, ti);
-            }
-          }
-        }
-        match_case_body_returning(ls);
-        leaveblock(fs);
-        if (njumps < 256)
-          jmp_to_end[njumps++] = luaK_jump(fs);
-        luaK_patchtohere(fs, condjmp);
-      }
-      /* Name-based patterns */
-      else if (ls->t.token == TK_NAME) {
-        TString *patname = ls->t.seminfo.ts;
-        luaX_next(ls);
-
-        if (ls->t.token == '(') {
-          /* Enum constructor pattern */
-          int nparams = 0;
-          TString *param_names[32];
-          int condjmp;
-
-          luaX_next(ls);
-          while (ls->t.token != ')' && ls->t.token != TK_EOS) {
-            if (ls->t.token == TK_NAME) {
-              TString *nm = ls->t.seminfo.ts;
-              if (strcmp(getstr(nm), "_") == 0) {
-                if (nparams < 32) param_names[nparams++] = NULL;
-              } else {
-                if (nparams < 32) param_names[nparams++] = nm;
-              }
-              luaX_next(ls);
-            }
-            if (!testnext(ls, ',')) break;
-          }
-          checknext(ls, ')');
-          checknext(ls, TK_ARROW);
-
-          condjmp = match_emit_tag_check(ls, match_var_name, patname);
-          enterblock(fs, &bl2, 0);
-          match_bind_enum_params(ls, match_var_name, param_names, nparams);
-          match_case_body_returning(ls);
-          leaveblock(fs);
-          if (njumps < 256)
-            jmp_to_end[njumps++] = luaK_jump(fs);
-          luaK_patchtohere(fs, condjmp);
-        }
-        else if (ls->t.token == ':') {
-          /* Type pattern */
-          TString *type_name;
-          int condjmp;
-          luaX_next(ls);
-          type_name = str_checkname(ls);
-          checknext(ls, TK_ARROW);
-
-          condjmp = match_emit_type_check(ls, match_var_name, type_name);
-          enterblock(fs, &bl2, 0);
-          {
-            expdesc mv;
-            new_varkind(ls, patname, VDKREG);
-            buildvar(ls, match_var_name, &mv);
-            luaK_exp2nextreg(fs, &mv);
-            adjustlocalvars(ls, 1);
-          }
-          match_case_body_returning(ls);
-          leaveblock(fs);
-          if (njumps < 256)
-            jmp_to_end[njumps++] = luaK_jump(fs);
-          luaK_patchtohere(fs, condjmp);
-        }
-        else {
-          /* No-arg enum constructor pattern */
-          int condjmp;
-          checknext(ls, TK_ARROW);
-          condjmp = match_emit_tag_check(ls, match_var_name, patname);
-          enterblock(fs, &bl2, 0);
-          match_case_body_returning(ls);
-          leaveblock(fs);
-          if (njumps < 256)
-            jmp_to_end[njumps++] = luaK_jump(fs);
-          luaK_patchtohere(fs, condjmp);
-        }
-      }
-      /* Constant patterns */
-      else if (ls->t.token == TK_INT || ls->t.token == TK_FLT ||
-               ls->t.token == TK_STRING || ls->t.token == TK_TRUE ||
-               ls->t.token == TK_FALSE || ls->t.token == TK_NIL) {
-        expdesc pat_val;
-        BlockCnt bl3;
-        int condjmp;
-
-        simpleexp(ls, &pat_val);
-        checknext(ls, TK_ARROW);
-
-        {
-          expdesc lhs;
-          buildvar(ls, match_var_name, &lhs);
-          luaK_infix(fs, OPR_EQ, &lhs);
-          luaK_posfix(fs, OPR_EQ, &lhs, &pat_val, line);
-          luaK_goiftrue(fs, &lhs);
-          condjmp = lhs.f;
-        }
-
-        enterblock(fs, &bl3, 0);
-        match_case_body_returning(ls);
-        leaveblock(fs);
-        if (njumps < 256)
-          jmp_to_end[njumps++] = luaK_jump(fs);
-        luaK_patchtohere(fs, condjmp);
-      }
-      else {
-        luaX_syntaxerror(ls, "invalid pattern in match expression");
-      }
-    }
-
-    check_match(ls, /*{*/ '}', TK_MATCH, line);
-
-    {
-      int ji;
-      for (ji = 0; ji < njumps; ji++)
-        luaK_patchtohere(fs, jmp_to_end[ji]);
-    }
-  }
+  /* Reuse matchstat_impl with autoreturn=1 */
+  matchstat_impl(ls, line, 1);
 
   new_fs.f->lastlinedefined = ls->linenumber;
   codeclosure(ls, &fn_expr);
