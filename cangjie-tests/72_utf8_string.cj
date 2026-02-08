@@ -1,7 +1,7 @@
 dofile("cangjie-tests/_testing.cj")
 
 // Test: Native UTF-8 string support
-// String indexing returns Rune (UTF-8 character), .size returns character count
+// String indexing returns Rune (Unicode character), .size returns character count
 
 // --- Section: ASCII strings (unchanged behavior) ---
 let ascii = "hello"
@@ -44,6 +44,34 @@ expectEq(emoji[1], "i", "emoji index 1")
 expectEq(emoji[2], "😀", "emoji index 2")
 expectEq(emoji[3], "🎉", "emoji index 3")
 expectEq(emoji[2..=3], "😀🎉", "emoji slice")
+
+// --- Section: Indexed character is Rune (single Unicode character) ---
+// Verify that indexed characters behave as Rune type:
+// - Equal to Rune literals
+// - Support Rune comparison operators
+// - Can be converted to code point via Int64()
+
+let runeH: Rune = r'h'
+expectEq(ascii[0], runeH, "index returns Rune: ascii[0] == r'h'")
+
+let runeNi: Rune = r'\u{4f60}'  // 你
+expectEq(cjk[0], runeNi, "index returns Rune: cjk[0] == r'你'")
+
+// Rune comparison with indexed character
+expectTrue(ascii[0] == r'h', "indexed char == Rune literal")
+expectTrue(ascii[0] < r'z', "indexed char < Rune literal")
+expectTrue(ascii[4] > r'a', "indexed char > Rune literal")
+
+// Int64 conversion of indexed character (Rune -> code point)
+expectEq(Int64(cjk[0]), 0x4F60, "Int64(cjk[0]) == 0x4F60 (你)")
+expectEq(Int64(mixed[5]), 0x4F60, "Int64(mixed[5]) == 0x4F60 (你)")
+expectEq(Int64(ascii[0]), 104, "Int64(ascii[0]) == 104 (h)")
+
+// Rune() conversion of indexed character is identity
+expectEq(Rune(Int64(cjk[1])), cjk[1], "Rune round-trip on indexed char")
+
+// Emoji indexed character as Rune
+expectEq(Int64(emoji[2]), 0x1F600, "Int64(emoji[2]) == 0x1F600 (😀)")
 
 // --- Section: String for-in with UTF-8 ---
 let chars = "你好"

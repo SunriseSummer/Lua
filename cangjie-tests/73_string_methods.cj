@@ -2,10 +2,10 @@ dofile("cangjie-tests/_testing.cj")
 
 // Test: String member methods (Cangjie-style)
 
-// --- Section: isEmpty property ---
-expectTrue("".isEmpty, "empty string isEmpty")
-expectFalse("hello".isEmpty, "non-empty string isEmpty")
-expectFalse(" ".isEmpty, "space string isEmpty")
+// --- Section: isEmpty method ---
+expectTrue("".isEmpty(), "empty string isEmpty()")
+expectFalse("hello".isEmpty(), "non-empty string isEmpty()")
+expectFalse(" ".isEmpty(), "space string isEmpty()")
 
 // --- Section: contains ---
 expectTrue("hello world".contains("world"), "contains 'world'")

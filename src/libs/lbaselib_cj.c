@@ -1691,6 +1691,14 @@ static int str_bound_call (lua_State *L) {
   return lua_gettop(L) - nargs;
 }
 
+/* s:isEmpty() -> Bool */
+static int str_isEmpty (lua_State *L) {
+  size_t len;
+  luaL_checklstring(L, 1, &len);
+  lua_pushboolean(L, len == 0);
+  return 1;
+}
+
 /* s:contains(sub) -> Bool */
 static int str_contains (lua_State *L) {
   size_t slen, sublen;
@@ -2047,6 +2055,7 @@ typedef struct {
 } StrMethod;
 
 static const StrMethod str_methods[] = {
+  {"isEmpty", str_isEmpty},
   {"contains", str_contains},
   {"startsWith", str_startsWith},
   {"endsWith", str_endsWith},
@@ -2112,10 +2121,6 @@ int luaB_str_index (lua_State *L) {
       lua_Integer charCount = utf8_charcount(s, len);
       if (charCount < 0) charCount = (lua_Integer)len;
       lua_pushinteger(L, charCount);
-      return 1;
-    }
-    if (strcmp(key, "isEmpty") == 0) {
-      lua_pushboolean(L, len == 0);
       return 1;
     }
     /* Check built-in string methods */

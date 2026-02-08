@@ -75,7 +75,7 @@ expectEq(countWord(article, "dog"), 0, "count 'dog'")
 
 // --- String validation ---
 func isNumericString(s: String): Bool {
-    if (s.isEmpty) { return false }
+    if (s.isEmpty()) { return false }
     for (i in 0..s.size) {
         let c = s[i]
         if (c < "0" || c > "9") {
