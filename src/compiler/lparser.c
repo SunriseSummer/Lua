@@ -2446,6 +2446,11 @@ static void simpleexp (LexState *ls, expdesc *v) {
         int line2 = ls->linenumber;
         luaX_next(ls);  /* skip '{' */
         bracelambda(ls, v, line2);
+        /* Handle immediate invocation: { => expr }() */
+        while (ls->t.token == '(' && ls->linenumber == ls->lastline) {
+          luaK_exp2nextreg(ls->fs, v);
+          funcargs(ls, v);
+        }
         return;
       }
       /* Detect block expression: first token after '{' is a statement keyword
@@ -3516,40 +3521,44 @@ static void skip_letvar_type (LexState *ls) {
   if (ls->t.token == '?') {
     luaX_next(ls);  /* skip '?' */
   }
-  if (ls->t.token == '(') {
-    has_type = 1;
-    depth++;
-    luaX_next(ls);
-    while (depth > 0 && ls->t.token != TK_EOS) {
-      if (ls->t.token == '(') depth++;
-      else if (ls->t.token == ')') depth--;
-      if (depth > 0) luaX_next(ls);
+  for (;;) {
+    if (ls->t.token == TK_NAME) {
+      has_type = 1;
+      luaX_next(ls);
     }
-    if (ls->t.token == ')') luaX_next(ls);
-    if (ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+    else if (ls->t.token == '<' || ls->t.token == '(') {
+      if (ls->t.token == '(') has_type = 1;
+      depth++;
       luaX_next(ls);
+    }
+    else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+      int was_paren = (ls->t.token == ')');
+      depth--;
       luaX_next(ls);
-      while (ls->t.token == TK_NAME ||
-             (ls->t.token == '<') ||
-             (ls->t.token == '>' && depth > 0) ||
-             (ls->t.token == ',' && depth > 0) ||
-             (ls->t.token == '?')) {
-        if (ls->t.token == '<') depth++;
-        else if (ls->t.token == '>') depth--;
-        luaX_next(ls);
+      /* After closing ')', check for function return type '-> Type' */
+      if (was_paren && ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+        luaX_next(ls);  /* skip '-' */
+        luaX_next(ls);  /* skip '>' */
+        /* continue to parse the return type */
       }
     }
-  }
-  else {
-    while (ls->t.token == TK_NAME ||
-           (ls->t.token == '<') ||
-           (ls->t.token == '>' && depth > 0) ||
-           (ls->t.token == ',' && depth > 0) ||
-           (ls->t.token == '?')) {
-      has_type = 1;
-      if (ls->t.token == '<') depth++;
-      else if (ls->t.token == '>') depth--;
+    else if (ls->t.token == TK_SHR && depth >= 2) {
+      /* '>>' is lexed as TK_SHR; treat as two '>' in type context */
+      depth -= 2;
       luaX_next(ls);
+    }
+    else if (ls->t.token == ',' && depth > 0) {
+      luaX_next(ls);
+    }
+    else if (ls->t.token == '?' && depth > 0) {
+      luaX_next(ls);
+    }
+    else if (ls->t.token == TK_NOT && depth > 0) {
+      /* '!' in parameter names for named params in function types */
+      luaX_next(ls);
+    }
+    else {
+      break;
     }
   }
   if (!has_type) {

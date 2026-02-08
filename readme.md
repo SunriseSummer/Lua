@@ -8,7 +8,7 @@
 
 - **不可变变量** `let`：`let x: Int64 = 42`
 - **可变变量** `var`：`var name: String = "hello"`
-- **类型注解**：支持 `Int64`、`Float64`、`String`、`Bool`、`Rune` 等类型标注
+- **类型注解**：支持 `Int64`、`Float64`、`String`、`Bool`、`Rune` 等类型标注，也支持泛型类型 `Array<Int64>`、嵌套泛型 `Array<Array<Int64>>`、函数类型 `(Int64, Int64) -> Int64`、泛型内函数类型 `Array<(Int64) -> Int64>` 等复合类型注解
 - **类型推断**：可省略类型注解，由右值推断类型
 
 ### 数据类型
@@ -79,6 +79,12 @@
   - 省略类型标注：`{ x, y => x * y }`
   - 函数体：`{ x => var y = x + 1; return y }`
   - 也支持 Lua 风格的原括号语法：如 `(x, y) => { x + y }`
+- **Lambda 立即调用（IIFE）**：Lambda 表达式可以直接跟 `()` 立即调用
+  ```cangjie
+  let x = { => 42 }()               // 无参数 IIFE
+  let y = { a, b => a + b }(3, 4)   // 带参数 IIFE，y = 7
+  let z = { => { x => x + 1 } }()(5)  // 链式 IIFE，z = 6
+  ```
 - **Lambda 作为函数参数**：Lambda 表达式可作为函数类型参数传递
   ```cangjie
   func apply(fn: (Int64, Int64) -> Int64, a: Int64, b: Int64): Int64 { ... }

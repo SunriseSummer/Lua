@@ -53,16 +53,22 @@ static void skip_type_annotation (LexState *ls) {
         luaX_next(ls);
       }
       else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+        int was_paren = (ls->t.token == ')');
         depth--;
         luaX_next(ls);
-        /* After closing ')' at depth 0, check for function return type '-> Type' */
-        if (depth == 0 && ls->t.token == '-') {
+        /* After closing ')', check for function return type '-> Type' */
+        if (was_paren && ls->t.token == '-') {
           if (luaX_lookahead(ls) == '>') {
             luaX_next(ls);  /* skip '-' */
             luaX_next(ls);  /* skip '>' */
             /* continue to parse the return type */
           }
         }
+      }
+      else if (ls->t.token == TK_SHR && depth >= 2) {
+        /* '>>' is lexed as TK_SHR; treat as two '>' in type context */
+        depth -= 2;
+        luaX_next(ls);
       }
       else if (ls->t.token == ',' && depth > 0) {
         luaX_next(ls);
