@@ -1599,6 +1599,10 @@ int luaB_array_slice_set (lua_State *L) {
 
 /*
 ** Decode one UTF-8 sequence, returning NULL if byte sequence is invalid.
+** The 'limits' array stores the minimum code point for each sequence length,
+** to reject overlong encodings: [0]=force error for no continuation bytes,
+** [1]=2-byte min 0x80, [2]=3-byte min 0x800, [3]=4-byte min 0x10000,
+** [4]=5-byte min 0x200000, [5]=6-byte min 0x4000000.
 */
 static const char *utf8_decode_cj (const char *s, l_uint32 *val) {
   static const l_uint32 limits[] =
@@ -1687,14 +1691,6 @@ static int str_bound_call (lua_State *L) {
   return lua_gettop(L) - nargs;
 }
 
-/* s:isEmpty() -> Bool */
-static int str_isEmpty (lua_State *L) {
-  size_t len;
-  luaL_checklstring(L, 1, &len);
-  lua_pushboolean(L, len == 0);
-  return 1;
-}
-
 /* s:contains(sub) -> Bool */
 static int str_contains (lua_State *L) {
   size_t slen, sublen;
@@ -1748,7 +1744,11 @@ static int str_replace_cj (lua_State *L) {
   return 1;
 }
 
-/* s:split(sep) -> Array<String> (0-based table with .size) */
+/*
+** s:split(sep) -> Array<String> (0-based table with .size)
+** Note: For invalid UTF-8 bytes (when sep is empty), we fall back to
+** single-byte handling to gracefully handle Lua's arbitrary byte strings.
+*/
 static int str_split_cj (lua_State *L) {
   size_t slen, seplen;
   const char *s = luaL_checklstring(L, 1, &slen);
@@ -1874,7 +1874,11 @@ static int str_toArray_cj (lua_State *L) {
   return 1;
 }
 
-/* s:toRuneArray() -> Array<Rune> (UTF-8 character array, 0-based) */
+/*
+** s:toRuneArray() -> Array<Rune> (UTF-8 character array, 0-based)
+** Invalid UTF-8 bytes are treated as single-byte characters to gracefully
+** handle Lua's arbitrary byte strings.
+*/
 static int str_toRuneArray_cj (lua_State *L) {
   size_t len;
   const char *s = luaL_checklstring(L, 1, &len);
@@ -1899,7 +1903,11 @@ static int str_toRuneArray_cj (lua_State *L) {
   return 1;
 }
 
-/* s:indexOf(sub [, fromIndex]) -> Int64 or -1 */
+/*
+** s:indexOf(sub [, fromIndex]) -> Int64 or -1
+** Returns character position. Invalid UTF-8 bytes are counted as single
+** characters for position calculation.
+*/
 static int str_indexOf_cj (lua_State *L) {
   size_t slen, sublen;
   const char *s = luaL_checklstring(L, 1, &slen);
@@ -1932,7 +1940,11 @@ static int str_indexOf_cj (lua_State *L) {
   return 1;
 }
 
-/* s:lastIndexOf(sub [, fromIndex]) -> Int64 or -1 */
+/*
+** s:lastIndexOf(sub [, fromIndex]) -> Int64 or -1
+** Returns character position. Invalid UTF-8 bytes are counted as single
+** characters for position calculation.
+*/
 static int str_lastIndexOf_cj (lua_State *L) {
   size_t slen, sublen;
   const char *s = luaL_checklstring(L, 1, &slen);
@@ -2013,11 +2025,15 @@ static int str_fromUtf8 (lua_State *L) {
   }
   luaL_buffinit(L, &b);
   for (i = 0; i < n; i++) {
-    lua_Integer byte;
+    lua_Integer byteVal;
     lua_rawgeti(L, 1, i);
-    byte = lua_tointeger(L, -1);
+    byteVal = lua_tointeger(L, -1);
     lua_pop(L, 1);
-    luaL_addchar(&b, (char)(unsigned char)byte);
+    if (byteVal < 0 || byteVal > 255) {
+      return luaL_error(L, "byte value %I out of range [0, 255] at index %I",
+                        (long long)byteVal, (long long)i);
+    }
+    luaL_addchar(&b, (char)(unsigned char)byteVal);
   }
   luaL_pushresult(&b);
   return 1;
@@ -2031,7 +2047,6 @@ typedef struct {
 } StrMethod;
 
 static const StrMethod str_methods[] = {
-  {"isEmpty", str_isEmpty},
   {"contains", str_contains},
   {"startsWith", str_startsWith},
   {"endsWith", str_endsWith},
