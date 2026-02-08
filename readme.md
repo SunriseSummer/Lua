@@ -345,6 +345,31 @@ extend Int64 <: Printable {
 
 在 `interface` 和 `extend` 中也支持 `operator func` 声明或实现。
 
+扩展方法可以直接在字面量上调用，无需中间变量：
+```cangjie
+extend Int64 {
+  func pow(e: Int64): Int64 { this ** e }
+  func double(): Int64 { this * 2 }
+  func even(): Bool { this % 2 == 0 }
+}
+println(2.pow(10))       // 1024.0
+println(3.double())      // 6
+println(4.even())        // true
+
+extend String {
+  func shout(): String { this .. "!!!" }
+}
+println("hello".shout()) // hello!!!
+
+extend Bool {
+  func toStr(): String { if (this) { "yes" } else { "no" } }
+}
+println(true.toStr())    // yes
+
+// 方法链式调用
+println(5.double().double())  // 20
+```
+
 ### 元组类型
 
 ```cangjie
@@ -775,7 +800,7 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 2. **继承**：支持 `class B <: A` 单继承语法，子类继承父类方法并可重写；`open` 修饰的类可被继承，`open` 修饰的方法可被重写；支持 `super(args)` 调用父类构造函数
 3. **接口**：`interface` 声明创建接口表，方法签名被解析；接口中的方法可提供默认实现体，默认方法被编译并存储在接口表中；class 可使用 `<:` 声明实现接口，运行时通过 `__cangjie_apply_interface` 自动继承未覆盖的默认方法
 4. **泛型**：泛型类型参数在解析阶段被跳过，依赖 Lua 的动态类型在运行时实现多态
-5. **内置类型扩展**：扩展方法通过元表 `__index` 实现，对同一类型的多次扩展会叠加方法（后续扩展的方法会优先被查找）
+5. **内置类型扩展**：扩展方法通过元表 `__index` 实现，对同一类型的多次扩展会叠加方法（后续扩展的方法会优先被查找）；扩展方法可直接在字面量上调用（如 `2.pow(10)`、`"hello".shout()`、`true.toggle()`），支持方法链式调用
 6. **隐式 this**：仅在 `struct/class` 体内声明的 `var/let` 字段名可被隐式解析为 `self.field`，局部变量同名时局部变量优先
 7. **访问控制**：支持 `public` 和 `private` 修饰成员变量和成员函数（编译期语法支持，运行时不强制检查）
 8. **元组嵌套字面量**：不支持直接嵌套元组字面量 `((1,2), (3,4))`，需通过变量间接嵌套
@@ -899,10 +924,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（46 个）
+│   ├── *.cj                      #   基础语言特性测试（52 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
-│   ├── usages/                   #   综合应用案例（9 个）
-│   └── diagnosis/                #   错误检测和诊断测试（5 个）
+│   ├── usages/                   #   综合应用案例（12 个）
+│   └── diagnosis/                #   错误检测和诊断测试（7 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
