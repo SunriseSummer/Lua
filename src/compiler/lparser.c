@@ -2607,6 +2607,12 @@ static void simpleexp (LexState *ls, expdesc *v) {
         luaK_storevar(fs2, &tab4, &sval);
       }
       luaK_settablesize(fs2, pc2, tabReg, 0, count + 1);
+      /* Check for suffix operations on array literal (e.g., [1,2,3].size) */
+      if (ls->t.token == '.' || ls->t.token == '[' ||
+          ls->t.token == ':' ||
+          (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+        suffixedops(ls, v);
+      }
       return;
     }
     case TK_FUNC: {
