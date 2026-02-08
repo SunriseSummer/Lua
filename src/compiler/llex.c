@@ -201,6 +201,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source,
   ls->in_struct_method = 0;  /* not inside a struct method */
   ls->current_class_name = NULL;  /* not inside a class */
   ls->nclass_registry = 0;  /* no classes registered */
+  ls->in_range_limit = 0;  /* not inside range limit */
 #if LUA_COMPAT_GLOBAL
   /* compatibility mode: "global" is not a reserved word */
   ls->glbn = luaS_newliteral(L, "global");  /* get "global" string */

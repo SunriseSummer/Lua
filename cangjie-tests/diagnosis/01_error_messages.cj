@@ -57,7 +57,7 @@ expectLoadError("continue outside loop",
 
 expectLoadError("assign to let variable",
   "let x = 10\nx = 20",
-  "attempt to assign to const variable")
+  "attempt to assign to immutable variable")
 
 expectLoadError("empty type annotation",
   "let x: = 10",

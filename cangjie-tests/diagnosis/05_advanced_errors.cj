@@ -24,7 +24,7 @@ expectLoadError("let without init",
 
 expectLoadError("reassign to let",
     "let x = 10\nx = 20",
-    "attempt to assign to const variable")
+    "attempt to assign to immutable variable")
 
 // --- Struct/class errors ---
 

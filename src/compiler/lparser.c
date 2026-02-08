@@ -297,7 +297,7 @@ static void init_var (FuncState *fs, expdesc *e, int vidx) {
 */
 static void check_readonly (LexState *ls, expdesc *e) {
   FuncState *fs = ls->fs;
-  TString *varname = NULL;  /* to be set if variable is const */
+  TString *varname = NULL;  /* to be set if variable is immutable */
   switch (e->k) {
     case VCONST: {
       varname = ls->dyd->actvar.arr[e->u.info].vd.name;
@@ -329,7 +329,7 @@ static void check_readonly (LexState *ls, expdesc *e) {
       return;  /* integer index cannot be read-only */
   }
   if (varname)
-    luaK_semerror(ls, "attempt to assign to const variable '%s'",
+    luaK_semerror(ls, "attempt to assign to immutable variable '%s'",
                       getstr(varname));
 }
 
@@ -2089,12 +2089,16 @@ static void suffixedexp (LexState *ls, expdesc *v) {
         break;
       }
       case ':': {  /* ':' NAME funcargs */
+        /* In range-limit context, ':' is the step separator, not method call */
+        if (ls->in_range_limit) return;
+        {
         expdesc key;
         luaX_next(ls);
         codename(ls, &key);
         luaK_self(fs, v, &key);
         funcargs(ls, v);
         break;
+        }
       }
       case '(': {  /* funcargs -> '(' args ')' */
         /* In Cangjie, '(' on a different line does NOT form a function call.
@@ -3211,16 +3215,25 @@ static void forstat (LexState *ls, int line) {
         luaK_exp2nextreg(fs, &start_e);
         luaX_next(ls);  /* skip '..' or '..=' */
         {
-          /* Parse limit, stopping before ':' (step separator) */
+          /* Parse limit, stopping before ':' (step separator).
+          ** Set in_range_limit so that suffixedexp does not consume
+          ** ':' as a method-call operator. */
           expdesc limit_e;
+          ls->in_range_limit = 1;
           subexpr(ls, &limit_e, 9);
+          ls->in_range_limit = 0;
           luaK_exp2nextreg(fs, &limit_e);
         }
         if (!inclusive) {
-          /* exclusive range: adjust limit by -1 */
+          /* exclusive range: adjust limit by -1
+          ** Note: OP_SUB (and other arith ops) skip the next instruction
+          ** (which is expected to be OP_MMBIN) when both operands are
+          ** integers.  We must emit that OP_MMBIN placeholder so that
+          ** the instruction following it (the step value) is not skipped. */
           luaK_int(fs, fs->freereg, 1);
           luaK_reserveregs(fs, 1);
           luaK_codeABC(fs, OP_SUB, fs->freereg - 2, fs->freereg - 2, fs->freereg - 1);
+          luaK_codeABCk(fs, OP_MMBIN, fs->freereg - 2, fs->freereg - 1, cast_int(TM_SUB), 0);
           fs->freereg--;
         }
         if (testnext(ls, ':')) {
