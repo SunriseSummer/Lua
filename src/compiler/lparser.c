@@ -1967,20 +1967,22 @@ static void suffixedexp (LexState *ls, expdesc *v) {
   for (;;) {
     switch (ls->t.token) {
       case '.': {  /* fieldsel or method call */
-        /* Check for .size -> read __n field (array length), but
-        ** only if NOT followed by '(' (which makes it a method call) */
+        /* Check for .size -> access 'size' property, but
+        ** only if NOT followed by '(' (which makes it a method call).
+        ** For arrays, 'size' field is set by the array constructor.
+        ** For strings, handled via __index metamethod. */
         if (luaX_lookahead(ls) == TK_NAME) {
           TString *fname = ls->lookahead.seminfo.ts;
           if (fname != NULL && strcmp(getstr(fname), "size") == 0) {
             /* Peek further: skip '.' to get 'size', then peek past it */
             luaX_next(ls);  /* skip '.', current=size (from lookahead) */
             if (luaX_lookahead(ls) != '(') {
-              /* .size property access -> read __n field */
+              /* .size property access */
               luaX_next(ls);  /* skip 'size' */
               luaK_exp2anyregup(fs, v);
               {
                 expdesc key;
-                codestring(&key, luaX_newstring(ls, "__n", 3));
+                codestring(&key, luaX_newstring(ls, "size", 4));
                 luaK_indexed(fs, v, &key);
               }
               break;
@@ -2539,7 +2541,7 @@ static void simpleexp (LexState *ls, expdesc *v) {
           break;
       }
       check_match(ls, ']', '[', line2);
-      /* Store __n = count for .size */
+      /* Store __n and size = count for .size property */
       {
         expdesc tab3, nkey, nval;
         init_exp(&tab3, VNONRELOC, tabReg);
@@ -2549,6 +2551,16 @@ static void simpleexp (LexState *ls, expdesc *v) {
         init_exp(&nval, VKINT, 0);
         nval.u.ival = count;
         luaK_storevar(fs2, &tab3, &nval);
+      }
+      {
+        expdesc tab4, skey, sval;
+        init_exp(&tab4, VNONRELOC, tabReg);
+        luaK_exp2anyregup(fs2, &tab4);
+        codestring(&skey, luaX_newstring(ls, "size", 4));
+        luaK_indexed(fs2, &tab4, &skey);
+        init_exp(&sval, VKINT, 0);
+        sval.u.ival = count;
+        luaK_storevar(fs2, &tab4, &sval);
       }
       luaK_settablesize(fs2, pc2, tabReg, 0, count + 1);
       return;
