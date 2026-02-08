@@ -259,10 +259,13 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   TValue obj;
   const char *expo = "Ee";
   int first = ls->current;
+  int ishex = 0;
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
-  if (first == '0' && check_next2(ls, "xX"))  /* hexadecimal? */
+  if (first == '0' && check_next2(ls, "xX")) {  /* hexadecimal? */
     expo = "Pp";
+    ishex = 1;
+  }
   for (;;) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
@@ -272,6 +275,25 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
       /* Don't consume '.' if next char is also '.' (range operator) */
       if (ls->z->n > 0 && *(ls->z->p) == '.')
         break;  /* stop: this is '..' range operator */
+      /* Don't consume '.' if next char starts an identifier (method call).
+      ** This allows syntax like 2.pow(10) or 42.double().
+      ** In decimal mode: only digits 0-9 are valid after '.', so any
+      ** letter means method call. In hex mode: hex digits a-f/A-F and
+      ** exponent p/P are valid after '.', other letters mean method call. */
+      if (ls->z->n > 0) {
+        int nc = cast_uchar(*(ls->z->p));
+        if (ishex) {
+          /* Hex mode: allow hex digits and exponent marker after '.' */
+          if (lislalpha(nc) && !lisxdigit(nc) &&
+              nc != expo[0] && nc != expo[1])
+            break;  /* method call on hex number literal */
+        }
+        else {
+          /* Decimal mode: only digits are valid after '.' */
+          if (lislalpha(nc) && nc != expo[0] && nc != expo[1])
+            break;  /* method call on decimal number literal */
+        }
+      }
       save_and_next(ls);
     }
     else break;
