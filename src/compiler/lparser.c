@@ -2038,6 +2038,14 @@ static void suffixedops (LexState *ls, expdesc *v) {
         luaX_next(ls);  /* skip '[' */
         {
           expdesc start_e;
+          /* Discharge 'v' (the table expression) to a register BEFORE
+          ** parsing the key expression.  When 'v' is an indexed
+          ** expression (e.g. self.states[s]), it holds register
+          ** references that may be clobbered by code emitted while
+          ** parsing a complex key expression such as a function call
+          ** (e.g. Int64(text[i])).  Materialising it first makes the
+          ** result safe in a dedicated register. */
+          luaK_exp2anyregup(fs, v);
           /* Use subexpr with limit 9 so '..' is NOT consumed as concat
           ** (OPR_CONCAT has left priority 9, see priority[] table) */
           subexpr(ls, &start_e, 9);
@@ -2130,7 +2138,7 @@ static void suffixedops (LexState *ls, expdesc *v) {
           }
           else {
             /* Normal subscript: arr[expr] */
-            luaK_exp2anyregup(fs, v);
+            /* Note: v was already discharged before subexpr above */
             luaK_exp2val(fs, &start_e);
             checknext(ls, ']');
             luaK_indexed(fs, v, &start_e);

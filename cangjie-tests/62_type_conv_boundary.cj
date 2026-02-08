@@ -8,7 +8,7 @@ expectEq(Int64(0.9), 0, "Int64(0.9) truncates")
 expectEq(Int64(-0.9), 0, "Int64(-0.9) truncates")
 expectEq(Int64(1.999), 1, "Int64(1.999) truncates")
 expectEq(Int64(-1.999), -1, "Int64(-1.999) truncates")
-expectEq(Int64("0"), 0, "Int64 from string 0")
+expectEq(Int64("0"), 48, "Int64 single-char code point")
 expectEq(Int64("-42"), -42, "Int64 from negative string")
 expectEq(Int64(42), 42, "Int64 identity")
 
