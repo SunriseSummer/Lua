@@ -392,7 +392,8 @@ static void structstat (LexState *ls, int line) {
         case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
         case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
         case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-        case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
         case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
         case TK_IDIV: {
           metamethod_name = luaS_new(ls->L, "__idiv"); break;
@@ -798,7 +799,8 @@ static void interfacestat (LexState *ls, int line) {
           case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
           case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
           case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
           case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
           case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
           default: {
@@ -1004,7 +1006,8 @@ static void extendstat (LexState *ls, int line) {
           case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
           case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
           case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
           case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
           case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
           case '[': {
@@ -1135,7 +1138,8 @@ parse_ext_b_opbody:
           case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
           case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
           case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-          case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+          case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
           case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
           case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
           case '[': {
@@ -1575,7 +1579,8 @@ static void enumstat (LexState *ls, int line) {
         case TK_SHR: metamethod_name = luaS_new(ls->L, "__shr"); break;
         case '&': metamethod_name = luaS_new(ls->L, "__band"); break;
         case '|': metamethod_name = luaS_new(ls->L, "__bor"); break;
-        case '~': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '^': metamethod_name = luaS_new(ls->L, "__bxor"); break;
+        case '~': metamethod_name = luaS_new(ls->L, "__bnot"); break;
         case '#': metamethod_name = luaS_new(ls->L, "__len"); break;
         case TK_IDIV: metamethod_name = luaS_new(ls->L, "__idiv"); break;
         case '[': {
