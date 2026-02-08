@@ -287,12 +287,273 @@ static int cangjie_float64_getpi (lua_State *L) {
   return 1;
 }
 
-/* C function: Float64(value) converts to float */
+/* C function: Float64(value) converts to float (called via __call on table) */
 static int cangjie_float64_call (lua_State *L) {
   /* First arg is the table itself (Float64), second is the value to convert */
-  lua_Number n = luaL_checknumber(L, 2);
-  lua_pushnumber(L, n);
-  return 1;
+  lua_remove(L, 1);  /* remove table, shift args down */
+  return luaB_cangjie_float64(L);
+}
+
+/* __call wrappers for other type tables (shift table arg, delegate to standalone) */
+static int cangjie_int64_call (lua_State *L) {
+  lua_remove(L, 1);
+  return luaB_cangjie_int64(L);
+}
+
+static int cangjie_string_call (lua_State *L) {
+  lua_remove(L, 1);
+  return luaB_cangjie_string(L);
+}
+
+static int cangjie_bool_call (lua_State *L) {
+  lua_remove(L, 1);
+  return luaB_cangjie_bool(L);
+}
+
+
+/*
+** ============================================================
+** Type conversion functions: Int64(), Float64(), String(), Bool(), Rune()
+** These are registered as globals and handle various type conversions
+** as specified by the Cangjie language specification.
+** ============================================================
+*/
+
+/*
+** Helper: Determine UTF-8 byte length from lead byte.
+** Returns 1-4 for valid lead bytes, 0 for invalid.
+*/
+static int utf8_char_len (unsigned char c0) {
+  if ((c0 & 0x80) == 0) return 1;
+  if ((c0 & 0xE0) == 0xC0) return 2;
+  if ((c0 & 0xF0) == 0xE0) return 3;
+  if ((c0 & 0xF8) == 0xF0) return 4;
+  return 0;  /* invalid UTF-8 lead byte */
+}
+
+
+/*
+** Helper: Decode a single UTF-8 character from a string of exactly 'len' bytes.
+** Returns the code point, or -1 if the string is not a valid single UTF-8 char.
+*/
+static long utf8_decode_single (const char *s, size_t len) {
+  unsigned long cp;
+  int nbytes, i;
+  if (len == 0) return -1;
+  nbytes = utf8_char_len((unsigned char)s[0]);
+  if (nbytes == 0 || (size_t)nbytes != len) return -1;
+  cp = (unsigned char)s[0];
+  if (nbytes == 1) return (long)cp;
+  /* mask off the lead byte prefix bits */
+  if (nbytes == 2) cp &= 0x1F;
+  else if (nbytes == 3) cp &= 0x0F;
+  else cp &= 0x07;
+  for (i = 1; i < nbytes; i++) {
+    unsigned char ci = (unsigned char)s[i];
+    if ((ci & 0xC0) != 0x80) return -1;  /* invalid continuation byte */
+    cp = (cp << 6) | (ci & 0x3F);
+  }
+  return (long)cp;
+}
+
+
+/*
+** Helper: Encode a Unicode code point as UTF-8 into buf.
+** Returns the number of bytes written (1-4), or 0 if invalid code point.
+** buf must have space for at least 4 bytes.
+*/
+static int utf8_encode (lua_Integer cp, char *buf) {
+  if (cp < 0 || cp > 0x10FFFF) return 0;
+  if (cp <= 0x7F) {
+    buf[0] = (char)cp;
+    return 1;
+  } else if (cp <= 0x7FF) {
+    buf[0] = (char)(0xC0 | (cp >> 6));
+    buf[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  } else if (cp <= 0xFFFF) {
+    buf[0] = (char)(0xE0 | (cp >> 12));
+    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  } else {
+    buf[0] = (char)(0xF0 | (cp >> 18));
+    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+  }
+}
+
+/* Int64(value) - convert to integer.
+** For numbers: truncates float to integer, passes integer through.
+** For strings: first tries numeric parsing ("123" -> 123);
+**   if that fails, treats a single UTF-8 character as Rune-to-code-point.
+** For booleans: true -> 1, false -> 0.
+*/
+int luaB_cangjie_int64 (lua_State *L) {
+  switch (lua_type(L, 1)) {
+    case LUA_TNUMBER: {
+      if (lua_isinteger(L, 1)) {
+        lua_pushvalue(L, 1);  /* already integer */
+      } else {
+        lua_Number n = lua_tonumber(L, 1);
+        lua_pushinteger(L, (lua_Integer)n);  /* truncate */
+      }
+      return 1;
+    }
+    case LUA_TSTRING: {
+      size_t len;
+      const char *s = lua_tolstring(L, 1, &len);
+      if (len == 0)
+        return luaL_error(L, "cannot convert empty string to Int64");
+      /* First, try to parse as a number */
+      if (lua_stringtonumber(L, s) != 0) {
+        if (lua_isinteger(L, -1)) {
+          return 1;
+        } else {
+          lua_Number n = lua_tonumber(L, -1);
+          lua_pop(L, 1);
+          lua_pushinteger(L, (lua_Integer)n);
+          return 1;
+        }
+      }
+      /* Not a number string - treat as single UTF-8 char (Rune to code point) */
+      {
+        long cp = utf8_decode_single(s, len);
+        if (cp >= 0) {
+          lua_pushinteger(L, (lua_Integer)cp);
+          return 1;
+        }
+      }
+      return luaL_error(L, "cannot convert string '%s' to Int64", s);
+    }
+    case LUA_TBOOLEAN: {
+      lua_pushinteger(L, lua_toboolean(L, 1) ? 1 : 0);
+      return 1;
+    }
+    default:
+      return luaL_error(L, "cannot convert %s to Int64",
+                        luaL_typename(L, 1));
+  }
+}
+
+
+/* Float64(value) - convert to float
+** - Float64("3.14") -> parse string as float
+** - Float64(42) -> integer to float (42.0)
+** - Float64(3.14) -> identity
+*/
+int luaB_cangjie_float64 (lua_State *L) {
+  switch (lua_type(L, 1)) {
+    case LUA_TNUMBER: {
+      lua_pushnumber(L, lua_tonumber(L, 1));
+      return 1;
+    }
+    case LUA_TSTRING: {
+      const char *s = lua_tostring(L, 1);
+      if (lua_stringtonumber(L, s) != 0) {
+        lua_pushnumber(L, lua_tonumber(L, -1));
+        return 1;
+      }
+      return luaL_error(L, "cannot convert string '%s' to Float64", s);
+    }
+    default:
+      return luaL_error(L, "cannot convert %s to Float64",
+                        luaL_typename(L, 1));
+  }
+}
+
+
+/* String(value) - convert to string
+** - String(65) -> "65" (number to string representation)
+** - String(3.14) -> "3.14"
+** - String(true) -> "true"
+** - String(false) -> "false"
+*/
+int luaB_cangjie_string (lua_State *L) {
+  switch (lua_type(L, 1)) {
+    case LUA_TNUMBER: {
+      /* Number -> string representation (both integer and float) */
+      luaL_tolstring(L, 1, NULL);
+      return 1;
+    }
+    case LUA_TBOOLEAN: {
+      lua_pushstring(L, lua_toboolean(L, 1) ? "true" : "false");
+      return 1;
+    }
+    case LUA_TSTRING: {
+      lua_pushvalue(L, 1);  /* identity */
+      return 1;
+    }
+    case LUA_TNIL: {
+      lua_pushliteral(L, "nil");
+      return 1;
+    }
+    default: {
+      luaL_tolstring(L, 1, NULL);
+      return 1;
+    }
+  }
+}
+
+
+/* Bool(value) - convert to boolean
+** - Bool("true") -> true
+** - Bool("false") -> false
+*/
+int luaB_cangjie_bool (lua_State *L) {
+  switch (lua_type(L, 1)) {
+    case LUA_TSTRING: {
+      const char *s = lua_tostring(L, 1);
+      if (strcmp(s, "true") == 0) {
+        lua_pushboolean(L, 1);
+        return 1;
+      } else if (strcmp(s, "false") == 0) {
+        lua_pushboolean(L, 0);
+        return 1;
+      }
+      return luaL_error(L, "cannot convert string '%s' to Bool", s);
+    }
+    case LUA_TBOOLEAN: {
+      lua_pushvalue(L, 1);  /* identity */
+      return 1;
+    }
+    default:
+      return luaL_error(L, "cannot convert %s to Bool",
+                        luaL_typename(L, 1));
+  }
+}
+
+
+/* Rune(codepoint) - convert integer code point to UTF-8 character string
+** - Rune(0x4E50) -> '乐'
+** - Rune(65) -> 'A'
+** Also accepts a single-character string (identity).
+*/
+int luaB_cangjie_rune (lua_State *L) {
+  if (lua_type(L, 1) == LUA_TSTRING) {
+    /* If it's a single UTF-8 character string, return as-is */
+    size_t slen;
+    const char *s = lua_tolstring(L, 1, &slen);
+    long cp = utf8_decode_single(s, slen);
+    if (cp >= 0) {
+      lua_pushvalue(L, 1);
+      return 1;
+    }
+    return luaL_error(L, "Rune() expects a single character or integer");
+  }
+  {
+    lua_Integer cp = luaL_checkinteger(L, 1);
+    char buf[8];
+    int len = utf8_encode(cp, buf);
+    if (len == 0) {
+      return luaL_error(L, "invalid Unicode code point: %I",
+                        (LUAI_UACINT)cp);
+    }
+    lua_pushlstring(L, buf, (size_t)len);
+    return 1;
+  }
 }
 
 
@@ -314,14 +575,22 @@ int luaB_extend_type (lua_State *L) {
     else {
       lua_pop(L, 1);
     }
-    /* Set up __call metamethod for Float64(value) conversion */
-    {
+  }
+
+  /* Set up __call metamethod for type conversion on all built-in types */
+  {
+    lua_CFunction call_fn = NULL;
+    if (strcmp(tname, "Int64") == 0) call_fn = cangjie_int64_call;
+    else if (strcmp(tname, "Float64") == 0) call_fn = cangjie_float64_call;
+    else if (strcmp(tname, "String") == 0) call_fn = cangjie_string_call;
+    else if (strcmp(tname, "Bool") == 0) call_fn = cangjie_bool_call;
+    if (call_fn != NULL) {
       int has_mt;
       has_mt = lua_getmetatable(L, 2);
       if (!has_mt) {
-        lua_newtable(L);  /* create metatable for Float64 table */
+        lua_newtable(L);
       }
-      lua_pushcfunction(L, cangjie_float64_call);
+      lua_pushcfunction(L, call_fn);
       lua_setfield(L, -2, "__call");
       lua_setmetatable(L, 2);
     }

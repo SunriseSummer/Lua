@@ -789,6 +789,15 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           do {
             save_and_next(ls);
           } while (lislalnum(ls->current));
+          /* Check for Rune literal prefix: r'x' or r"x" */
+          if (luaZ_bufflen(ls->buff) == 1 &&
+              luaZ_buffer(ls->buff)[0] == 'r' &&
+              (ls->current == '\'' || ls->current == '"')) {
+            /* This is a Rune literal: r'x' or r"x" */
+            luaZ_resetbuffer(ls->buff);
+            read_string(ls, ls->current, seminfo);
+            return TK_STRING;
+          }
           /* find or create string */
           ts = luaS_newlstr(ls->L, luaZ_buffer(ls->buff),
                                    luaZ_bufflen(ls->buff));

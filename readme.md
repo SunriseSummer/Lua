@@ -16,13 +16,54 @@
 - Int64
 - Float64
 - Bool
-- Rune
+- Rune（Unicode 字符类型）
 - String
 - Tuple
 - Array
 - Range
 - Unit
 - Option
+
+#### Rune 类型
+
+字符类型使用 `Rune` 表示，可以表示 Unicode 字符集中的所有字符。Rune 字面量支持以下三种形式：
+
+```cangjie
+// 单个字符 - 直接使用单引号或 r 前缀
+let a: Rune = 'a'
+let b: Rune = r'b'
+let c: Rune = r"c"
+
+// 转义字符
+let slash: Rune = r'\\'
+let newLine: Rune = r'\n'
+let tab: Rune = r'\t'
+
+// 通用字符 - \u{十六进制码值}
+let he: Rune = r'\u{4f60}'   // 你
+let llo: Rune = r'\u{597d}'  // 好
+```
+
+Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。
+
+### 类型转换
+
+支持内置类型的构造函数风格转换：
+
+```cangjie
+let a = Int64('乐')         // 字符转为 Unicode 码值 (0x4E50)
+let b = Float64("3.14")     // 字符串转为浮点数
+let c = Int64("1234567")    // 字符串转为整数
+let d = Bool("true")        // 字符串转为布尔值
+let e = Int64(3.14)         // 浮点数转为整数（截断）
+let f = Float64(42)         // 整数转为浮点数
+let g = String(65)          // 整数转为字符串 "65"
+let h = String(3.14)        // 浮点数转为字符串
+let i = String(true)        // 布尔值转为字符串
+let j = Rune(0x4E50)        // Unicode 码值转为对应字符 '乐'
+```
+
+也支持传统的 `tostring()`、`tonumber()` 转换函数。
 
 ### 运算符
 
@@ -45,7 +86,6 @@
 
 - **插值字符串**：`"Hello, ${name}!"` 支持在 `${}` 中嵌入任意表达式
 - **字符串拼接**：可以使用 `+` 拼接两个字符串，也支持 Lua 风格的 `..`
-- **类型转换**：`tostring()`，`tonumber()`
 - **索引取值**：`s[0]` 返回第 0 个字符（0-based，单字符字符串）
 - **切片取值**：`s[1..4]`（排他）、`s[0..=2]`（包含）返回子字符串
 - **长度属性**：`s.size` 返回字符串长度
