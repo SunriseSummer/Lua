@@ -50,8 +50,8 @@ expectEq(arr[1], 2, "arr[1]")
 expectEq(arr.size, 5, "arr.size")
 
 // -- Section: Rune type --
-let ch: Rune = 'X'
-expectEq(ch, 'X', "Rune ch")
+let ch: Rune = r'X'
+expectEq(ch, 88, "Rune ch")
 
 if (!__test_failed) {
     println("PASS: 04_types_operations")

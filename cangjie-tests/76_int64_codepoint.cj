@@ -1,59 +1,54 @@
 dofile("cangjie-tests/_testing.cj")
 
-// Test: Int64 code point conversion for single-character strings
-// Single UTF-8 character strings are treated as Rune (returns code point).
-// Multi-character strings are parsed as numbers.
+// Test: Int64 and Rune conversion with strict r'x' rule
+// r'x' is a Rune literal (compiles to integer code point)
+// 'x' and "x" are String literals
+// Int64(String) parses as number first, falls back to code point for non-numeric
 
-// --- Section: ASCII digits as code points ---
-expectEq(Int64('0'), 48, "Int64('0') code point")
-expectEq(Int64('1'), 49, "Int64('1') code point")
-expectEq(Int64('9'), 57, "Int64('9') code point")
+// --- Section: r'x' Rune literals -> integer code points ---
+expectEq(r'0', 48, "r'0' == 48")
+expectEq(r'A', 65, "r'A' == 65")
+expectEq(r'a', 97, "r'a' == 97")
+expectEq(r' ', 32, "r' ' == 32")
+expectEq(r'-', 45, "r'-' == 45")
 
-// --- Section: ASCII letters as code points ---
-expectEq(Int64('A'), 65, "Int64('A') code point")
-expectEq(Int64('Z'), 90, "Int64('Z') code point")
-expectEq(Int64('a'), 97, "Int64('a') code point")
-expectEq(Int64('z'), 122, "Int64('z') code point")
+// Int64 of Rune literal is integer passthrough
+expectEq(Int64(r'0'), 48, "Int64(r'0') == 48")
+expectEq(Int64(r'A'), 65, "Int64(r'A') == 65")
 
-// --- Section: Special ASCII characters ---
-expectEq(Int64(' '), 32, "Int64(' ') space")
-expectEq(Int64('-'), 45, "Int64('-') minus")
-expectEq(Int64('.'), 46, "Int64('.') dot")
-expectEq(Int64('+'), 43, "Int64('+') plus")
+// --- Section: String '0' and "0" -> number parse ---
+expectEq(Int64('0'), 0, "Int64('0') == 0")
+expectEq(Int64("0"), 0, "Int64(\"0\") == 0")
+expectEq(Int64("123"), 123, "Int64(\"123\") == 123")
+expectEq(Int64("-42"), -42, "Int64(\"-42\") == -42")
 
-// --- Section: Multi-char strings as numbers ---
-expectEq(Int64("10"), 10, "Int64(\"10\") number")
-expectEq(Int64("123"), 123, "Int64(\"123\") number")
-expectEq(Int64("-42"), -42, "Int64(\"-42\") negative")
-expectEq(Int64("1234567"), 1234567, "Int64(\"1234567\") large number")
+// --- Section: Non-numeric single-char string -> code point fallback ---
+expectEq(Int64("A"), 65, "Int64(\"A\") code point fallback")
+expectEq(Int64("z"), 122, "Int64(\"z\") code point fallback")
+expectEq(Int64("乐"), 0x4E50, "Int64(\"乐\") unicode fallback")
 
-// --- Section: Unicode characters ---
-expectEq(Int64('乐'), 0x4E50, "Int64('乐') unicode")
-expectEq(Int64('你'), 0x4F60, "Int64('你') unicode")
+// --- Section: String.toRune() -> code point for all chars including digits ---
+expectEq("0".toRune(), 48, "\"0\".toRune() == 48")
+expectEq("A".toRune(), 65, "\"A\".toRune() == 65")
+expectEq("乐".toRune(), 0x4E50, "\"乐\".toRune() == 0x4E50")
 
-// --- Section: String indexing returns Rune-like values ---
+// --- Section: String indexing + toRune ---
 let text = "Hello"
-expectEq(Int64(text[0]), 72, "Int64(text[0]) H=72")
-expectEq(Int64(text[1]), 101, "Int64(text[1]) e=101")
-expectEq(Int64(text[4]), 111, "Int64(text[4]) o=111")
+expectEq(text[0].toRune(), 72, "text[0].toRune() H=72")
+expectEq(text[1].toRune(), 101, "text[1].toRune() e=101")
 
-// --- Section: Digit chars from string indexing ---
+// Digit chars: Int64 parses as number, toRune returns code point
 let digits = "0123456789"
-expectEq(Int64(digits[0]), 48, "digit[0] code point")
-expectEq(Int64(digits[5]), 53, "digit[5] code point")
-expectEq(Int64(digits[9]), 57, "digit[9] code point")
+expectEq(Int64(digits[0]), 0, "Int64(digits[0]) = 0 (number parse)")
+expectEq(digits[0].toRune(), 48, "digits[0].toRune() = 48 (code point)")
 
-// --- Section: Round-trip Rune conversion ---
-let cp = Int64('A')
+// --- Section: Round-trip ---
+let cp = r'A'
 let r = Rune(cp)
-expectEq(r, "A", "Int64->Rune round trip A")
-expectEq(Int64(r), 65, "Rune->Int64 round trip A")
+expectEq(r, "A", "Rune(r'A') == \"A\"")
+expectEq(r.toRune(), 65, "\"A\".toRune() == 65")
 
-let cp2 = Int64('好')
-let r2 = Rune(cp2)
-expectEq(r2, "好", "Int64->Rune round trip 好")
-
-// --- Section: Float from number string ---
+// --- Section: Float truncation ---
 expectEq(Int64(3.14), 3, "Int64(3.14) truncates")
 
 if (!__test_failed) {

@@ -18,12 +18,12 @@ class Parser {
         var i = 0
         while (i < text.size) {
             var s = 0
-            while (i < text.size && states[s][Int64(text[i])] == 0) {
+            while (i < text.size && states[s][text[i].toRune()] == 0) {
                 i = i + 1
             }
             let j = i
-            while (i < text.size && states[s][Int64(text[i])] != 0) {
-                s = states[s][Int64(text[i])]
+            while (i < text.size && states[s][text[i].toRune()] != 0) {
+                s = states[s][text[i].toRune()]
                 i = i + 1
             }
             if (s == 3 || s == 4) {

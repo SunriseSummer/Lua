@@ -793,10 +793,39 @@ static int llex (LexState *ls, SemInfo *seminfo) {
           if (luaZ_bufflen(ls->buff) == 1 &&
               luaZ_buffer(ls->buff)[0] == 'r' &&
               (ls->current == '\'' || ls->current == '"')) {
-            /* This is a Rune literal: r'x' or r"x" */
+            /* Rune literal: r'x' or r"x" -> integer code point */
+            const char *rs;
+            size_t rlen;
+            unsigned long cp;
             luaZ_resetbuffer(ls->buff);
             read_string(ls, ls->current, seminfo);
-            return TK_STRING;
+            /* Extract the string content and decode as a single
+            ** UTF-8 character to produce its code point. */
+            rs = getstr(seminfo->ts);
+            rlen = tsslen(seminfo->ts);
+            if (rlen == 0)
+              lexerror(ls, "empty Rune literal", TK_STRING);
+            /* Decode UTF-8 lead byte */
+            cp = (unsigned char)rs[0];
+            if (cp <= 0x7F) {
+              /* ASCII: single byte */
+              if (rlen != 1)
+                lexerror(ls, "Rune literal must be a single character",
+                         TK_STRING);
+            } else {
+              int nbytes, idx;
+              if ((cp & 0xE0) == 0xC0)      { nbytes = 2; cp &= 0x1F; }
+              else if ((cp & 0xF0) == 0xE0)  { nbytes = 3; cp &= 0x0F; }
+              else if ((cp & 0xF8) == 0xF0)  { nbytes = 4; cp &= 0x07; }
+              else lexerror(ls, "invalid UTF-8 in Rune literal", TK_STRING);
+              if ((size_t)nbytes != rlen)
+                lexerror(ls, "Rune literal must be a single character",
+                         TK_STRING);
+              for (idx = 1; idx < nbytes; idx++)
+                cp = (cp << 6) | ((unsigned char)rs[idx] & 0x3F);
+            }
+            seminfo->i = (lua_Integer)cp;
+            return TK_INT;
           }
           /* find or create string */
           ts = luaS_newlstr(ls->L, luaZ_buffer(ls->buff),

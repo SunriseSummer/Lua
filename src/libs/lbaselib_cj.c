@@ -398,9 +398,8 @@ static int utf8_encode (lua_Integer cp, char *buf) {
 
 /* Int64(value) - convert to integer.
 ** For numbers: truncates float to integer, passes integer through.
-** For strings: a single UTF-8 character is treated as Rune (returns code
-**   point, e.g. Int64('A') == 65); multi-character strings are parsed as
-**   numbers (e.g. Int64("123") == 123).
+** For strings: first tries numeric parsing ("123" -> 123);
+**   if that fails, treats a single UTF-8 character as Rune-to-code-point.
 ** For booleans: true -> 1, false -> 0.
 */
 int luaB_cangjie_int64 (lua_State *L) {
@@ -419,17 +418,7 @@ int luaB_cangjie_int64 (lua_State *L) {
       const char *s = lua_tolstring(L, 1, &len);
       if (len == 0)
         return luaL_error(L, "cannot convert empty string to Int64");
-      /* If string decodes as exactly one UTF-8 character, treat as
-      ** Rune and return its Unicode code point (e.g. "A" -> 65).
-      ** utf8_decode_single returns -1 for multi-character strings. */
-      {
-        long cp = utf8_decode_single(s, len);
-        if (cp >= 0) {
-          lua_pushinteger(L, (lua_Integer)cp);
-          return 1;
-        }
-      }
-      /* Multi-character string: try to parse as a number */
+      /* First, try to parse as a number */
       if (lua_stringtonumber(L, s) != 0) {
         if (lua_isinteger(L, -1)) {
           return 1;
@@ -437,6 +426,14 @@ int luaB_cangjie_int64 (lua_State *L) {
           lua_Number n = lua_tonumber(L, -1);
           lua_pop(L, 1);
           lua_pushinteger(L, (lua_Integer)n);
+          return 1;
+        }
+      }
+      /* Not a number string - treat as single UTF-8 char (Rune to code point) */
+      {
+        long cp = utf8_decode_single(s, len);
+        if (cp >= 0) {
+          lua_pushinteger(L, (lua_Integer)cp);
           return 1;
         }
       }
@@ -2021,6 +2018,19 @@ static int str_count_cj (lua_State *L) {
   return 1;
 }
 
+/* str_toRune: return the integer code point of a single-char string.
+** Used as a bound method: s.toRune() -> Int64 code point */
+static int str_toRune (lua_State *L) {
+  size_t len;
+  const char *s = luaL_checklstring(L, 1, &len);
+  long cp = utf8_decode_single(s, len);
+  if (cp < 0)
+    return luaL_error(L, "toRune() requires a single-character string");
+  lua_pushinteger(L, (lua_Integer)cp);
+  return 1;
+}
+
+
 /* String.fromUtf8(byteArray) -> String */
 static int str_fromUtf8 (lua_State *L) {
   luaL_Buffer b;
@@ -2074,6 +2084,7 @@ static const StrMethod str_methods[] = {
   {"indexOf", str_indexOf_cj},
   {"lastIndexOf", str_lastIndexOf_cj},
   {"count", str_count_cj},
+  {"toRune", str_toRune},
   {NULL, NULL}
 };
 

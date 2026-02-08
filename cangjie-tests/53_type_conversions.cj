@@ -4,24 +4,24 @@ dofile("cangjie-tests/_testing.cj")
 
 // -- Section: Int64() conversions --
 
-// Char (Rune) to Unicode code point
-let a = Int64('乐')
-expectEq(a, 0x4E50, "Int64('乐') == 0x4E50")
+// Rune literal (r'x') to Unicode code point - r'x' compiles to integer
+let a = Int64(r'乐')
+expectEq(a, 0x4E50, "Int64(r'乐') == 0x4E50")
 
-let a2 = Int64('A')
-expectEq(a2, 65, "Int64('A') == 65")
+let a2 = Int64(r'A')
+expectEq(a2, 65, "Int64(r'A') == 65")
 
-// Single-char strings are treated as Rune → code point
+// String '0' and "0" are identical: Int64 parses as number
 let a3 = Int64('0')
-expectEq(a3, 48, "Int64('0') == 48")
+expectEq(a3, 0, "Int64('0') == 0")
 
 // String to integer (multi-character strings are parsed as numbers)
 let c = Int64("1234567")
 expectEq(c, 1234567, "Int64(\"1234567\")")
 
-// Single-char string → code point, not number
+// String "0" -> number 0
 let c2 = Int64("0")
-expectEq(c2, 48, "Int64(\"0\") code point")
+expectEq(c2, 0, "Int64(\"0\") == 0")
 
 let c3 = Int64("-42")
 expectEq(c3, -42, "Int64(\"-42\")")
@@ -132,7 +132,7 @@ let rt2b = Int64(rt2)
 expectEq(rt2b, 42, "String->Int64 round-trip")
 
 // Rune -> Int64 -> Rune
-let rt3 = Int64('乐')
+let rt3 = r'乐'
 let rt4 = Rune(rt3)
 expectEq(rt4, "乐", "Rune->Int64->Rune round-trip")
 
