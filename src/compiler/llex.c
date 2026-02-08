@@ -259,10 +259,13 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   TValue obj;
   const char *expo = "Ee";
   int first = ls->current;
+  int ishex = 0;
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
-  if (first == '0' && check_next2(ls, "xX"))  /* hexadecimal? */
+  if (first == '0' && check_next2(ls, "xX")) {  /* hexadecimal? */
     expo = "Pp";
+    ishex = 1;
+  }
   for (;;) {
     if (check_next2(ls, expo))  /* exponent mark? */
       check_next2(ls, "-+");  /* optional exponent sign */
@@ -272,6 +275,48 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
       /* Don't consume '.' if next char is also '.' (range operator) */
       if (ls->z->n > 0 && *(ls->z->p) == '.')
         break;  /* stop: this is '..' range operator */
+      /* Don't consume '.' if next char starts an identifier (method call).
+      ** This allows syntax like 2.pow(10) or 42.double() or 4.even().
+      ** In decimal mode: only digits 0-9 are valid after '.'. Letters are
+      ** method calls, UNLESS they are an exponent marker (e/E) followed by
+      ** a digit or sign (+/-), which is valid scientific notation (e.g., 2.e5).
+      ** In hex mode: hex digits a-f/A-F are valid fractional parts, and
+      ** p/P starts the exponent. Other letters are method calls. Similarly,
+      ** p/P after '.' must be followed by a digit or sign to be valid. */
+      if (ls->z->n > 0) {
+        int nc = cast_uchar(*(ls->z->p));
+        if (lislalpha(nc)) {
+          if (ishex) {
+            /* Hex mode: allow hex digits after '.' */
+            if (!lisxdigit(nc)) {
+              /* Check if it's an exponent marker (p/P) followed by digit/sign */
+              if ((nc == expo[0] || nc == expo[1]) && ls->z->n > 1) {
+                int nc2 = cast_uchar(*(ls->z->p + 1));
+                if (!lisdigit(nc2) && nc2 != '+' && nc2 != '-')
+                  break;  /* e.g., 0xFF.pow() - method call */
+              }
+              else
+                break;  /* method call on hex number literal */
+            }
+          }
+          else {
+            /* Decimal mode: only digits are valid after '.' for the number */
+            /* Check if it's an exponent marker (e/E) followed by digit/sign */
+            if (nc == expo[0] || nc == expo[1]) {
+              if (ls->z->n > 1) {
+                int nc2 = cast_uchar(*(ls->z->p + 1));
+                if (!lisdigit(nc2) && nc2 != '+' && nc2 != '-')
+                  break;  /* e.g., 4.even() - method call */
+              }
+              else
+                break;  /* e/E at end of input - method call */
+              /* Otherwise it's valid scientific notation: fall through */
+            }
+            else
+              break;  /* method call on decimal number literal */
+          }
+        }
+      }
       save_and_next(ls);
     }
     else break;

@@ -1952,6 +1952,38 @@ static void primaryexp (LexState *ls, expdesc *v) {
       }
       return;
     }
+    case TK_INT: {
+      /* Integer literal: allow suffix operations like 2.pow(10) */
+      init_exp(v, VKINT, 0);
+      v->u.ival = ls->t.seminfo.i;
+      luaX_next(ls);
+      return;
+    }
+    case TK_FLT: {
+      /* Float literal: allow suffix operations like 3.14.toString() */
+      init_exp(v, VKFLT, 0);
+      v->u.nval = ls->t.seminfo.r;
+      luaX_next(ls);
+      return;
+    }
+    case TK_STRING: {
+      /* String literal: allow suffix operations like "hello".method() */
+      codestring(v, ls->t.seminfo.ts);
+      luaX_next(ls);
+      return;
+    }
+    case TK_TRUE: {
+      /* Bool literal true: allow suffix operations like true.method() */
+      init_exp(v, VTRUE, 0);
+      luaX_next(ls);
+      return;
+    }
+    case TK_FALSE: {
+      /* Bool literal false: allow suffix operations like false.method() */
+      init_exp(v, VFALSE, 0);
+      luaX_next(ls);
+      return;
+    }
     default: {
       luaX_syntaxerror(ls, "unexpected symbol");
     }
@@ -1959,11 +1991,9 @@ static void primaryexp (LexState *ls, expdesc *v) {
 }
 
 
-static void suffixedexp (LexState *ls, expdesc *v) {
-  /* suffixedexp ->
-       primaryexp { '.' NAME | '[' exp ']' | ':' NAME funcargs | funcargs } */
+static void suffixedops (LexState *ls, expdesc *v) {
+  /* Process suffix operations: '.' NAME | '[' exp ']' | ':' NAME funcargs | funcargs */
   FuncState *fs = ls->fs;
-  primaryexp(ls, v);
   for (;;) {
     switch (ls->t.token) {
       case '.': {  /* fieldsel or method call */
@@ -2114,6 +2144,14 @@ static void suffixedexp (LexState *ls, expdesc *v) {
       default: return;
     }
   }
+}
+
+
+static void suffixedexp (LexState *ls, expdesc *v) {
+  /* suffixedexp ->
+       primaryexp { '.' NAME | '[' exp ']' | ':' NAME funcargs | funcargs } */
+  primaryexp(ls, v);
+  suffixedops(ls, v);
 }
 
 
@@ -2430,6 +2468,12 @@ static void simpleexp (LexState *ls, expdesc *v) {
         }
         /* Now advance to the next proper token after the string */
         luaX_next(ls);
+        /* Check for suffix operations on interpolated string result */
+        if (ls->t.token == '.' || ls->t.token == '[' ||
+            ls->t.token == ':' ||
+            (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+          suffixedops(ls, v);
+        }
         return;
       }
       break;
@@ -2563,6 +2607,12 @@ static void simpleexp (LexState *ls, expdesc *v) {
         luaK_storevar(fs2, &tab4, &sval);
       }
       luaK_settablesize(fs2, pc2, tabReg, 0, count + 1);
+      /* Check for suffix operations on array literal (e.g., [1,2,3].size) */
+      if (ls->t.token == '.' || ls->t.token == '[' ||
+          ls->t.token == ':' ||
+          (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+        suffixedops(ls, v);
+      }
       return;
     }
     case TK_FUNC: {
@@ -2576,6 +2626,14 @@ static void simpleexp (LexState *ls, expdesc *v) {
     }
   }
   luaX_next(ls);
+  /* After parsing a literal (INT, FLT, STRING, TRUE, FALSE), check for
+  ** suffix operations like .method() or [index]. This enables syntax like
+  ** 2.pow(10), "hello".length(), true.toString(), etc. via extend methods. */
+  if (ls->t.token == '.' || ls->t.token == '[' ||
+      ls->t.token == ':' ||
+      (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+    suffixedops(ls, v);
+  }
 }
 
 
