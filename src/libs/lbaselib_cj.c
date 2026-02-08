@@ -319,11 +319,77 @@ static int cangjie_bool_call (lua_State *L) {
 ** ============================================================
 */
 
-/* Int64(value) - convert to integer
-** - Int64('乐') -> Unicode code point (0x4E50 = 20048)
-** - Int64("1234567") -> parse string as integer
-** - Int64(3.14) -> truncate float to integer (3)
-** - Int64(true) -> 1, Int64(false) -> 0
+/*
+** Helper: Determine UTF-8 byte length from lead byte.
+** Returns 1-4 for valid lead bytes, 0 for invalid.
+*/
+static int utf8_char_len (unsigned char c0) {
+  if ((c0 & 0x80) == 0) return 1;
+  if ((c0 & 0xE0) == 0xC0) return 2;
+  if ((c0 & 0xF0) == 0xE0) return 3;
+  if ((c0 & 0xF8) == 0xF0) return 4;
+  return 0;  /* invalid UTF-8 lead byte */
+}
+
+
+/*
+** Helper: Decode a single UTF-8 character from a string of exactly 'len' bytes.
+** Returns the code point, or -1 if the string is not a valid single UTF-8 char.
+*/
+static long utf8_decode_single (const char *s, size_t len) {
+  unsigned long cp;
+  int nbytes, i;
+  if (len == 0) return -1;
+  nbytes = utf8_char_len((unsigned char)s[0]);
+  if (nbytes == 0 || (size_t)nbytes != len) return -1;
+  cp = (unsigned char)s[0];
+  if (nbytes == 1) return (long)cp;
+  /* mask off the lead byte prefix bits */
+  if (nbytes == 2) cp &= 0x1F;
+  else if (nbytes == 3) cp &= 0x0F;
+  else cp &= 0x07;
+  for (i = 1; i < nbytes; i++) {
+    unsigned char ci = (unsigned char)s[i];
+    if ((ci & 0xC0) != 0x80) return -1;  /* invalid continuation byte */
+    cp = (cp << 6) | (ci & 0x3F);
+  }
+  return (long)cp;
+}
+
+
+/*
+** Helper: Encode a Unicode code point as UTF-8 into buf.
+** Returns the number of bytes written (1-4), or 0 if invalid code point.
+** buf must have space for at least 4 bytes.
+*/
+static int utf8_encode (lua_Integer cp, char *buf) {
+  if (cp < 0 || cp > 0x10FFFF) return 0;
+  if (cp <= 0x7F) {
+    buf[0] = (char)cp;
+    return 1;
+  } else if (cp <= 0x7FF) {
+    buf[0] = (char)(0xC0 | (cp >> 6));
+    buf[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  } else if (cp <= 0xFFFF) {
+    buf[0] = (char)(0xE0 | (cp >> 12));
+    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  } else {
+    buf[0] = (char)(0xF0 | (cp >> 18));
+    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+  }
+}
+
+/* Int64(value) - convert to integer.
+** For numbers: truncates float to integer, passes integer through.
+** For strings: first tries numeric parsing ("123" -> 123);
+**   if that fails, treats a single UTF-8 character as Rune-to-code-point.
+** For booleans: true -> 1, false -> 0.
 */
 int luaB_cangjie_int64 (lua_State *L) {
   switch (lua_type(L, 1)) {
@@ -339,6 +405,8 @@ int luaB_cangjie_int64 (lua_State *L) {
     case LUA_TSTRING: {
       size_t len;
       const char *s = lua_tolstring(L, 1, &len);
+      if (len == 0)
+        return luaL_error(L, "cannot convert empty string to Int64");
       /* First, try to parse as a number */
       if (lua_stringtonumber(L, s) != 0) {
         if (lua_isinteger(L, -1)) {
@@ -350,35 +418,12 @@ int luaB_cangjie_int64 (lua_State *L) {
           return 1;
         }
       }
-      /* Not a number string - treat as a single character (Rune to code point) */
+      /* Not a number string - treat as single UTF-8 char (Rune to code point) */
       {
-        unsigned long cp = 0;
-        int nbytes = 0;
-        unsigned char c0 = (unsigned char)s[0];
-        if (len == 0) {
-          return luaL_error(L, "cannot convert empty string to Int64");
-        }
-        if ((c0 & 0x80) == 0) {
-          nbytes = 1; cp = c0;
-        } else if ((c0 & 0xE0) == 0xC0) {
-          nbytes = 2; cp = c0 & 0x1F;
-        } else if ((c0 & 0xF0) == 0xE0) {
-          nbytes = 3; cp = c0 & 0x0F;
-        } else if ((c0 & 0xF8) == 0xF0) {
-          nbytes = 4; cp = c0 & 0x07;
-        }
-        if (nbytes >= 1 && (size_t)nbytes == len) {
-          int i;
-          int valid = 1;
-          for (i = 1; i < nbytes; i++) {
-            unsigned char ci = (unsigned char)s[i];
-            if ((ci & 0xC0) != 0x80) { valid = 0; break; }
-            cp = (cp << 6) | (ci & 0x3F);
-          }
-          if (valid) {
-            lua_pushinteger(L, (lua_Integer)cp);
-            return 1;
-          }
+        long cp = utf8_decode_single(s, len);
+        if (cp >= 0) {
+          lua_pushinteger(L, (lua_Integer)cp);
+          return 1;
         }
       }
       return luaL_error(L, "cannot convert string '%s' to Int64", s);
@@ -433,29 +478,10 @@ int luaB_cangjie_string (lua_State *L) {
         /* Integer -> UTF-8 character for that code point */
         lua_Integer cp = lua_tointeger(L, 1);
         char buf[8];
-        int len = 0;
-        if (cp < 0 || cp > 0x10FFFF) {
+        int len = utf8_encode(cp, buf);
+        if (len == 0) {
           return luaL_error(L, "invalid Unicode code point: %I",
                             (LUAI_UACINT)cp);
-        }
-        if (cp <= 0x7F) {
-          buf[0] = (char)cp;
-          len = 1;
-        } else if (cp <= 0x7FF) {
-          buf[0] = (char)(0xC0 | (cp >> 6));
-          buf[1] = (char)(0x80 | (cp & 0x3F));
-          len = 2;
-        } else if (cp <= 0xFFFF) {
-          buf[0] = (char)(0xE0 | (cp >> 12));
-          buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-          buf[2] = (char)(0x80 | (cp & 0x3F));
-          len = 3;
-        } else {
-          buf[0] = (char)(0xF0 | (cp >> 18));
-          buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-          buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-          buf[3] = (char)(0x80 | (cp & 0x3F));
-          len = 4;
         }
         lua_pushlstring(L, buf, (size_t)len);
         return 1;
@@ -516,57 +542,31 @@ int luaB_cangjie_bool (lua_State *L) {
 /* Rune(codepoint) - convert integer code point to UTF-8 character string
 ** - Rune(0x4E50) -> '乐'
 ** - Rune(65) -> 'A'
+** Also accepts a single-character string (identity).
 */
 int luaB_cangjie_rune (lua_State *L) {
-  lua_Integer cp;
-  char buf[8];
-  int len = 0;
   if (lua_type(L, 1) == LUA_TSTRING) {
-    /* If string of length 1 (single char), return as-is */
+    /* If it's a single UTF-8 character string, return as-is */
     size_t slen;
     const char *s = lua_tolstring(L, 1, &slen);
-    /* Check if it's a single UTF-8 character */
-    if (slen >= 1) {
-      int nbytes;
-      unsigned char c0 = (unsigned char)s[0];
-      if ((c0 & 0x80) == 0) nbytes = 1;
-      else if ((c0 & 0xE0) == 0xC0) nbytes = 2;
-      else if ((c0 & 0xF0) == 0xE0) nbytes = 3;
-      else if ((c0 & 0xF8) == 0xF0) nbytes = 4;
-      else nbytes = 1;
-      if ((size_t)nbytes == slen) {
-        lua_pushvalue(L, 1);  /* single character string, return as-is */
-        return 1;
-      }
+    long cp = utf8_decode_single(s, slen);
+    if (cp >= 0) {
+      lua_pushvalue(L, 1);
+      return 1;
     }
     return luaL_error(L, "Rune() expects a single character or integer");
   }
-  cp = luaL_checkinteger(L, 1);
-  if (cp < 0 || cp > 0x10FFFF) {
-    return luaL_error(L, "invalid Unicode code point: %I",
-                      (LUAI_UACINT)cp);
+  {
+    lua_Integer cp = luaL_checkinteger(L, 1);
+    char buf[8];
+    int len = utf8_encode(cp, buf);
+    if (len == 0) {
+      return luaL_error(L, "invalid Unicode code point: %I",
+                        (LUAI_UACINT)cp);
+    }
+    lua_pushlstring(L, buf, (size_t)len);
+    return 1;
   }
-  if (cp <= 0x7F) {
-    buf[0] = (char)cp;
-    len = 1;
-  } else if (cp <= 0x7FF) {
-    buf[0] = (char)(0xC0 | (cp >> 6));
-    buf[1] = (char)(0x80 | (cp & 0x3F));
-    len = 2;
-  } else if (cp <= 0xFFFF) {
-    buf[0] = (char)(0xE0 | (cp >> 12));
-    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    buf[2] = (char)(0x80 | (cp & 0x3F));
-    len = 3;
-  } else {
-    buf[0] = (char)(0xF0 | (cp >> 18));
-    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    buf[3] = (char)(0x80 | (cp & 0x3F));
-    len = 4;
-  }
-  lua_pushlstring(L, buf, (size_t)len);
-  return 1;
 }
 
 
