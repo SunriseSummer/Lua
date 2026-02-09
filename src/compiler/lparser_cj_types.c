@@ -8,8 +8,6 @@
 **   skip_generic_params       — Skip generic type parameters (<T, U>)
 **   check_type_redefine       — Detect duplicate type names in same scope
 **   map_operator_to_metamethod — Map operator token to metamethod TString*
-**   emit_runtime_call1        — Emit a 1-arg runtime function call
-**   emit_runtime_call2        — Emit a 2-arg runtime function call
 **   parse_method_into         — Parse method body and store into TypeName.key
 **   parse_operator_method     — Full operator parsing + body + store
 **   apply_interfaces          — Emit __cangjie_apply_interface calls
@@ -205,46 +203,6 @@ static TString *map_operator_to_metamethod (LexState *ls, int *was_bracket) {
       }
     }
   }
-}
-
-
-/*
-** Emit a call to a runtime function with 1 argument (by variable name).
-** Generates: funcname(arg)
-*/
-static void emit_runtime_call1 (LexState *ls, const char *funcname,
-                                TString *arg) {
-  FuncState *fs = ls->fs;
-  expdesc fn, a1;
-  int base2;
-  buildvar(ls, luaX_newstring(ls, funcname, strlen(funcname)), &fn);
-  luaK_exp2nextreg(fs, &fn);
-  base2 = fn.u.info;
-  buildvar(ls, arg, &a1);
-  luaK_exp2nextreg(fs, &a1);
-  init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 2, 1));
-  fs->freereg = cast_byte(base2);
-}
-
-
-/*
-** Emit a call to a runtime function with 2 arguments (by variable name).
-** Generates: funcname(arg1, arg2)
-*/
-static void emit_runtime_call2 (LexState *ls, const char *funcname,
-                                TString *arg1, TString *arg2) {
-  FuncState *fs = ls->fs;
-  expdesc fn, a1, a2;
-  int base2;
-  buildvar(ls, luaX_newstring(ls, funcname, strlen(funcname)), &fn);
-  luaK_exp2nextreg(fs, &fn);
-  base2 = fn.u.info;
-  buildvar(ls, arg1, &a1);
-  luaK_exp2nextreg(fs, &a1);
-  buildvar(ls, arg2, &a2);
-  luaK_exp2nextreg(fs, &a2);
-  init_exp(&fn, VCALL, luaK_codeABC(fs, OP_CALL, base2, 3, 1));
-  fs->freereg = cast_byte(base2);
 }
 
 

@@ -3865,6 +3865,9 @@ static void funcstat (LexState *ls, int line) {
 
 
 
+/* Cangjie runtime call helpers */
+#include "lparser_cj_runtime.c"
+
 /* Cangjie type definition parsing (struct, class, interface, extend, enum) */
 #include "lparser_cj_types.c"
 
@@ -4141,4 +4144,3 @@ LClosure *luaY_parser (lua_State *L, ZIO *z, Mbuffer *buff,
   L->top.p--;  /* remove scanner's table */
   return cl;  /* closure is on the stack, too */
 }
-
