@@ -1,8 +1,17 @@
 /*
 ** $Id: lbaselib_cj_string.c $
-** Cangjie string support - UTF-8 caching, string member methods,
+** Cangjie string support — UTF-8 caching, string member methods,
 ** string indexing/slicing, byte array conversion, and string metatable.
-** Split from lbaselib_cj.c
+** Split from lbaselib_cj.c for modularity.
+**
+** Architecture overview:
+**   - Strings in Cangjie use 0-based character (not byte) indexing.
+**   - s[i] returns the i-th Unicode character as a Rune value.
+**   - Strings are immutable; __newindex raises an error.
+**   - UTF-8 character counts and byte-offset tables are cached in
+**     weak-keyed registry tables for amortized O(1) indexed access.
+**   - Built-in methods (isEmpty, split, trim, etc.) are dispatched
+**     through __index and auto-bound to the string instance.
 **
 ** Contents:
 **   utf8_cache_init              — Initialize UTF-8 cache tables

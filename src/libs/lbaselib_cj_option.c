@@ -2,7 +2,13 @@
 ** $Id: lbaselib_cj_option.c $
 ** Cangjie Option type support - Some/None, coalesce (??) operator,
 ** and Option metatable with getOrThrow/isSome/isNone/getOrDefault.
-** Split from lbaselib_cj.c
+** Split from lbaselib_cj.c for modularity.
+**
+** Option values are represented as tables with a "__tag" field:
+**   Some(value) → { __tag = "Some", [1] = value }
+**   None        → { __tag = "None" }
+** Both share a common Option metatable (__option_mt) that provides
+** method dispatch via __index.
 **
 ** Contents:
 **   cangjie_some               — Some(value) constructor

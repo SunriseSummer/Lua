@@ -4,6 +4,11 @@
 ** This file is #include'd from lparser.c and shares its static context.
 ** Requires lparser_cj_exprs.c to be included first (for auto-returning).
 **
+** Pattern matching is compiled to if-elseif chains at parse time.
+** Each pattern type emits a runtime check call (e.g. __cangjie_match_tag)
+** followed by a conditional jump.  The match expression form wraps the
+** entire match in an IIFE so each branch can auto-return a value.
+**
 ** Contents:
 **   match_case_body              — Parse match case body statements
 **   match_bind_enum_params       — Bind enum constructor parameters

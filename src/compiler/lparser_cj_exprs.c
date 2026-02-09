@@ -3,6 +3,11 @@
 ** Cangjie expression forms and auto-returning logic
 ** This file is #include'd from lparser.c and shares its static context.
 **
+** The key compilation strategy is the IIFE (Immediately Invoked Function
+** Expression) pattern: block expressions, if-expressions, and match-expressions
+** are compiled as anonymous functions that are immediately called, allowing
+** them to produce values via the `return` mechanism.
+**
 ** Contents:
 **   statlist_autoreturning_ex    — Parameterized auto-returning body
 **   statlist_autoreturning       — Auto-returning body (block context)

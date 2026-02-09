@@ -1,8 +1,19 @@
 /*
 ** $Id: lbaselib_cj.c $
-** Cangjie OOP runtime support - extracted from lbaselib.c
-** Functions for class/struct instantiation, method binding,
-** inheritance chain walking, enum support, tuple, and type checking.
+** Cangjie OOP runtime support — core module
+**
+** This file implements the runtime infrastructure that enables Cangjie's
+** object-oriented and functional features on the Lua virtual machine.
+** It provides class/struct instantiation with inheritance, method binding,
+** enum support, tuple creation, function overloading, named parameters,
+** iterators, and array operations.
+**
+** Key design decisions:
+**   - Classes are represented as Lua tables with metatables.
+**   - Instances get __index closures that walk the __parent chain.
+**   - Methods are auto-bound: accessing a function through __index
+**     returns a closure that prepends `self`, matching Cangjie semantics.
+**   - Operator overloading works through standard Lua metamethods.
 **
 ** Contents:
 **   cangjie_bound_method       — Bound method call wrapper (upvalue-based)
