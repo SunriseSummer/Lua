@@ -25,7 +25,9 @@
 #include "lua.h"
 
 #include "lauxlib.h"
+#include "lcjutf8.h"
 #include "llimits.h"
+#include "lobject.h"
 
 
 /*
@@ -931,6 +933,14 @@ LUALIB_API const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
         char buff[LUA_N2SBUFFSZ];
         lua_numbertocstring(L, idx, buff);
         lua_pushstring(L, buff);
+        break;
+      }
+      case LUA_TRUNE: {
+        /* Convert Rune code point to UTF-8 character string */
+        char buf[8];
+        int nbytes = cjU_utf8encode(buf, lua_torune(L, idx));
+        if (nbytes == 0) { buf[0] = '?'; nbytes = 1; }
+        lua_pushlstring(L, buf, (size_t)nbytes);
         break;
       }
       case LUA_TSTRING:

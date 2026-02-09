@@ -46,7 +46,5 @@ LUAI_FUNC int luaB_cangjie_float64 (lua_State *L);
 LUAI_FUNC int luaB_cangjie_string (lua_State *L);
 LUAI_FUNC int luaB_cangjie_bool (lua_State *L);
 LUAI_FUNC int luaB_cangjie_rune (lua_State *L);
-LUAI_FUNC void luaB_rune_init (lua_State *L);
-LUAI_FUNC int luaB_is_rune (lua_State *L, int idx);
 
 #endif

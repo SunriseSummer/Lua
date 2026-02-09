@@ -20,6 +20,8 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "lbaselib_cj.h"
+#include "lcjutf8.h"
+#include "lobject.h"
 
 
 /*
@@ -330,109 +332,11 @@ static int cangjie_bool_call (lua_State *L) {
 ** ============================================================
 */
 
-/*
-** Helper: Determine UTF-8 byte length from lead byte.
-** Returns 1-4 for valid lead bytes, 0 for invalid.
-*/
-static int utf8_char_len (unsigned char c0) {
-  if ((c0 & 0x80) == 0) return 1;
-  if ((c0 & 0xE0) == 0xC0) return 2;
-  if ((c0 & 0xF0) == 0xE0) return 3;
-  if ((c0 & 0xF8) == 0xF0) return 4;
-  return 0;  /* invalid UTF-8 lead byte */
-}
-
-
-/*
-** Helper: Decode a single UTF-8 character from a string of exactly 'len' bytes.
-** Returns the code point, or -1 if the string is not a valid single UTF-8 char.
-*/
-static long utf8_decode_single (const char *s, size_t len) {
-  unsigned long cp;
-  int nbytes, i;
-  if (len == 0) return -1;
-  nbytes = utf8_char_len((unsigned char)s[0]);
-  if (nbytes == 0 || (size_t)nbytes != len) return -1;
-  cp = (unsigned char)s[0];
-  if (nbytes == 1) return (long)cp;
-  /* mask off the lead byte prefix bits */
-  if (nbytes == 2) cp &= 0x1F;
-  else if (nbytes == 3) cp &= 0x0F;
-  else cp &= 0x07;
-  for (i = 1; i < nbytes; i++) {
-    unsigned char ci = (unsigned char)s[i];
-    if ((ci & 0xC0) != 0x80) return -1;  /* invalid continuation byte */
-    cp = (cp << 6) | (ci & 0x3F);
-  }
-  return (long)cp;
-}
-
-
-/*
-** Helper: Encode a Unicode code point as UTF-8 into buf.
-** Returns the number of bytes written (1-4), or 0 if invalid code point.
-** buf must have space for at least 4 bytes.
-*/
-static int utf8_encode (lua_Integer cp, char *buf) {
-  if (cp < 0 || cp > 0x10FFFF) return 0;
-  if (cp <= 0x7F) {
-    buf[0] = (char)cp;
-    return 1;
-  } else if (cp <= 0x7FF) {
-    buf[0] = (char)(0xC0 | (cp >> 6));
-    buf[1] = (char)(0x80 | (cp & 0x3F));
-    return 2;
-  } else if (cp <= 0xFFFF) {
-    buf[0] = (char)(0xE0 | (cp >> 12));
-    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    buf[2] = (char)(0x80 | (cp & 0x3F));
-    return 3;
-  } else {
-    buf[0] = (char)(0xF0 | (cp >> 18));
-    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    buf[3] = (char)(0x80 | (cp & 0x3F));
-    return 4;
-  }
-}
-
 
 /* ============================================================
 ** Rune type helpers — used by Int64(), String(), and Rune() below
+** Rune is now a native TValue type (LUA_TRUNE) — no table/metatable.
 ** ============================================================ */
-
-/* Registry key for the Rune metatable */
-#define RUNE_MT_KEY "__rune_metatable"
-
-/* Check if value at given index is a Rune instance */
-static int is_rune (lua_State *L, int idx) {
-  if (lua_type(L, idx) != LUA_TTABLE) return 0;
-  if (!lua_getmetatable(L, idx)) return 0;
-  luaL_getmetatable(L, RUNE_MT_KEY);
-  {
-    int eq = lua_rawequal(L, -1, -2);
-    lua_pop(L, 2);
-    return eq;
-  }
-}
-
-/* Extract code point from a Rune instance at given index. */
-static lua_Integer rune_getcp (lua_State *L, int idx) {
-  lua_Integer cp;
-  lua_rawgeti(L, idx, 1);
-  cp = lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return cp;
-}
-
-/* Push a new Rune instance with the given code point */
-static void push_rune (lua_State *L, lua_Integer cp) {
-  lua_createtable(L, 1, 0);      /* t = {} */
-  lua_pushinteger(L, cp);
-  lua_rawseti(L, -2, 1);          /* t[1] = cp */
-  luaL_getmetatable(L, RUNE_MT_KEY);
-  lua_setmetatable(L, -2);         /* setmetatable(t, rune_mt) */
-}
 
 
 /* Int64(value) - convert to integer.
@@ -443,8 +347,8 @@ static void push_rune (lua_State *L, lua_Integer cp) {
 */
 int luaB_cangjie_int64 (lua_State *L) {
   /* Check for Rune table first */
-  if (is_rune(L, 1)) {
-    lua_pushinteger(L, rune_getcp(L, 1));
+  if (lua_isrune(L, 1)) {
+    lua_pushinteger(L, lua_torune(L, 1));
     return 1;
   }
   switch (lua_type(L, 1)) {
@@ -520,11 +424,11 @@ int luaB_cangjie_float64 (lua_State *L) {
 ** - String(rune) -> character string (via __tostring)
 */
 int luaB_cangjie_string (lua_State *L) {
-  /* Check for Rune table first — use __tostring to get character */
-  if (is_rune(L, 1)) {
-    lua_Integer cp = rune_getcp(L, 1);
+  /* Check for Rune first — convert to UTF-8 character string */
+  if (lua_isrune(L, 1)) {
+    lua_Integer cp = lua_torune(L, 1);
     char buf[8];
-    int len = utf8_encode(cp, buf);
+    int len = cjU_utf8encode(buf, cp);
     if (len == 0)
       return luaL_error(L, "invalid Rune code point");
     lua_pushlstring(L, buf, (size_t)len);
@@ -585,59 +489,15 @@ int luaB_cangjie_bool (lua_State *L) {
 
 
 /* Rune(value) - construct Rune type instance.
-** Rune values are tables {cp} with a shared metatable providing
-** __tostring, __eq, __lt, __le metamethods.
-** - Rune(65) -> Rune('A')    (integer code point -> Rune instance)
-** - Rune("A") -> Rune('A')   (single-char string -> Rune instance)
-** - Rune(rune) -> rune        (Rune instance -> identity)
+** Rune is now a native tagged value (LUA_TRUNE) storing the code point.
+** - Rune(65) -> Rune('A')    (integer code point -> Rune)
+** - Rune("A") -> Rune('A')   (single-char string -> Rune)
+** - Rune(rune) -> rune        (Rune -> identity)
 */
 
-/* Rune __tostring metamethod: convert code point to UTF-8 string */
-static int rune_tostring (lua_State *L) {
-  lua_Integer cp = rune_getcp(L, 1);
-  char buf[8];
-  int len = utf8_encode(cp, buf);
-  if (len == 0) {
-    return luaL_error(L, "invalid Rune code point: %I",
-                      (LUAI_UACINT)cp);
-  }
-  lua_pushlstring(L, buf, (size_t)len);
-  return 1;
-}
-
-/* Rune __eq metamethod: compare code points */
-static int rune_eq (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) == rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
-/* Rune __lt metamethod: compare code points */
-static int rune_lt (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) < rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
-/* Rune __le metamethod: compare code points */
-static int rune_le (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) <= rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
 int luaB_cangjie_rune (lua_State *L) {
-  /* If already a Rune table, return identity */
-  if (is_rune(L, 1)) {
+  /* If already a Rune, return identity */
+  if (lua_isrune(L, 1)) {
     lua_pushvalue(L, 1);
     return 1;
   }
@@ -648,42 +508,23 @@ int luaB_cangjie_rune (lua_State *L) {
     long cp;
     if (slen == 0)
       return luaL_error(L, "Rune() cannot convert empty string");
-    cp = utf8_decode_single(s, slen);
+    cp = cjU_decodesingle(s, slen);
     if (cp < 0)
       return luaL_error(L, "Rune() requires a single-character string");
-    push_rune(L, (lua_Integer)cp);
+    lua_pushrune(L, (lua_Integer)cp);
     return 1;
   }
   {
     lua_Integer cp = luaL_checkinteger(L, 1);
     char buf[8];
-    int len = utf8_encode(cp, buf);
+    int len = cjU_utf8encode(buf, cp);
     if (len == 0) {
       return luaL_error(L, "invalid Unicode code point: %I",
                         (LUAI_UACINT)cp);
     }
-    push_rune(L, cp);
+    lua_pushrune(L, cp);
     return 1;
   }
-}
-
-/* Initialize the Rune metatable in the registry */
-void luaB_rune_init (lua_State *L) {
-  luaL_newmetatable(L, RUNE_MT_KEY);
-  lua_pushcfunction(L, rune_tostring);
-  lua_setfield(L, -2, "__tostring");
-  lua_pushcfunction(L, rune_eq);
-  lua_setfield(L, -2, "__eq");
-  lua_pushcfunction(L, rune_lt);
-  lua_setfield(L, -2, "__lt");
-  lua_pushcfunction(L, rune_le);
-  lua_setfield(L, -2, "__le");
-  lua_pop(L, 1);  /* pop metatable */
-}
-
-/* Public accessor for is_rune check */
-int luaB_is_rune (lua_State *L, int idx) {
-  return is_rune(L, idx);
 }
 
 
@@ -1709,86 +1550,9 @@ int luaB_array_slice_set (lua_State *L) {
 
 /*
 ** ============================================================
-** UTF-8 helpers (reused from lutf8lib.c)
+** UTF-8 helpers — now delegated to shared lcjutf8 module
 ** ============================================================
 */
-
-#define MAXUNICODE_CJ	0x10FFFFu
-#define iscont_cj(c)	(((c) & 0xC0) == 0x80)
-
-/*
-** Decode one UTF-8 sequence, returning NULL if byte sequence is invalid.
-** The 'limits' array stores the minimum code point for each sequence length,
-** to reject overlong encodings: [0]=force error for no continuation bytes,
-** [1]=2-byte min 0x80, [2]=3-byte min 0x800, [3]=4-byte min 0x10000,
-** [4]=5-byte min 0x200000, [5]=6-byte min 0x4000000.
-*/
-static const char *utf8_decode_cj (const char *s, l_uint32 *val) {
-  static const l_uint32 limits[] =
-        {~(l_uint32)0, 0x80, 0x800, 0x10000u, 0x200000u, 0x4000000u};
-  unsigned int c = (unsigned char)s[0];
-  l_uint32 res = 0;
-  if (c < 0x80)
-    res = c;
-  else {
-    int count = 0;
-    for (; c & 0x40; c <<= 1) {
-      unsigned int cc = (unsigned char)s[++count];
-      if (!iscont_cj(cc))
-        return NULL;
-      res = (res << 6) | (cc & 0x3F);
-    }
-    res |= ((l_uint32)(c & 0x7F) << (count * 5));
-    if (count > 5 || res > 0x7FFFFFFFu || res < limits[count])
-      return NULL;
-    s += count;
-  }
-  /* check for invalid code points: surrogates */
-  if (res > MAXUNICODE_CJ || (0xD800u <= res && res <= 0xDFFFu))
-    return NULL;
-  if (val) *val = res;
-  return s + 1;
-}
-
-
-/*
-** Count UTF-8 characters in a string of byte length 'len'.
-** Returns character count, or -1 if invalid UTF-8.
-*/
-static lua_Integer utf8_charcount (const char *s, size_t len) {
-  lua_Integer n = 0;
-  size_t pos = 0;
-  while (pos < len) {
-    const char *next = utf8_decode_cj(s + pos, NULL);
-    if (next == NULL) return -1;  /* invalid UTF-8 */
-    pos = (size_t)(next - s);
-    n++;
-  }
-  return n;
-}
-
-
-/*
-** Get byte offset of the n-th (0-based) UTF-8 character.
-** Returns the byte offset, or -1 if out of range.
-*/
-static lua_Integer utf8_byte_offset (const char *s, size_t len,
-                                     lua_Integer charIdx) {
-  lua_Integer n = 0;
-  size_t pos = 0;
-  if (charIdx < 0) return -1;
-  while (pos < len) {
-    if (n == charIdx) return (lua_Integer)pos;
-    {
-    const char *next = utf8_decode_cj(s + pos, NULL);
-    if (next == NULL) return -1;
-    pos = (size_t)(next - s);
-    n++;
-    }
-  }
-  if (n == charIdx) return (lua_Integer)pos;  /* one past the end */
-  return -1;
-}
 
 
 /*
@@ -1846,7 +1610,7 @@ static lua_Integer utf8_cached_charcount (lua_State *L, int idx) {
   lua_pop(L, 1);  /* pop nil */
 
   /* Compute and cache */
-  cc = utf8_charcount(s, len);
+  cc = cjU_charcount(s, len);
   if (cc < 0) cc = (lua_Integer)len;  /* invalid UTF-8: fall back to byte length */
   lua_pushvalue(L, idx);      /* key: the string */
   lua_pushinteger(L, cc);     /* value: char count */
@@ -1896,7 +1660,7 @@ static const lua_Integer *utf8_build_index_cache (lua_State *L, int idx) {
   if (s == NULL) return NULL;
 
   /* First compute char count (invalid UTF-8: fall back to byte length) */
-  cc = utf8_charcount(s, len);
+  cc = cjU_charcount(s, len);
   if (cc < 0) cc = (lua_Integer)len;
 
   /* Also cache the char count */
@@ -1915,7 +1679,7 @@ static const lua_Integer *utf8_build_index_cache (lua_State *L, int idx) {
   while (pos < len && i < cc) {
     const char *next;
     offsets[i] = (lua_Integer)pos;
-    next = utf8_decode_cj(s + pos, NULL);
+    next = cjU_decode(s + pos, NULL);
     if (next == NULL) { pos++; }  /* invalid sequence: skip one byte */
     else { pos = (size_t)(next - s); }
     i++;
@@ -1946,12 +1710,12 @@ static int utf8_single_pass_index (const char *s, size_t len,
   size_t pos = 0;
   if (charIdx < 0) {
     /* Still need total count for error message */
-    *totalChars = utf8_charcount(s, len);
+    *totalChars = cjU_charcount(s, len);
     if (*totalChars < 0) *totalChars = (lua_Integer)len;
     return 0;
   }
   while (pos < len) {
-    const char *next = utf8_decode_cj(s + pos, NULL);
+    const char *next = cjU_decode(s + pos, NULL);
     size_t clen;
     if (next == NULL) { next = s + pos + 1; }
     clen = (size_t)(next - (s + pos));
@@ -2065,7 +1829,7 @@ static int str_split_cj (lua_State *L) {
     /* split into UTF-8 characters */
     size_t pos = 0;
     while (pos < slen) {
-      const char *next = utf8_decode_cj(s + pos, NULL);
+      const char *next = cjU_decode(s + pos, NULL);
       size_t clen;
       if (next == NULL) {
         /* fallback: single byte */
@@ -2191,7 +1955,7 @@ static int str_toRuneArray_cj (lua_State *L) {
   size_t pos = 0;
   lua_newtable(L);
   while (pos < len) {
-    const char *next = utf8_decode_cj(s + pos, NULL);
+    const char *next = cjU_decode(s + pos, NULL);
     size_t clen;
     if (next == NULL) {
       next = s + pos + 1;
@@ -2222,7 +1986,7 @@ static int str_indexOf_cj (lua_State *L) {
   const char *found;
   size_t pos;
   if (fromCharIdx < 0) fromCharIdx = 0;
-  byteOff = utf8_byte_offset(s, slen, fromCharIdx);
+  byteOff = cjU_byteoffset(s, slen, fromCharIdx);
   if (byteOff < 0) {
     lua_pushinteger(L, -1);
     return 1;
@@ -2236,7 +2000,7 @@ static int str_indexOf_cj (lua_State *L) {
   charIdx = 0;
   pos = 0;
   while (pos < (size_t)(found - s)) {
-    const char *next = utf8_decode_cj(s + pos, NULL);
+    const char *next = cjU_decode(s + pos, NULL);
     if (next == NULL) { pos++; charIdx++; continue; }
     pos = (size_t)(next - s);
     charIdx++;
@@ -2262,7 +2026,7 @@ static int str_lastIndexOf_cj (lua_State *L) {
   if (charCount < 0) charCount = 0;
   if (fromCharIdx > charCount) fromCharIdx = charCount;
   if (fromCharIdx < 0) fromCharIdx = 0;
-  byteOff = utf8_byte_offset(s, slen, fromCharIdx);
+  byteOff = cjU_byteoffset(s, slen, fromCharIdx);
   if (byteOff < 0) byteOff = (lua_Integer)slen;
   /* Search backwards from byteOff */
   search_end = s + byteOff;
@@ -2284,7 +2048,7 @@ static int str_lastIndexOf_cj (lua_State *L) {
   charIdx = 0;
   pos = 0;
   while ((lua_Integer)pos < lastBytePos) {
-    const char *next = utf8_decode_cj(s + pos, NULL);
+    const char *next = cjU_decode(s + pos, NULL);
     if (next == NULL) { pos++; charIdx++; continue; }
     pos = (size_t)(next - s);
     charIdx++;
@@ -2515,8 +2279,8 @@ int luaB_str_slice (lua_State *L) {
     lua_pushliteral(L, "");
     return 1;
   }
-  startByte = utf8_byte_offset(s, len, start);
-  endByte = utf8_byte_offset(s, len, end + 1);
+  startByte = cjU_byteoffset(s, len, start);
+  endByte = cjU_byteoffset(s, len, end + 1);
   if (startByte < 0) startByte = 0;
   if (endByte < 0) endByte = (lua_Integer)len;
   if (endByte <= startByte) {

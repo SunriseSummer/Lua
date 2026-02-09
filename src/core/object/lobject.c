@@ -21,6 +21,7 @@
 #include "lua.h"
 
 #include "lctype.h"
+#include "lcjutf8.h"
 #include "ldebug.h"
 #include "ldo.h"
 #include "lmem.h"
@@ -448,8 +449,13 @@ static int tostringbuffFloat (lua_Number n, char *buff) {
 */
 unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
   int len;
-  lua_assert(ttisnumber(obj));
-  if (ttisinteger(obj))
+  lua_assert(ttisnumber(obj) || ttisrune(obj));
+  if (ttisrune(obj)) {
+    int nbytes = cjU_utf8encode(buff, runevalue(obj));
+    if (nbytes == 0) { buff[0] = '?'; return 1; }
+    return cast_uint(nbytes);
+  }
+  else if (ttisinteger(obj))
     len = lua_integer2str(buff, LUA_N2SBUFFSZ, ivalue(obj));
   else
     len = tostringbuffFloat(fltvalue(obj), buff);
@@ -459,7 +465,7 @@ unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
 
 
 /*
-** Convert a number object to a Lua string, replacing the value at 'obj'
+** Convert a number or Rune object to a Lua string, replacing the value at 'obj'
 */
 void luaO_tostring (lua_State *L, TValue *obj) {
   char buff[LUA_N2SBUFFSZ];

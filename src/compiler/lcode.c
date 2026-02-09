@@ -602,6 +602,20 @@ static int luaK_intK (FuncState *fs, lua_Integer n) {
   return k2proto(fs, &o, &o);  /* use integer itself as key */
 }
 
+
+/*
+** Add a Rune constant to list of constants and return its index.
+** The Rune TValue serves as both the lookup key and the stored value.
+** Because Rune has a different type tag (LUA_VRUNE) than integer
+** (LUA_VNUMINT), Rune(65) and integer 65 are distinct keys and
+** will not collide in the constant table.
+*/
+static int luaK_runeK (FuncState *fs, lua_Integer cp) {
+  TValue o;
+  setrunevalue(&o, cp);
+  return k2proto(fs, &o, &o);
+}
+
 /*
 ** Add a float to list of constants and return its index. Floats
 ** with integral values need a different key, to avoid collision
@@ -697,6 +711,11 @@ void luaK_int (FuncState *fs, int reg, lua_Integer i) {
 }
 
 
+static void luaK_rune (FuncState *fs, int reg, lua_Integer cp) {
+  luaK_codek(fs, reg, luaK_runeK(fs, cp));
+}
+
+
 static void luaK_float (FuncState *fs, int reg, lua_Number f) {
   lua_Integer fi;
   if (luaV_flttointeger(f, &fi, F2Ieq) && fitsBx(fi))
@@ -732,6 +751,9 @@ static void const2exp (TValue *v, expdesc *e) {
       break;
     case LUA_VNUMFLT:
       e->k = VKFLT; e->u.nval = fltvalue(v);
+      break;
+    case LUA_VRUNE:
+      e->k = VKRUNE; e->u.ival = runevalue(v);
       break;
     case LUA_VFALSE:
       e->k = VFALSE;
@@ -909,6 +931,10 @@ static void discharge2reg (FuncState *fs, expdesc *e, int reg) {
       luaK_int(fs, reg, e->u.ival);
       break;
     }
+    case VKRUNE: {
+      luaK_rune(fs, reg, e->u.ival);
+      break;
+    }
     case VRELOC: {
       Instruction *pc = &getinstruction(fs, e);
       SETARG_A(*pc, reg);  /* instruction will put result in 'reg' */
@@ -1060,6 +1086,7 @@ static int luaK_exp2K (FuncState *fs, expdesc *e) {
       case VFALSE: info = boolF(fs); break;
       case VNIL: info = nilK(fs); break;
       case VKINT: info = luaK_intK(fs, e->u.ival); break;
+      case VKRUNE: info = luaK_runeK(fs, e->u.ival); break;
       case VKFLT: info = luaK_numberK(fs, e->u.nval); break;
       case VKSTR: info = stringK(fs, e->u.strval); break;
       case VK: info = e->u.info; break;
@@ -1184,7 +1211,7 @@ void luaK_goiftrue (FuncState *fs, expdesc *e) {
       pc = e->u.info;  /* save jump position */
       break;
     }
-    case VK: case VKFLT: case VKINT: case VKSTR: case VTRUE: {
+    case VK: case VKFLT: case VKINT: case VKRUNE: case VKSTR: case VTRUE: {
       pc = NO_JUMP;  /* always true; do nothing */
       break;
     }
@@ -1234,7 +1261,7 @@ static void codenot (FuncState *fs, expdesc *e) {
       e->k = VTRUE;  /* true == not nil == not false */
       break;
     }
-    case VK: case VKFLT: case VKINT: case VKSTR: case VTRUE: {
+    case VK: case VKFLT: case VKINT: case VKRUNE: case VKSTR: case VTRUE: {
       e->k = VFALSE;  /* false == not "x" == not 0.5 == not 1 == not true */
       break;
     }
@@ -1669,7 +1696,7 @@ static void codeeq (FuncState *fs, BinOpr opr, expdesc *e1, expdesc *e2) {
   int isfloat = 0;  /* not needed here, but kept for symmetry */
   OpCode op;
   if (e1->k != VNONRELOC) {
-    lua_assert(e1->k == VK || e1->k == VKINT || e1->k == VKFLT);
+    lua_assert(e1->k == VK || e1->k == VKINT || e1->k == VKFLT || e1->k == VKRUNE);
     swapexps(e1, e2);
   }
   r1 = luaK_exp2anyreg(fs, e1);  /* 1st expression must be in register */
