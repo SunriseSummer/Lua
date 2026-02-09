@@ -75,6 +75,7 @@ static void matchexpr (LexState *ls, expdesc *v, int line);
 static void statlist_autoreturning (LexState *ls);
 static void ifstat_returning (LexState *ls, int line);
 static void matchstat_returning (LexState *ls, int line);
+static int is_match_case_end (LexState *ls);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -3868,7 +3869,10 @@ static void funcstat (LexState *ls, int line) {
 #include "lparser_cj_types.c"
 
 
-/* Cangjie pattern matching and expression forms */
+/* Cangjie expression forms and auto-returning logic */
+#include "lparser_cj_exprs.c"
+
+/* Cangjie pattern matching */
 #include "lparser_cj_match.c"
 
 

@@ -1,6 +1,18 @@
 /*
 ** $Id: lcjutf8.c $
 ** Shared UTF-8 utility functions for Cangjie runtime
+** Provides low-level encoding, decoding, character counting, and
+** byte-offset computation.  Used by lbaselib_cj_string.c and
+** lbaselib_cj.c (string iteration, Rune conversion).
+**
+** Contents:
+**   cjU_utf8encode   — Encode code point to UTF-8 bytes
+**   cjU_charlen      — Byte length of UTF-8 char from lead byte
+**   cjU_decodesingle — Decode a single known-length UTF-8 char
+**   cjU_decode       — Decode one UTF-8 sequence (with validation)
+**   cjU_charcount    — Count UTF-8 characters in a byte string
+**   cjU_byteoffset   — Byte offset of the N-th character
+**
 ** See Copyright Notice in lua.h
 */
 
@@ -16,6 +28,12 @@
 #include "lcjutf8.h"
 #include "llimits.h"
 
+
+/*
+** ============================================================
+** UTF-8 encoding
+** ============================================================
+*/
 
 /*
 ** Encode a Unicode code point as UTF-8 into buf (forward).
@@ -46,6 +64,12 @@ int cjU_utf8encode (char *buf, lua_Integer cp) {
   }
 }
 
+
+/*
+** ============================================================
+** UTF-8 decoding
+** ============================================================
+*/
 
 /*
 ** Determine UTF-8 byte length from lead byte.
@@ -121,6 +145,12 @@ const char *cjU_decode (const char *s, l_uint32 *val) {
   return s + 1;
 }
 
+
+/*
+** ============================================================
+** UTF-8 string scanning
+** ============================================================
+*/
 
 /*
 ** Count UTF-8 characters in a string of byte length 'len'.
