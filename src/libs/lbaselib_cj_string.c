@@ -34,6 +34,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "lbaselib_cj.h"
+#include "lbaselib_cj_helpers.h"
 #include "lcjutf8.h"
 
 
@@ -220,19 +221,6 @@ static int utf8_single_pass_index (const char *s, size_t len,
 ** Cangjie string member methods (built-in)
 ** ============================================================
 */
-
-/* bound method helper: wraps (cfunc, self) into a closure that
-   calls cfunc with self as first argument */
-static int str_bound_call (lua_State *L) {
-  int nargs = lua_gettop(L);
-  int i;
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push cfunc */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self (string) */
-  for (i = 1; i <= nargs; i++)
-    lua_pushvalue(L, i);  /* push call arguments */
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - nargs;
-}
 
 /* s:isEmpty() -> Bool */
 static int str_isEmpty (lua_State *L) {
@@ -711,7 +699,7 @@ int luaB_str_index (lua_State *L) {
           /* Return a bound method: closure(cfunc, self) */
           lua_pushcfunction(L, m->func);
           lua_pushvalue(L, 1);  /* push self string */
-          lua_pushcclosure(L, str_bound_call, 2);
+          lua_pushcclosure(L, cangjie_bound_method, 2);
           return 1;
         }
       }

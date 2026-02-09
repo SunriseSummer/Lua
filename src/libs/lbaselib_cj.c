@@ -913,19 +913,8 @@ int luaB_iter (lua_State *L) {
 */
 int luaB_match_tag (lua_State *L) {
   /* Check if a value's __tag matches a given tag string */
-  const char *tag;
-  if (!lua_istable(L, 1)) {
-    lua_pushboolean(L, 0);
-    return 1;
-  }
-  tag = luaL_checkstring(L, 2);
-  lua_getfield(L, 1, "__tag");
-  if (lua_isstring(L, -1)) {
-    lua_pushboolean(L, strcmp(lua_tostring(L, -1), tag) == 0);
-  }
-  else {
-    lua_pushboolean(L, 0);
-  }
+  const char *tag = luaL_checkstring(L, 2);
+  lua_pushboolean(L, cangjie_has_tag(L, 1, tag));
   return 1;
 }
 
