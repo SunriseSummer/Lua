@@ -42,6 +42,7 @@
 #include "lauxlib.h"
 #include "lualib.h"
 #include "lbaselib_cj.h"
+#include "lbaselib_cj_helpers.h"
 #include "lcjutf8.h"
 #include "lobject.h"
 
@@ -78,23 +79,6 @@ static const char *const cj_enum_metamethods[] = {
 ** Bound method helper and instance __index handler
 ** ============================================================
 */
-
-/* Upvalue-based bound method: when called, prepend the bound object.
-** Used by class instances, type extensions, enum values, and Option. */
-static int cangjie_bound_method (lua_State *L) {
-  int nargs = lua_gettop(L);
-  int i;
-  int top_before;
-  /* upvalue 1 = the original function, upvalue 2 = the bound object */
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self */
-  for (i = 1; i <= nargs; i++) {
-    lua_pushvalue(L, i);  /* push original args */
-  }
-  top_before = nargs;  /* original args count */
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - top_before;  /* only return the new results */
-}
 
 /* Custom __index: if the value from the class table is a function,
 ** return a bound method; otherwise return the raw value.
@@ -1492,4 +1476,3 @@ int luaB_array_slice_set (lua_State *L) {
 /*
 ** String support moved to lbaselib_cj_string.c
 */
-

@@ -111,27 +111,10 @@ static void match_bind_enum_params (LexState *ls, TString *match_var_name,
 */
 static int match_emit_tag_check (LexState *ls, TString *match_var_name,
                                  TString *tag_str) {
-  FuncState *fs = ls->fs;
-  expdesc fn, arg1, arg2, cond;
-  int base2;
-  int condjmp;
-
-  buildvar(ls, luaX_newstring(ls, "__cangjie_match_tag", 19), &fn);
-  luaK_exp2nextreg(fs, &fn);
-  base2 = fn.u.info;
+  expdesc arg1, arg2;
   buildvar(ls, match_var_name, &arg1);
-  luaK_exp2nextreg(fs, &arg1);
   codestring(&arg2, tag_str);
-  luaK_exp2nextreg(fs, &arg2);
-  init_exp(&fn, VCALL,
-           luaK_codeABC(fs, OP_CALL, base2, 3, 2));
-  fs->freereg = cast_byte(base2 + 1);
-
-  init_exp(&cond, VNONRELOC, base2);
-  luaK_goiftrue(fs, &cond);
-  condjmp = cond.f;
-  fs->freereg = cast_byte(base2);
-  return condjmp;
+  return emit_runtime_check2(ls, "__cangjie_match_tag", &arg1, &arg2);
 }
 
 
@@ -141,27 +124,10 @@ static int match_emit_tag_check (LexState *ls, TString *match_var_name,
 */
 static int match_emit_type_check (LexState *ls, TString *match_var_name,
                                   TString *type_name) {
-  FuncState *fs = ls->fs;
-  expdesc fn, arg1, arg2, cond;
-  int base2;
-  int condjmp;
-
-  buildvar(ls, luaX_newstring(ls, "__cangjie_is_instance", 21), &fn);
-  luaK_exp2nextreg(fs, &fn);
-  base2 = fn.u.info;
+  expdesc arg1, arg2;
   buildvar(ls, match_var_name, &arg1);
-  luaK_exp2nextreg(fs, &arg1);
   buildvar(ls, type_name, &arg2);
-  luaK_exp2nextreg(fs, &arg2);
-  init_exp(&fn, VCALL,
-           luaK_codeABC(fs, OP_CALL, base2, 3, 2));
-  fs->freereg = cast_byte(base2 + 1);
-
-  init_exp(&cond, VNONRELOC, base2);
-  luaK_goiftrue(fs, &cond);
-  condjmp = cond.f;
-  fs->freereg = cast_byte(base2);
-  return condjmp;
+  return emit_runtime_check2(ls, "__cangjie_is_instance", &arg1, &arg2);
 }
 
 
@@ -178,31 +144,11 @@ static int match_emit_type_check (LexState *ls, TString *match_var_name,
 */
 static int match_emit_tuple_check (LexState *ls, TString *match_var_name,
                                    int npatterns) {
-  FuncState *fs = ls->fs;
-  expdesc fn, arg1, arg2, cond;
-  int base2;
-  int condjmp;
-
-  buildvar(ls, luaX_newstring(ls, "__cangjie_match_tuple", 21), &fn);
-  luaK_exp2nextreg(fs, &fn);
-  base2 = fn.u.info;
+  expdesc arg1, arg2;
   buildvar(ls, match_var_name, &arg1);
-  luaK_exp2nextreg(fs, &arg1);
-  {
-    expdesc nval;
-    init_exp(&nval, VKINT, 0);
-    nval.u.ival = npatterns;
-    luaK_exp2nextreg(fs, &nval);
-  }
-  init_exp(&fn, VCALL,
-           luaK_codeABC(fs, OP_CALL, base2, 3, 2));
-  fs->freereg = cast_byte(base2 + 1);
-
-  init_exp(&cond, VNONRELOC, base2);
-  luaK_goiftrue(fs, &cond);
-  condjmp = cond.f;
-  fs->freereg = cast_byte(base2);
-  return condjmp;
+  init_exp(&arg2, VKINT, 0);
+  arg2.u.ival = npatterns;
+  return emit_runtime_check2(ls, "__cangjie_match_tuple", &arg1, &arg2);
 }
 
 
@@ -579,5 +525,4 @@ static void matchexpr (LexState *ls, expdesc *v, int line) {
            luaK_codeABC(prev_fs, OP_CALL, base2, 1, 2));
   prev_fs->freereg = cast_byte(base2 + 1);
 }
-
 
