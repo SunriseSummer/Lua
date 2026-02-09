@@ -605,12 +605,15 @@ static int luaK_intK (FuncState *fs, lua_Integer n) {
 
 /*
 ** Add a Rune constant to list of constants and return its index.
-** Uses the Rune TValue as key (different tag from integer).
+** The Rune TValue serves as both the lookup key and the stored value.
+** Because Rune has a different type tag (LUA_VRUNE) than integer
+** (LUA_VNUMINT), Rune(65) and integer 65 are distinct keys and
+** will not collide in the constant table.
 */
 static int luaK_runeK (FuncState *fs, lua_Integer cp) {
   TValue o;
   setrunevalue(&o, cp);
-  return k2proto(fs, &o, &o);  /* use Rune value itself as key */
+  return k2proto(fs, &o, &o);
 }
 
 /*

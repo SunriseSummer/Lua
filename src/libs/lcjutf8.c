@@ -62,6 +62,9 @@ long cjU_decodesingle (const char *s, size_t len) {
 ** The 'limits' array rejects overlong encodings.
 */
 const char *cjU_decode (const char *s, l_uint32 *val) {
+  /* Minimum code points per byte count to reject overlong encodings.
+  ** Indices 4-5 cover hypothetical 5-6 byte sequences (not valid UTF-8
+  ** but needed for the loop-based decoder to reject them properly). */
   static const l_uint32 limits[] =
         {~(l_uint32)0, 0x80, 0x800, 0x10000u, 0x200000u, 0x4000000u};
   unsigned int c = (unsigned char)s[0];

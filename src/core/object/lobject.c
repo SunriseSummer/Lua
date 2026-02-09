@@ -408,6 +408,7 @@ int luaO_utf8esc (char *buff, l_uint32 x) {
 */
 int luaO_utf8encode (char *buf, lua_Integer cp) {
   if (cp < 0 || cp > 0x10FFFF) return 0;
+  if (cp >= 0xD800 && cp <= 0xDFFF) return 0;  /* reject surrogates */
   if (cp <= 0x7F) {
     buf[0] = (char)cp;
     return 1;

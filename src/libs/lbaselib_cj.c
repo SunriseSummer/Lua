@@ -338,21 +338,6 @@ static int cangjie_bool_call (lua_State *L) {
 ** Rune is now a native TValue type (LUA_TRUNE) — no table/metatable.
 ** ============================================================ */
 
-/* Check if value at given index is a Rune instance */
-static int is_rune (lua_State *L, int idx) {
-  return lua_type(L, idx) == LUA_TRUNE;
-}
-
-/* Extract code point from a Rune instance at given index. */
-static lua_Integer rune_getcp (lua_State *L, int idx) {
-  return lua_torune(L, idx);
-}
-
-/* Push a new Rune instance with the given code point */
-static void push_rune (lua_State *L, lua_Integer cp) {
-  lua_pushrune(L, cp);
-}
-
 
 /* Int64(value) - convert to integer.
 ** For numbers: truncates float to integer, passes integer through.
@@ -362,8 +347,8 @@ static void push_rune (lua_State *L, lua_Integer cp) {
 */
 int luaB_cangjie_int64 (lua_State *L) {
   /* Check for Rune table first */
-  if (is_rune(L, 1)) {
-    lua_pushinteger(L, rune_getcp(L, 1));
+  if (lua_isrune(L, 1)) {
+    lua_pushinteger(L, lua_torune(L, 1));
     return 1;
   }
   switch (lua_type(L, 1)) {
@@ -440,8 +425,8 @@ int luaB_cangjie_float64 (lua_State *L) {
 */
 int luaB_cangjie_string (lua_State *L) {
   /* Check for Rune first — convert to UTF-8 character string */
-  if (is_rune(L, 1)) {
-    lua_Integer cp = rune_getcp(L, 1);
+  if (lua_isrune(L, 1)) {
+    lua_Integer cp = lua_torune(L, 1);
     char buf[8];
     int len = luaO_utf8encode(buf, cp);
     if (len == 0)
@@ -512,7 +497,7 @@ int luaB_cangjie_bool (lua_State *L) {
 
 int luaB_cangjie_rune (lua_State *L) {
   /* If already a Rune, return identity */
-  if (is_rune(L, 1)) {
+  if (lua_isrune(L, 1)) {
     lua_pushvalue(L, 1);
     return 1;
   }
@@ -526,7 +511,7 @@ int luaB_cangjie_rune (lua_State *L) {
     cp = cjU_decodesingle(s, slen);
     if (cp < 0)
       return luaL_error(L, "Rune() requires a single-character string");
-    push_rune(L, (lua_Integer)cp);
+    lua_pushrune(L, (lua_Integer)cp);
     return 1;
   }
   {
@@ -537,19 +522,9 @@ int luaB_cangjie_rune (lua_State *L) {
       return luaL_error(L, "invalid Unicode code point: %I",
                         (LUAI_UACINT)cp);
     }
-    push_rune(L, cp);
+    lua_pushrune(L, cp);
     return 1;
   }
-}
-
-/* luaB_rune_init: no longer needed — Rune is a native type, no metatable */
-void luaB_rune_init (lua_State *L) {
-  (void)L;
-}
-
-/* Public accessor for is_rune check */
-int luaB_is_rune (lua_State *L, int idx) {
-  return is_rune(L, idx);
 }
 
 

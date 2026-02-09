@@ -38,6 +38,9 @@ expectNoError("Rune == string comparison",
 expectLoadError("empty Rune literal r''",
     "let a = r''", "empty Rune literal")
 
+expectLoadError("empty Rune literal r\"\"",
+    'let a = r""', "empty Rune literal")
+
 if (!__test_failed) {
     println("PASS: 12_rune_type_errors")
 }
