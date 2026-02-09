@@ -821,7 +821,11 @@ static int cangjie_string_iter_next (lua_State *L) {
   }
   nbytes = cjU_charlen((unsigned char)s[off]);
   if (nbytes == 0 || (size_t)(off + nbytes) > len) {
-    lua_pushnil(L);
+    /* Invalid UTF-8: skip one byte, yield U+FFFD replacement character */
+    lua_pushinteger(L, off + 1);
+    lua_copy(L, -1, lua_upvalueindex(2));
+    lua_pop(L, 1);
+    lua_pushrune(L, 0xFFFD);
     return 1;
   }
   cp = cjU_decodesingle(s + off, (size_t)nbytes);
@@ -832,7 +836,7 @@ static int cangjie_string_iter_next (lua_State *L) {
   if (cp >= 0)
     lua_pushrune(L, (lua_Integer)cp);
   else
-    lua_pushnil(L);
+    lua_pushrune(L, 0xFFFD);  /* replacement character for invalid decode */
   return 1;
 }
 
@@ -2013,7 +2017,7 @@ static int str_toRuneArray_cj (lua_State *L) {
     if (cp >= 0)
       lua_pushrune(L, (lua_Integer)cp);
     else
-      lua_pushlstring(L, s + pos, clen);
+      lua_pushrune(L, 0xFFFD);  /* replacement character for invalid decode */
     lua_rawseti(L, -2, idx++);
     pos = (size_t)(next - s);
   }
@@ -2235,11 +2239,10 @@ int luaB_str_index (lua_State *L) {
       {
         size_t clen = (size_t)(offsets[idx + 1] - offsets[idx]);
         long cp = cjU_decodesingle(s + offsets[idx], clen);
-        if (cp >= 0) {
+        if (cp >= 0)
           lua_pushrune(L, (lua_Integer)cp);
-          return 1;
-        }
-        lua_pushlstring(L, s + offsets[idx], clen);
+        else
+          lua_pushrune(L, 0xFFFD);  /* replacement character */
         return 1;
       }
     }
@@ -2251,11 +2254,10 @@ int luaB_str_index (lua_State *L) {
       lua_Integer totalChars;
       if (utf8_single_pass_index(s, len, idx, &byteOff, &clen, &totalChars)) {
         long cp = cjU_decodesingle(s + byteOff, clen);
-        if (cp >= 0) {
+        if (cp >= 0)
           lua_pushrune(L, (lua_Integer)cp);
-          return 1;
-        }
-        lua_pushlstring(L, s + byteOff, clen);
+        else
+          lua_pushrune(L, 0xFFFD);  /* replacement character */
         return 1;
       }
       /* Out of range */
