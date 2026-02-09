@@ -56,9 +56,7 @@ static int cangjie_some (lua_State *L) {
 
 /* Option.getOrThrow() - unwrap Some value or error on None */
 static int cangjie_option_getOrThrow (lua_State *L) {
-  lua_getfield(L, 1, "__tag");
-  if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0) {
-    lua_pop(L, 1);
+  if (cangjie_has_tag(L, 1, "Some")) {
     lua_rawgeti(L, 1, 1);
     return 1;
   }
@@ -67,33 +65,22 @@ static int cangjie_option_getOrThrow (lua_State *L) {
 
 /* Option.isSome() */
 static int cangjie_option_isSome (lua_State *L) {
-  int result;
-  lua_getfield(L, 1, "__tag");
-  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0;
-  lua_pop(L, 1);
-  lua_pushboolean(L, result);
+  lua_pushboolean(L, cangjie_has_tag(L, 1, "Some"));
   return 1;
 }
 
 /* Option.isNone() */
 static int cangjie_option_isNone (lua_State *L) {
-  int result;
-  lua_getfield(L, 1, "__tag");
-  result = lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "None") == 0;
-  lua_pop(L, 1);
-  lua_pushboolean(L, result);
+  lua_pushboolean(L, cangjie_has_tag(L, 1, "None"));
   return 1;
 }
 
 /* Option.getOrDefault(default) - accepts a value or a function */
 static int cangjie_option_getOrDefault (lua_State *L) {
-  lua_getfield(L, 1, "__tag");
-  if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0) {
-    lua_pop(L, 1);
+  if (cangjie_has_tag(L, 1, "Some")) {
     lua_rawgeti(L, 1, 1);
     return 1;
   }
-  lua_pop(L, 1);
   /* Return the default value (call it if it's a function, otherwise return directly) */
   lua_pushvalue(L, 2);
   if (lua_isfunction(L, -1)) {
@@ -108,38 +95,36 @@ static int cangjie_option_getOrDefault (lua_State *L) {
 ** ============================================================
 */
 
+typedef struct {
+  const char *name;
+  lua_CFunction func;
+} OptionMethod;
+
+static const OptionMethod option_methods[] = {
+  {"getOrThrow", cangjie_option_getOrThrow},
+  {"isSome", cangjie_option_isSome},
+  {"isNone", cangjie_option_isNone},
+  {"getOrDefault", cangjie_option_getOrDefault},
+  {NULL, NULL}
+};
+
 /* __index handler for Option values */
 static int cangjie_option_index (lua_State *L) {
   const char *key = luaL_checkstring(L, 2);
+  const OptionMethod *method;
   /* Check raw access first */
   lua_pushvalue(L, 2);
   lua_rawget(L, 1);
   if (!lua_isnil(L, -1)) return 1;
   lua_pop(L, 1);
   /* Method dispatch */
-  if (strcmp(key, "getOrThrow") == 0) {
-    lua_pushcfunction(L, cangjie_option_getOrThrow);
-    lua_pushvalue(L, 1);
-    lua_pushcclosure(L, cangjie_bound_method, 2);
-    return 1;
-  }
-  if (strcmp(key, "isSome") == 0) {
-    lua_pushcfunction(L, cangjie_option_isSome);
-    lua_pushvalue(L, 1);
-    lua_pushcclosure(L, cangjie_bound_method, 2);
-    return 1;
-  }
-  if (strcmp(key, "isNone") == 0) {
-    lua_pushcfunction(L, cangjie_option_isNone);
-    lua_pushvalue(L, 1);
-    lua_pushcclosure(L, cangjie_bound_method, 2);
-    return 1;
-  }
-  if (strcmp(key, "getOrDefault") == 0) {
-    lua_pushcfunction(L, cangjie_option_getOrDefault);
-    lua_pushvalue(L, 1);
-    lua_pushcclosure(L, cangjie_bound_method, 2);
-    return 1;
+  for (method = option_methods; method->name != NULL; method++) {
+    if (strcmp(key, method->name) == 0) {
+      lua_pushcfunction(L, method->func);
+      lua_pushvalue(L, 1);
+      lua_pushcclosure(L, cangjie_bound_method, 2);
+      return 1;
+    }
   }
   lua_pushnil(L);
   return 1;
@@ -153,23 +138,13 @@ int luaB_coalesce (lua_State *L) {
     lua_pushvalue(L, 2);
     return 1;
   }
-  /* If opt is a table with __tag */
-  if (lua_istable(L, 1)) {
-    lua_getfield(L, 1, "__tag");
-    if (lua_isstring(L, -1)) {
-      const char *tag = lua_tostring(L, -1);
-      if (strcmp(tag, "None") == 0) {
-        lua_pop(L, 1);
-        lua_pushvalue(L, 2);  /* return default */
-        return 1;
-      }
-      if (strcmp(tag, "Some") == 0) {
-        lua_pop(L, 1);
-        lua_rawgeti(L, 1, 1);  /* unwrap Some */
-        return 1;
-      }
-    }
-    lua_pop(L, 1);
+  if (cangjie_has_tag(L, 1, "None")) {
+    lua_pushvalue(L, 2);  /* return default */
+    return 1;
+  }
+  if (cangjie_has_tag(L, 1, "Some")) {
+    lua_rawgeti(L, 1, 1);  /* unwrap Some */
+    return 1;
   }
   /* Otherwise return opt as-is */
   lua_pushvalue(L, 1);

@@ -7,6 +7,8 @@
 #ifndef lbaselib_cj_helpers_h
 #define lbaselib_cj_helpers_h
 
+#include <string.h>
+
 #include "lua.h"
 
 /*
@@ -25,6 +27,21 @@ static inline int cangjie_bound_method (lua_State *L) {
   top_before = nargs;  /* original args count */
   lua_call(L, nargs + 1, LUA_MULTRET);
   return lua_gettop(L) - top_before;  /* return new results only */
+}
+
+/*
+** Check whether a table carries a specific __tag.
+*/
+static inline int cangjie_has_tag (lua_State *L, int idx, const char *tag) {
+  int result = 0;
+  if (lua_istable(L, idx)) {
+    lua_getfield(L, idx, "__tag");
+    if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), tag) == 0) {
+      result = 1;
+    }
+    lua_pop(L, 1);
+  }
+  return result;
 }
 
 #endif
