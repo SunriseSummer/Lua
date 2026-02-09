@@ -1027,14 +1027,21 @@ bash run_tests.sh
 │   │   ├── lparser_cj_types.c    #   仓颉类型定义解析（struct/class/interface/extend/enum），
 │   │   │                         #     提供共享辅助函数：运算符到元方法映射、方法体解析、
 │   │   │                         #     运行时调用生成、接口应用等
-│   │   ├── lparser_cj_match.c    #   仓颉模式匹配与表达式形式（match/if/block 表达式），
-│   │   │                         #     统一匹配语句/表达式实现，共享自动返回解析逻辑
+│   │   ├── lparser_cj_match.c    #   仓颉模式匹配编译（match 语句/表达式、枚举/常量/
+│   │   │                         #     元组/类型/通配符模式、match 表达式 IIFE 包装）
+│   │   ├── lparser_cj_exprs.c    #   仓颉表达式形式与自动返回（block 表达式、if 表达式、
+│   │   │                         #     自动返回语句列表解析逻辑）
 │   │   └── lundump.c             #   字节码反序列化
 │   ├── libs/                     # 标准库与运行时库
 │   │   ├── lauxlib.c             #   辅助库
 │   │   ├── lbaselib.c            #   基础库（Lua 标准函数）
-│   │   ├── lbaselib_cj.c         #   仓颉运行时支持（OOP 实例化与方法绑定、继承链、
-│   │   │                         #     枚举运行时、元组、类型转换、Option、模式匹配）
+│   │   ├── lbaselib_cj.c         #   仓颉 OOP 运行时核心（类实例化与方法绑定、继承链、
+│   │   │                         #     枚举运行时、元组、类型转换、函数重载、迭代器）
+│   │   ├── lbaselib_cj_string.c  #   仓颉字符串运行时（UTF-8 索引/切片、缓存优化、
+│   │   │                         #     字符串成员方法、字节数组转换、字符串元表设置）
+│   │   ├── lbaselib_cj_option.c  #   仓颉 Option 类型运行时（Some/None 构造、
+│   │   │                         #     getOrThrow/isSome/isNone/getOrDefault、?? 运算符）
+│   │   ├── lcjutf8.c             #   共享 UTF-8 编解码工具库
 │   │   ├── lcorolib.c            #   协程库
 │   │   ├── ldblib.c              #   调试库
 │   │   ├── linit.c               #   库初始化
@@ -1051,6 +1058,7 @@ bash run_tests.sh
 │   │   ├── lualib.h              #   标准库接口
 │   │   ├── lauxlib.h             #   辅助库接口
 │   │   ├── lbaselib_cj.h         #   仓颉运行时接口
+│   │   ├── lcjutf8.h             #   共享 UTF-8 工具接口
 │   │   └── ...                   #   其他内部头文件
 │   ├── app/                      # 应用程序
 │   │   ├── lua.c                 #   Lua/仓颉解释器入口
@@ -1059,10 +1067,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（84 个）
+│   ├── *.cj                      #   基础语言特性测试（87 个）
 │   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（7 个）
-│   ├── usages/                   #   综合应用案例（23 个）
-│   └── diagnosis/                #   错误检测和诊断测试（15 个）
+│   ├── usages/                   #   综合应用案例（25 个）
+│   └── diagnosis/                #   错误检测和诊断测试（16 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
