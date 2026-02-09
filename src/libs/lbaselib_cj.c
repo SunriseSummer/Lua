@@ -1847,7 +1847,7 @@ static lua_Integer utf8_cached_charcount (lua_State *L, int idx) {
 
   /* Compute and cache */
   cc = utf8_charcount(s, len);
-  if (cc < 0) cc = (lua_Integer)len;  /* fallback */
+  if (cc < 0) cc = (lua_Integer)len;  /* invalid UTF-8: fall back to byte length */
   lua_pushvalue(L, idx);      /* key: the string */
   lua_pushinteger(L, cc);     /* value: char count */
   lua_rawset(L, -3);          /* cache[string] = cc */
@@ -1870,6 +1870,7 @@ static const lua_Integer *utf8_get_cached_offsets (lua_State *L, int idx,
   lua_rawget(L, -2);
   if (lua_isuserdata(L, -1)) {
     size_t udSize = lua_rawlen(L, -1);
+    /* userdata has cc+1 entries (offsets[0..cc-1] + sentinel), so cc = entries - 1 */
     lua_Integer nChars = (lua_Integer)(udSize / sizeof(lua_Integer)) - 1;
     offsets = (const lua_Integer *)lua_touserdata(L, -1);
     if (charCount) *charCount = nChars;
@@ -1894,7 +1895,7 @@ static const lua_Integer *utf8_build_index_cache (lua_State *L, int idx) {
   size_t pos;
   if (s == NULL) return NULL;
 
-  /* First compute char count */
+  /* First compute char count (invalid UTF-8: fall back to byte length) */
   cc = utf8_charcount(s, len);
   if (cc < 0) cc = (lua_Integer)len;
 
@@ -1915,7 +1916,7 @@ static const lua_Integer *utf8_build_index_cache (lua_State *L, int idx) {
     const char *next;
     offsets[i] = (lua_Integer)pos;
     next = utf8_decode_cj(s + pos, NULL);
-    if (next == NULL) { pos++; }
+    if (next == NULL) { pos++; }  /* invalid sequence: skip one byte */
     else { pos = (size_t)(next - s); }
     i++;
   }
