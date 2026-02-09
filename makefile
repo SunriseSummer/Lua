@@ -111,7 +111,8 @@ CORE_O=	$(BUILDDIR)/lapi.o $(BUILDDIR)/lcode.o $(BUILDDIR)/lctype.o \
 	$(BUILDDIR)/ltable.o $(BUILDDIR)/ltm.o $(BUILDDIR)/lundump.o \
 	$(BUILDDIR)/lvm.o $(BUILDDIR)/lzio.o $(BUILDDIR)/ltests.o
 AUX_O=	$(BUILDDIR)/lauxlib.o
-LIB_O=	$(BUILDDIR)/lbaselib.o $(BUILDDIR)/lbaselib_cj.o $(BUILDDIR)/ldblib.o \
+LIB_O=	$(BUILDDIR)/lbaselib.o $(BUILDDIR)/lbaselib_cj.o $(BUILDDIR)/lcjutf8.o \
+	$(BUILDDIR)/ldblib.o \
 	$(BUILDDIR)/liolib.o $(BUILDDIR)/lmathlib.o $(BUILDDIR)/loslib.o \
 	$(BUILDDIR)/ltablib.o $(BUILDDIR)/lstrlib.o $(BUILDDIR)/lutf8lib.o \
 	$(BUILDDIR)/loadlib.o $(BUILDDIR)/lcorolib.o $(BUILDDIR)/linit.o

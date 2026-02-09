@@ -402,6 +402,35 @@ int luaO_utf8esc (char *buff, l_uint32 x) {
 
 
 /*
+** Encode a Unicode code point as UTF-8 into buf (forward).
+** Returns the number of bytes written (1-4), or 0 if invalid code point.
+** buf must have space for at least 4 bytes.
+*/
+int luaO_utf8encode (char *buf, lua_Integer cp) {
+  if (cp < 0 || cp > 0x10FFFF) return 0;
+  if (cp <= 0x7F) {
+    buf[0] = (char)cp;
+    return 1;
+  } else if (cp <= 0x7FF) {
+    buf[0] = (char)(0xC0 | (cp >> 6));
+    buf[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  } else if (cp <= 0xFFFF) {
+    buf[0] = (char)(0xE0 | (cp >> 12));
+    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  } else {
+    buf[0] = (char)(0xF0 | (cp >> 18));
+    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+  }
+}
+
+
+/*
 ** The size of the buffer for the conversion of a number to a string
 ** 'LUA_N2SBUFFSZ' must be enough to accommodate both LUA_INTEGER_FMT
 ** and LUA_NUMBER_FMT.  For a long long int, this is 19 digits plus a
@@ -450,25 +479,9 @@ unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
   int len;
   lua_assert(ttisnumber(obj) || ttisrune(obj));
   if (ttisrune(obj)) {
-    lua_Integer cp = runevalue(obj);
-    if (cp < 0 || cp > 0x10FFFF) { buff[0] = '?'; return 1; }
-    if (cp <= 0x7F) { buff[0] = (char)cp; return 1; }
-    else if (cp <= 0x7FF) {
-      buff[0] = (char)(0xC0 | (cp >> 6));
-      buff[1] = (char)(0x80 | (cp & 0x3F));
-      return 2;
-    } else if (cp <= 0xFFFF) {
-      buff[0] = (char)(0xE0 | (cp >> 12));
-      buff[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-      buff[2] = (char)(0x80 | (cp & 0x3F));
-      return 3;
-    } else {
-      buff[0] = (char)(0xF0 | (cp >> 18));
-      buff[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
-      buff[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
-      buff[3] = (char)(0x80 | (cp & 0x3F));
-      return 4;
-    }
+    int nbytes = luaO_utf8encode(buff, runevalue(obj));
+    if (nbytes == 0) { buff[0] = '?'; return 1; }
+    return cast_uint(nbytes);
   }
   else if (ttisinteger(obj))
     len = lua_integer2str(buff, LUA_N2SBUFFSZ, ivalue(obj));
