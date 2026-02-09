@@ -23,6 +23,13 @@
 */
 
 /*
+** ============================================================
+** Match case body and helpers
+** Parse the statements within a match case arm.
+** ============================================================
+*/
+
+/*
 ** Parse statements in a match case body.
 ** Stops at: next 'case', closing '}', or end of file.
 ** Also supports optional '{' ... '}' braces for backward compatibility.
@@ -90,6 +97,15 @@ static void match_bind_enum_params (LexState *ls, TString *match_var_name,
 
 
 /*
+** ============================================================
+** Pattern check emission helpers
+** Each helper emits a runtime call that tests one aspect of the
+** match value (tag, type, tuple arity) and returns the conditional
+** jump instruction index for the false branch.
+** ============================================================
+*/
+
+/*
 ** Emit code for: if __cangjie_match_tag(match_var, tag_str) then ...
 ** Returns the condjmp (false branch patch point) and sets fs->freereg.
 */
@@ -148,6 +164,12 @@ static int match_emit_type_check (LexState *ls, TString *match_var_name,
   return condjmp;
 }
 
+
+/*
+** ============================================================
+** Tuple pattern helpers
+** ============================================================
+*/
 
 /*
 ** Emit code for tuple pattern check:
@@ -494,10 +516,12 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
   }
 }
 
+/* matchstat — non-returning match statement entry point */
 static void matchstat (LexState *ls, int line) {
   matchstat_impl(ls, line, 0);
 }
 
+/* matchstat_returning — match statement where each branch auto-returns */
 static void matchstat_returning (LexState *ls, int line) {
   matchstat_impl(ls, line, 1);
 }

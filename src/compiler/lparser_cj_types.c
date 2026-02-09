@@ -97,6 +97,10 @@ static void skip_type_annotation (LexState *ls) {
   }
 }
 
+/*
+** Skip generic type parameter list: <T, U, ...>
+** Handles nested '<' '>' and '>>' (TK_SHR) tokens.
+*/
 static void skip_generic_params (LexState *ls) {
   /* skip <T, U, ...> if present */
   if (ls->t.token == '<') {
@@ -757,6 +761,15 @@ static void structstat (LexState *ls, int line) {
 }
 
 
+/*
+** ============================================================
+** Interface definition
+** Compiles Cangjie interface declarations.  An interface is a
+** table of (possibly abstract) method declarations.  Methods
+** with bodies become default implementations that are copied
+** into implementing types by apply_interfaces().
+** ============================================================
+*/
 static void interfacestat (LexState *ls, int line) {
   /*
   ** interface NAME ['<' typeparams '>'] '{' func_decls '}'
@@ -812,6 +825,11 @@ static void interfacestat (LexState *ls, int line) {
 }
 
 
+/*
+** Check if 'name' is a Cangjie built-in primitive type.
+** Built-in types use a different extension mechanism (type proxy tables
+** with __cangjie_extend_type) rather than direct method injection.
+*/
 static int is_builtin_type (LexState *ls, TString *name) {
   const char *s = getstr(name);
   UNUSED(ls);
@@ -822,6 +840,16 @@ static int is_builtin_type (LexState *ls, TString *name) {
 }
 
 
+/*
+** ============================================================
+** Extend declaration
+** Adds methods to an existing type after its initial definition.
+** Two modes:
+**   - User-defined types: methods added directly to the type table.
+**   - Built-in types: methods go into a proxy table, then
+**     __cangjie_extend_type sets up type metatables at runtime.
+** ============================================================
+*/
 static void extendstat (LexState *ls, int line) {
   /*
   ** extend NAME ['<' typeparams '>'] ['<:' INTERFACE ['&' INTERFACE]*] '{' methods '}'

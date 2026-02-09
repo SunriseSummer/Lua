@@ -13,6 +13,15 @@
 */
 
 /*
+** ============================================================
+** Auto-returning statement lists
+** Parses a sequence of statements, automatically returning the
+** value of the last expression.  Used by block expressions,
+** if-expressions, and match-expressions (the IIFE pattern).
+** ============================================================
+*/
+
+/*
 ** Auto-returning statement list implementation.
 ** Parses statements until the end of the enclosing block, auto-returning
 ** the last expression.  When 'in_match_case' is 0, end-of-block is
@@ -177,6 +186,14 @@ static void statlist_autoreturning (LexState *ls) {
   statlist_autoreturning_ex(ls, 0);
 }
 
+
+/*
+** ============================================================
+** Expression forms (block expr, if expr)
+** Each expression form is compiled as an IIFE (Immediately
+** Invoked Function Expression) so it can produce a value.
+** ============================================================
+*/
 
 /*
 ** Block expression: { stmts; last_expr }

@@ -1,7 +1,19 @@
 /*
 ** $Id: lbaselib_cj_option.c $
-** Cangjie Option type support - Some/None, coalesce, Option metatable.
+** Cangjie Option type support - Some/None, coalesce (??) operator,
+** and Option metatable with getOrThrow/isSome/isNone/getOrDefault.
 ** Split from lbaselib_cj.c
+**
+** Contents:
+**   cangjie_some               — Some(value) constructor
+**   cangjie_option_getOrThrow  — Unwrap Some or error on None
+**   cangjie_option_isSome      — Check if Option is Some
+**   cangjie_option_isNone      — Check if Option is None
+**   cangjie_option_getOrDefault — Unwrap Some or return default
+**   cangjie_option_index       — __index handler for Option values
+**   luaB_coalesce              — ?? operator runtime implementation
+**   luaB_option_init           — Register Some/None globals at init
+**
 ** See Copyright Notice in lua.h
 */
 
@@ -35,6 +47,12 @@ static int option_bound_method (lua_State *L) {
   return lua_gettop(L) - top_before;
 }
 
+
+/*
+** ============================================================
+** Option constructors and methods
+** ============================================================
+*/
 
 /* Some(value) constructor - creates {__tag="Some", [1]=value} with metatable */
 static int cangjie_some (lua_State *L) {
@@ -100,6 +118,12 @@ static int cangjie_option_getOrDefault (lua_State *L) {
   return 1;
 }
 
+/*
+** ============================================================
+** Option __index and coalesce operator
+** ============================================================
+*/
+
 /* __index handler for Option values */
 static int cangjie_option_index (lua_State *L) {
   const char *key = luaL_checkstring(L, 2);
@@ -137,7 +161,8 @@ static int cangjie_option_index (lua_State *L) {
   return 1;
 }
 
-/* __cangjie_coalesce(opt, default) - ?? operator runtime */
+/* __cangjie_coalesce(opt, default) — runtime for the ?? operator.
+** Returns: opt if non-nil and not None; unwraps Some; else default. */
 int luaB_coalesce (lua_State *L) {
   /* If opt is nil, return default */
   if (lua_isnil(L, 1)) {
@@ -166,6 +191,12 @@ int luaB_coalesce (lua_State *L) {
   lua_pushvalue(L, 1);
   return 1;
 }
+
+/*
+** ============================================================
+** Option initialization
+** ============================================================
+*/
 
 /*
 ** luaB_option_init(L) - Register built-in Some/None globals with metatables.

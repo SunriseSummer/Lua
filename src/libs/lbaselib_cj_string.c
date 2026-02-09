@@ -3,6 +3,21 @@
 ** Cangjie string support - UTF-8 caching, string member methods,
 ** string indexing/slicing, byte array conversion, and string metatable.
 ** Split from lbaselib_cj.c
+**
+** Contents:
+**   utf8_cache_init              — Initialize UTF-8 cache tables
+**   utf8_cached_charcount        — Get/cache UTF-8 character count
+**   utf8_get_cached_offsets      — Retrieve cached char-to-byte offset table
+**   utf8_build_index_cache       — Build and cache offset table for O(1) indexing
+**   utf8_single_pass_index       — Find char at index in one scan (no cache)
+**   str_isEmpty .. str_count_cj  — Built-in string methods
+**   str_fromUtf8                 — Construct string from byte array
+**   str_cacheIndex               — Pre-build index cache for a string
+**   luaB_str_index               — String __index metamethod
+**   luaB_str_newindex            — String __newindex (immutability guard)
+**   luaB_str_slice               — UTF-8-aware substring extraction
+**   luaB_setup_string_meta       — Install string metatable at init time
+**
 ** See Copyright Notice in lua.h
 */
 
@@ -551,7 +566,8 @@ static int str_count_cj (lua_State *L) {
   return 1;
 }
 
-/* String.fromUtf8(byteArray) -> String */
+/* String.fromUtf8(byteArray) -> String
+** Reconstruct a string from a 0-based byte array table. */
 static int str_fromUtf8 (lua_State *L) {
   luaL_Buffer b;
   lua_Integer n, i;
@@ -809,6 +825,13 @@ int luaB_str_slice (lua_State *L) {
 
 
 /*
+** ============================================================
+** Byte array / string conversion helpers
+** Used by Array<Byte> <-> String interop.
+** ============================================================
+*/
+
+/*
 ** __cangjie_byte_array_from_string(s)
 ** Convert string to Array<Byte> (same as s:toArray())
 */
@@ -834,6 +857,15 @@ static int luaB_str_len_utf8 (lua_State *L) {
   return 1;
 }
 
+
+/*
+** ============================================================
+** String metatable setup
+** Installs __index, __newindex, __len, and __add metamethods
+** on the shared string metatable so all strings get Cangjie
+** semantics (UTF-8 indexing, method calls, immutability).
+** ============================================================
+*/
 
 /*
 ** Set up string metatable for Cangjie-style indexing.

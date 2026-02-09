@@ -3,6 +3,28 @@
 ** Cangjie OOP runtime support - extracted from lbaselib.c
 ** Functions for class/struct instantiation, method binding,
 ** inheritance chain walking, enum support, tuple, and type checking.
+**
+** Contents:
+**   cangjie_bound_method       — Bound method call wrapper (upvalue-based)
+**   cangjie_index_handler      — Instance __index with parent chain walking
+**   cangjie_call_handler       — Class __call constructor handler
+**   luaB_setup_class           — Install __call on a class table
+**   cangjie_type_index_handler — __index for extended built-in types
+**   luaB_extend_type           — Set up type extension for built-ins
+**   luaB_cangjie_int64 .. rune — Type conversion functions
+**   luaB_copy_to_type          — Copy entries between type tables
+**   luaB_set_parent            — Set up inheritance relationship
+**   luaB_super_init            — Call parent class constructor
+**   luaB_apply_interface       — Apply interface defaults to a type
+**   luaB_is_instance           — Runtime instanceof check
+**   luaB_iter                  — Create iterator for for-in loops
+**   luaB_match_tag/tuple       — Pattern matching runtime checks
+**   luaB_setup_enum            — Set up enum metatables
+**   luaB_tuple                 — Tuple constructor
+**   luaB_overload              — Function overloading dispatcher
+**   luaB_named_call            — Named argument call support
+**   luaB_array_init/slice/set  — Array construction and slicing
+**
 ** See Copyright Notice in lua.h
 */
 
@@ -132,6 +154,13 @@ static int cangjie_index_handler (lua_State *L) {
   return 1;  /* not found */
 }
 
+/*
+** cangjie_call_handler — __call metamethod for class tables.
+** When ClassName(...) is called, creates a new instance table,
+** sets up its metatable (with __index and inherited metamethods),
+** calls init() if defined (or auto-assigns fields from __nfields),
+** and returns the new instance.
+*/
 static int cangjie_call_handler (lua_State *L) {
   /* Arguments: cls, arg1, arg2, ... (cls is first arg via __call) */
   int nargs = lua_gettop(L) - 1;  /* number of constructor args (excluding cls) */
@@ -225,6 +254,10 @@ static int cangjie_call_handler (lua_State *L) {
 ** ============================================================
 */
 
+/*
+** __cangjie_setup_class(cls) - Make a class table callable as a constructor.
+** Installs a metatable with __call = cangjie_call_handler on cls.
+*/
 int luaB_setup_class (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);  /* cls must be a table */
   /* Create metatable for cls: { __call = cangjie_call_handler } */
@@ -244,6 +277,11 @@ int luaB_setup_class (lua_State *L) {
 ** ============================================================
 */
 
+/*
+** cangjie_type_index_handler — __index for extended built-in types.
+** Checks the extension methods table first, auto-binding functions
+** as methods, then falls back to the original __index.
+*/
 static int cangjie_type_index_handler (lua_State *L) {
   /* Arguments: value, key */
   /* upvalue 1 = the extension methods table */
@@ -290,6 +328,8 @@ static int cangjie_type_index_handler (lua_State *L) {
 ** Set up type extension for built-in types (Int64, Float64, String, Bool).
 ** Creates/updates metatables so that values of these types can call
 ** extension methods using dot syntax (e.g., 42.double()).
+** Also registers built-in static methods (e.g., Float64.GetPI) and
+** __call wrappers for type conversion syntax.
 */
 /* C function: Float64.GetPI() returns pi */
 static int cangjie_float64_getpi (lua_State *L) {
@@ -534,6 +574,11 @@ int luaB_cangjie_rune (lua_State *L) {
 }
 
 
+/*
+** __cangjie_extend_type(typename, methods_table) — main entry point.
+** Registers built-in statics, sets up __call for type conversion,
+** and installs an __index handler that wraps extension methods.
+*/
 int luaB_extend_type (lua_State *L) {
   const char *tname = luaL_checkstring(L, 1);
   int val_idx;
@@ -780,9 +825,11 @@ int luaB_is_instance (lua_State *L) {
 
 /*
 ** __cangjie_iter(value) - Create an iterator for for-in loops.
-** If value is a table (array), returns a value-only iterator
-** (skipping array indices). For other iterables, pass through.
+** - Tables (arrays): yields values in 0-based order using __n.
+** - Strings: yields each Unicode character as a Rune.
+** - Functions: passed through as-is (already an iterator).
 */
+/* Array value iterator: yields arr[0], arr[1], ..., arr[__n-1], then nil */
 static int cangjie_array_iter_next (lua_State *L) {
   /* upvalue 1 = array table, upvalue 2 = current index (integer) */
   lua_Integer i = lua_tointeger(L, lua_upvalueindex(2));
@@ -839,6 +886,7 @@ static int cangjie_string_iter_next (lua_State *L) {
   return 1;
 }
 
+/* luaB_iter — entry point for __cangjie_iter */
 int luaB_iter (lua_State *L) {
   if (lua_istable(L, 1)) {
     /* For tables: create a closure iterator that yields values (0-based) */
@@ -1107,10 +1155,13 @@ int luaB_tuple (lua_State *L) {
 ** ============================================================
 */
 
-/* Dispatcher for overloaded functions.
+/*
+** cangjie_overload_dispatch — dispatcher for overloaded functions.
 ** Upvalue 1 = overload table { [nparams] = func, ... }
 ** Selects the overload matching the number of arguments, or falls
-** back to the closest overload with more parameters (for defaults). */
+** back to the closest overload with more parameters (for defaults),
+** then tries fewer parameters (for vararg-style matching).
+*/
 static int cangjie_overload_dispatch (lua_State *L) {
   int nargs = lua_gettop(L);
   /* Look up exact match first */
