@@ -1057,7 +1057,7 @@ bash run_tests.sh
 │   │   ├── luaconf.h             #   编译配置
 │   │   ├── lualib.h              #   标准库接口
 │   │   ├── lauxlib.h             #   辅助库接口
-│   │   ├── lbaselib_cj.h         #   仓颉运行时接口
+│   │   ├── lbaselib_cj.h         #   仓颉运行时接口（含共享绑定方法辅助函数）
 │   │   ├── lcjutf8.h             #   共享 UTF-8 工具接口
 │   │   └── ...                   #   其他内部头文件
 │   ├── app/                      # 应用程序
@@ -1067,10 +1067,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（87 个）
-│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（7 个）
-│   ├── usages/                   #   综合应用案例（25 个）
-│   └── diagnosis/                #   错误检测和诊断测试（16 个）
+│   ├── *.cj                      #   基础语言特性测试（90 个）
+│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（8 个）
+│   ├── usages/                   #   综合应用案例（27 个）
+│   └── diagnosis/                #   错误检测和诊断测试（17 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
