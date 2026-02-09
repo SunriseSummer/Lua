@@ -173,7 +173,8 @@ static int docall (lua_State *L, int narg, int nres) {
 
 
 static void print_version (void) {
-  lua_writestring(LUA_COPYRIGHT, strlen(LUA_COPYRIGHT));
+  const char *banner = "Welcome to MoonCangjie\xf0\x9f\x8c\x95" "Powered by " LUA_RELEASE;
+  lua_writestring(banner, strlen(banner));
   lua_writeline();
 }
 
@@ -687,6 +688,8 @@ static void l_print (lua_State *L) {
     if (lua_pcall(L, n, 0, 0) != LUA_OK)
       l_message(progname, lua_pushfstring(L, "error calling 'print' (%s)",
                                              lua_tostring(L, -1)));
+    else
+      lua_writeline();
   }
 }
 
