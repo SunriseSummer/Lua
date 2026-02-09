@@ -14,9 +14,9 @@
 
 
 #if !defined(LUA_NOCVTN2S)
-#define cvt2str(o)	ttisnumber(o)
+#define cvt2str(o)	(ttisnumber(o) || ttisrune(o))
 #else
-#define cvt2str(o)	0	/* no conversion from numbers to strings */
+#define cvt2str(o)	ttisrune(o)	/* Rune always converts to string */
 #endif
 
 

@@ -1973,24 +1973,10 @@ static void primaryexp (LexState *ls, expdesc *v) {
       return;
     }
     case TK_RUNE: {
-      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
-      FuncState *fs = ls->fs;
-      expdesc fn, arg;
-      TString *rune_name = luaS_new(ls->L, "Rune");
-      int base;
-      lua_Integer cp = ls->t.seminfo.i;
+      /* Rune literal r'x': emit native Rune constant */
+      init_exp(v, VKRUNE, 0);
+      v->u.ival = ls->t.seminfo.i;
       luaX_next(ls);
-      /* Look up global 'Rune' function */
-      buildvar(ls, rune_name, &fn);
-      luaK_exp2nextreg(fs, &fn);
-      base = fn.u.info;
-      /* Push integer code point as argument */
-      init_exp(&arg, VKINT, 0);
-      arg.u.ival = cp;
-      luaK_exp2nextreg(fs, &arg);
-      /* Emit call: Rune(cp) -> 1 result */
-      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
-      fs->freereg = base + 1;  /* call returns 1 result */
       return;
     }
     case TK_TRUE: {
@@ -2530,21 +2516,11 @@ static void simpleexp (LexState *ls, expdesc *v) {
       break;
     }
     case TK_RUNE: {
-      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
+      /* Rune literal r'x': emit native Rune constant */
       FuncState *fs = ls->fs;
-      expdesc fn, arg;
-      TString *rune_name = luaS_new(ls->L, "Rune");
-      int base;
-      lua_Integer cp = ls->t.seminfo.i;
+      init_exp(v, VKRUNE, 0);
+      v->u.ival = ls->t.seminfo.i;
       luaX_next(ls);
-      buildvar(ls, rune_name, &fn);
-      luaK_exp2nextreg(fs, &fn);
-      base = fn.u.info;
-      init_exp(&arg, VKINT, 0);
-      arg.u.ival = cp;
-      luaK_exp2nextreg(fs, &arg);
-      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
-      fs->freereg = base + 1;
       /* Check for suffix operations on Rune literal */
       if (ls->t.token == '.' || ls->t.token == '[' ||
           ls->t.token == ':' ||

@@ -933,6 +933,31 @@ LUALIB_API const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
         lua_pushstring(L, buff);
         break;
       }
+      case LUA_TRUNE: {
+        /* Convert Rune code point to UTF-8 character string */
+        lua_Integer cp = lua_torune(L, idx);
+        char buf[8];
+        int nbytes = 0;
+        if (cp <= 0x7F) { buf[0] = (char)cp; nbytes = 1; }
+        else if (cp <= 0x7FF) {
+          buf[0] = (char)(0xC0 | (cp >> 6));
+          buf[1] = (char)(0x80 | (cp & 0x3F));
+          nbytes = 2;
+        } else if (cp <= 0xFFFF) {
+          buf[0] = (char)(0xE0 | (cp >> 12));
+          buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+          buf[2] = (char)(0x80 | (cp & 0x3F));
+          nbytes = 3;
+        } else if (cp <= 0x10FFFF) {
+          buf[0] = (char)(0xF0 | (cp >> 18));
+          buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+          buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+          buf[3] = (char)(0x80 | (cp & 0x3F));
+          nbytes = 4;
+        } else { buf[0] = '?'; nbytes = 1; }
+        lua_pushlstring(L, buf, (size_t)nbytes);
+        break;
+      }
       case LUA_TSTRING:
         lua_pushvalue(L, idx);
         break;

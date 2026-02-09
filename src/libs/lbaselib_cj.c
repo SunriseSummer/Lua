@@ -399,39 +399,22 @@ static int utf8_encode (lua_Integer cp, char *buf) {
 
 /* ============================================================
 ** Rune type helpers — used by Int64(), String(), and Rune() below
+** Rune is now a native TValue type (LUA_TRUNE) — no table/metatable.
 ** ============================================================ */
-
-/* Registry key for the Rune metatable */
-#define RUNE_MT_KEY "__rune_metatable"
 
 /* Check if value at given index is a Rune instance */
 static int is_rune (lua_State *L, int idx) {
-  if (lua_type(L, idx) != LUA_TTABLE) return 0;
-  if (!lua_getmetatable(L, idx)) return 0;
-  luaL_getmetatable(L, RUNE_MT_KEY);
-  {
-    int eq = lua_rawequal(L, -1, -2);
-    lua_pop(L, 2);
-    return eq;
-  }
+  return lua_type(L, idx) == LUA_TRUNE;
 }
 
 /* Extract code point from a Rune instance at given index. */
 static lua_Integer rune_getcp (lua_State *L, int idx) {
-  lua_Integer cp;
-  lua_rawgeti(L, idx, 1);
-  cp = lua_tointeger(L, -1);
-  lua_pop(L, 1);
-  return cp;
+  return lua_torune(L, idx);
 }
 
 /* Push a new Rune instance with the given code point */
 static void push_rune (lua_State *L, lua_Integer cp) {
-  lua_createtable(L, 1, 0);      /* t = {} */
-  lua_pushinteger(L, cp);
-  lua_rawseti(L, -2, 1);          /* t[1] = cp */
-  luaL_getmetatable(L, RUNE_MT_KEY);
-  lua_setmetatable(L, -2);         /* setmetatable(t, rune_mt) */
+  lua_pushrune(L, cp);
 }
 
 
@@ -585,58 +568,14 @@ int luaB_cangjie_bool (lua_State *L) {
 
 
 /* Rune(value) - construct Rune type instance.
-** Rune values are tables {cp} with a shared metatable providing
-** __tostring, __eq, __lt, __le metamethods.
-** - Rune(65) -> Rune('A')    (integer code point -> Rune instance)
-** - Rune("A") -> Rune('A')   (single-char string -> Rune instance)
-** - Rune(rune) -> rune        (Rune instance -> identity)
+** Rune is now a native tagged value (LUA_TRUNE) storing the code point.
+** - Rune(65) -> Rune('A')    (integer code point -> Rune)
+** - Rune("A") -> Rune('A')   (single-char string -> Rune)
+** - Rune(rune) -> rune        (Rune -> identity)
 */
 
-/* Rune __tostring metamethod: convert code point to UTF-8 string */
-static int rune_tostring (lua_State *L) {
-  lua_Integer cp = rune_getcp(L, 1);
-  char buf[8];
-  int len = utf8_encode(cp, buf);
-  if (len == 0) {
-    return luaL_error(L, "invalid Rune code point: %I",
-                      (LUAI_UACINT)cp);
-  }
-  lua_pushlstring(L, buf, (size_t)len);
-  return 1;
-}
-
-/* Rune __eq metamethod: compare code points */
-static int rune_eq (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) == rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
-/* Rune __lt metamethod: compare code points */
-static int rune_lt (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) < rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
-/* Rune __le metamethod: compare code points */
-static int rune_le (lua_State *L) {
-  if (is_rune(L, 1) && is_rune(L, 2)) {
-    lua_pushboolean(L, rune_getcp(L, 1) <= rune_getcp(L, 2));
-  } else {
-    lua_pushboolean(L, 0);
-  }
-  return 1;
-}
-
 int luaB_cangjie_rune (lua_State *L) {
-  /* If already a Rune table, return identity */
+  /* If already a Rune, return identity */
   if (is_rune(L, 1)) {
     lua_pushvalue(L, 1);
     return 1;
@@ -667,18 +606,9 @@ int luaB_cangjie_rune (lua_State *L) {
   }
 }
 
-/* Initialize the Rune metatable in the registry */
+/* luaB_rune_init: no longer needed — Rune is a native type, no metatable */
 void luaB_rune_init (lua_State *L) {
-  luaL_newmetatable(L, RUNE_MT_KEY);
-  lua_pushcfunction(L, rune_tostring);
-  lua_setfield(L, -2, "__tostring");
-  lua_pushcfunction(L, rune_eq);
-  lua_setfield(L, -2, "__eq");
-  lua_pushcfunction(L, rune_lt);
-  lua_setfield(L, -2, "__lt");
-  lua_pushcfunction(L, rune_le);
-  lua_setfield(L, -2, "__le");
-  lua_pop(L, 1);  /* pop metatable */
+  (void)L;
 }
 
 /* Public accessor for is_rune check */

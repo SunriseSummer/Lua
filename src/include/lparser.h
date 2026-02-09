@@ -31,6 +31,7 @@ typedef enum {
   VK,  /* constant in 'k'; info = index of constant in 'k' */
   VKFLT,  /* floating constant; nval = numerical float value */
   VKINT,  /* integer constant; ival = numerical integer value */
+  VKRUNE, /* Rune constant; ival = Unicode code point */
   VKSTR,  /* string constant; strval = TString address;
              (string is fixed by the scanner) */
   VNONRELOC,  /* expression has its value in a fixed register;

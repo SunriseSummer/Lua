@@ -538,6 +538,8 @@ static int lessthanothers (lua_State *L, const TValue *l, const TValue *r) {
   lua_assert(!ttisnumber(l) || !ttisnumber(r));
   if (ttisstring(l) && ttisstring(r))  /* both are strings? */
     return l_strcmp(tsvalue(l), tsvalue(r)) < 0;
+  else if (ttisrune(l) && ttisrune(r))  /* both are Runes? */
+    return runevalue(l) < runevalue(r);
   else
     return luaT_callorderTM(L, l, r, TM_LT);
 }
@@ -560,6 +562,8 @@ static int lessequalothers (lua_State *L, const TValue *l, const TValue *r) {
   lua_assert(!ttisnumber(l) || !ttisnumber(r));
   if (ttisstring(l) && ttisstring(r))  /* both are strings? */
     return l_strcmp(tsvalue(l), tsvalue(r)) <= 0;
+  else if (ttisrune(l) && ttisrune(r))  /* both are Runes? */
+    return runevalue(l) <= runevalue(r);
   else
     return luaT_callorderTM(L, l, r, TM_LE);
 }
@@ -617,6 +621,8 @@ int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
         return (ivalue(t1) == ivalue(t2));
       case LUA_VNUMFLT:
         return (fltvalue(t1) == fltvalue(t2));
+      case LUA_VRUNE:
+        return (runevalue(t1) == runevalue(t2));
       case LUA_VLIGHTUSERDATA: return pvalue(t1) == pvalue(t2);
       case LUA_VSHRSTR:
         return eqshrstr(tsvalue(t1), tsvalue(t2));

@@ -268,6 +268,26 @@ typedef union {
 
 /*
 ** {==================================================================
+** Rune (Unicode character as tagged integer)
+** ===================================================================
+*/
+
+#define LUA_VRUNE	makevariant(LUA_TRUNE, 0)
+
+#define ttisrune(o)		checktag((o), LUA_VRUNE)
+
+#define runevalue(o)	check_exp(ttisrune(o), val_(o).i)
+
+#define runevalueraw(v)	((v).i)
+
+#define setrunevalue(obj,x) \
+  { TValue *io=(obj); val_(io).i=(x); settt_(io, LUA_VRUNE); }
+
+/* }================================================================== */
+
+
+/*
+** {==================================================================
 ** Threads
 ** ===================================================================
 */

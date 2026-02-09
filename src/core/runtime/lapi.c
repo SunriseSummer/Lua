@@ -406,6 +406,14 @@ LUA_API lua_Integer lua_tointegerx (lua_State *L, int idx, int *pisnum) {
 }
 
 
+LUA_API lua_Integer lua_torune (lua_State *L, int idx) {
+  const TValue *o = index2value(L, idx);
+  if (ttisrune(o))
+    return runevalue(o);
+  return 0;
+}
+
+
 LUA_API int lua_toboolean (lua_State *L, int idx) {
   const TValue *o = index2value(L, idx);
   return !l_isfalse(o);
@@ -647,6 +655,14 @@ LUA_API void lua_pushboolean (lua_State *L, int b) {
 LUA_API void lua_pushlightuserdata (lua_State *L, void *p) {
   lua_lock(L);
   setpvalue(s2v(L->top.p), p);
+  api_incr_top(L);
+  lua_unlock(L);
+}
+
+
+LUA_API void lua_pushrune (lua_State *L, lua_Integer cp) {
+  lua_lock(L);
+  setrunevalue(s2v(L->top.p), cp);
   api_incr_top(L);
   lua_unlock(L);
 }

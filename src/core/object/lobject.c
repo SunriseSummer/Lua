@@ -448,8 +448,29 @@ static int tostringbuffFloat (lua_Number n, char *buff) {
 */
 unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
   int len;
-  lua_assert(ttisnumber(obj));
-  if (ttisinteger(obj))
+  lua_assert(ttisnumber(obj) || ttisrune(obj));
+  if (ttisrune(obj)) {
+    lua_Integer cp = runevalue(obj);
+    if (cp < 0 || cp > 0x10FFFF) { buff[0] = '?'; return 1; }
+    if (cp <= 0x7F) { buff[0] = (char)cp; return 1; }
+    else if (cp <= 0x7FF) {
+      buff[0] = (char)(0xC0 | (cp >> 6));
+      buff[1] = (char)(0x80 | (cp & 0x3F));
+      return 2;
+    } else if (cp <= 0xFFFF) {
+      buff[0] = (char)(0xE0 | (cp >> 12));
+      buff[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+      buff[2] = (char)(0x80 | (cp & 0x3F));
+      return 3;
+    } else {
+      buff[0] = (char)(0xF0 | (cp >> 18));
+      buff[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+      buff[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+      buff[3] = (char)(0x80 | (cp & 0x3F));
+      return 4;
+    }
+  }
+  else if (ttisinteger(obj))
     len = lua_integer2str(buff, LUA_N2SBUFFSZ, ivalue(obj));
   else
     len = tostringbuffFloat(fltvalue(obj), buff);
@@ -459,7 +480,7 @@ unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
 
 
 /*
-** Convert a number object to a Lua string, replacing the value at 'obj'
+** Convert a number or Rune object to a Lua string, replacing the value at 'obj'
 */
 void luaO_tostring (lua_State *L, TValue *obj) {
   char buff[LUA_N2SBUFFSZ];
