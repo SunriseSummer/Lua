@@ -276,6 +276,11 @@ static int luaB_collectgarbage (lua_State *L) {
 static int luaB_type (lua_State *L) {
   int t = lua_type(L, 1);
   luaL_argcheck(L, t != LUA_TNONE, 1, "value expected");
+  /* Check for Rune type (table with Rune metatable) */
+  if (t == LUA_TTABLE && luaB_is_rune(L, 1)) {
+    lua_pushliteral(L, "Rune");
+    return 1;
+  }
   lua_pushstring(L, lua_typename(L, t));
   return 1;
 }
@@ -597,6 +602,8 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   /* Initialize built-in Option type (Some, None) */
   luaB_option_init(L);
+  /* Initialize Rune type metatable */
+  luaB_rune_init(L);
   return 1;
 }
 

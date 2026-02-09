@@ -1972,6 +1972,27 @@ static void primaryexp (LexState *ls, expdesc *v) {
       luaX_next(ls);
       return;
     }
+    case TK_RUNE: {
+      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
+      FuncState *fs = ls->fs;
+      expdesc fn, arg;
+      TString *rune_name = luaS_new(ls->L, "Rune");
+      int base;
+      lua_Integer cp = ls->t.seminfo.i;
+      luaX_next(ls);
+      /* Look up global 'Rune' function */
+      buildvar(ls, rune_name, &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base = fn.u.info;
+      /* Push integer code point as argument */
+      init_exp(&arg, VKINT, 0);
+      arg.u.ival = cp;
+      luaK_exp2nextreg(fs, &arg);
+      /* Emit call: Rune(cp) -> 1 result */
+      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
+      fs->freereg = base + 1;  /* call returns 1 result */
+      return;
+    }
     case TK_TRUE: {
       /* Bool literal true: allow suffix operations like true.method() */
       init_exp(v, VTRUE, 0);
@@ -2038,6 +2059,14 @@ static void suffixedops (LexState *ls, expdesc *v) {
         luaX_next(ls);  /* skip '[' */
         {
           expdesc start_e;
+          /* Discharge 'v' (the table expression) to a register BEFORE
+          ** parsing the key expression.  When 'v' is an indexed
+          ** expression (e.g. self.states[s]), it holds register
+          ** references that may be clobbered by code emitted while
+          ** parsing a complex key expression such as a function call
+          ** (e.g. Int64(text[i])).  Materialising it first makes the
+          ** result safe in a dedicated register. */
+          luaK_exp2anyregup(fs, v);
           /* Use subexpr with limit 9 so '..' is NOT consumed as concat
           ** (OPR_CONCAT has left priority 9, see priority[] table) */
           subexpr(ls, &start_e, 9);
@@ -2130,7 +2159,7 @@ static void suffixedops (LexState *ls, expdesc *v) {
           }
           else {
             /* Normal subscript: arr[expr] */
-            luaK_exp2anyregup(fs, v);
+            /* Note: v was already discharged before subexpr above */
             luaK_exp2val(fs, &start_e);
             checknext(ls, ']');
             luaK_indexed(fs, v, &start_e);
@@ -2499,6 +2528,31 @@ static void simpleexp (LexState *ls, expdesc *v) {
     case TK_NIL: {
       init_exp(v, VNIL, 0);
       break;
+    }
+    case TK_RUNE: {
+      /* Rune literal r'x': emit Rune(code_point) call to construct Rune value */
+      FuncState *fs = ls->fs;
+      expdesc fn, arg;
+      TString *rune_name = luaS_new(ls->L, "Rune");
+      int base;
+      lua_Integer cp = ls->t.seminfo.i;
+      luaX_next(ls);
+      buildvar(ls, rune_name, &fn);
+      luaK_exp2nextreg(fs, &fn);
+      base = fn.u.info;
+      init_exp(&arg, VKINT, 0);
+      arg.u.ival = cp;
+      luaK_exp2nextreg(fs, &arg);
+      init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base, 2, 2));
+      fs->freereg = base + 1;
+      /* Check for suffix operations on Rune literal */
+      if (ls->t.token == '.' || ls->t.token == '[' ||
+          ls->t.token == ':' ||
+          (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
+        luaK_exp2nextreg(fs, v);
+        suffixedops(ls, v);
+      }
+      return;
     }
     case TK_TRUE: {
       init_exp(v, VTRUE, 0);
@@ -3614,16 +3668,24 @@ static int is_repl_toplevel (LexState *ls) {
 /*
 ** Skip a type annotation after ':' in let/var declarations.
 ** This is shared between the local and global paths of letvarstat.
+** Returns 1 if the type annotation is 'Rune', 0 otherwise.
 */
-static void skip_letvar_type (LexState *ls) {
+static int skip_letvar_type (LexState *ls) {
   int depth = 0;
   int has_type = 0;
+  int is_rune = 0;
   /* Handle leading '?' for ?Type sugar */
   if (ls->t.token == '?') {
     luaX_next(ls);  /* skip '?' */
   }
   for (;;) {
     if (ls->t.token == TK_NAME) {
+      /* Check if the top-level type name (depth==0) is 'Rune' */
+      if (!has_type && depth == 0) {
+        const char *tname = getstr(ls->t.seminfo.ts);
+        if (strcmp(tname, "Rune") == 0)
+          is_rune = 1;
+      }
       has_type = 1;
       luaX_next(ls);
     }
@@ -3665,6 +3727,7 @@ static void skip_letvar_type (LexState *ls) {
   if (!has_type) {
     luaX_syntaxerror(ls, "type name expected after ':'");
   }
+  return is_rune;
 }
 
 static void letvarstat (LexState *ls, int isconst) {
@@ -3712,7 +3775,7 @@ static void letvarstat (LexState *ls, int isconst) {
           }
         }
       }
-      /* optional type annotation ': Type' - parse and validate */
+      /* optional type annotation ': Type' - parse and skip */
       if (testnext(ls, ':'))
         skip_letvar_type(ls);
       vidx = new_varkind(ls, vname, defkind);
