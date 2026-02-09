@@ -12,7 +12,7 @@ expectEq(empty + empty, "", "empty + empty")
 // --- Section: Single character string ---
 let single = "x"
 expectEq(single.size, 1, "single char size")
-expectEq(single[0], "x", "single char indexing")
+expectEq(single[0], r'x', "single char indexing")
 
 // --- Section: String interpolation edge cases ---
 let val = 0

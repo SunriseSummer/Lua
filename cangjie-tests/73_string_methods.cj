@@ -104,9 +104,9 @@ expectEq(cjkBytes.size, 3, "toArray CJK '你' has 3 bytes")
 // --- Section: toRuneArray ---
 let runes = "Hello你好".toRuneArray()
 expectEq(runes.size, 7, "toRuneArray mixed size")
-expectEq(runes[0], "H", "toRuneArray[0]")
-expectEq(runes[5], "你", "toRuneArray[5]")
-expectEq(runes[6], "好", "toRuneArray[6]")
+expectEq(runes[0], r'H', "toRuneArray[0]")
+expectEq(runes[5], r'\u{4F60}', "toRuneArray[5]")
+expectEq(runes[6], r'\u{597D}', "toRuneArray[6]")
 
 // --- Section: Method chaining ---
 expectEq("  HELLO  ".trim().toAsciiLower(), "hello", "chain trim+lower")

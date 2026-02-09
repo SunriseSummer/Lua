@@ -9,7 +9,7 @@ func reverseString(s: String): String {
     var result = ""
     var i = s.size - 1
     while (i >= 0) {
-        result = result + s[i]
+        result = result + String(s[i])
         i = i - 1
     }
     return result
@@ -27,7 +27,7 @@ func everyOther(s: String): String {
     var result = ""
     var i = 0
     while (i < s.size) {
-        result = result + s[i]
+        result = result + String(s[i])
         i = i + 2
     }
     return result
@@ -58,12 +58,12 @@ func charFrequency(s: String): String {
     // Simple unique-char tracking via string search
     var seen = ""
     for (i in 0..runes.size) {
-        let ch = runes[i]
+        let ch = String(runes[i])
         if (!seen.contains(ch)) {
             seen = seen + ch
             var count = 0
             for (j in 0..runes.size) {
-                if (runes[j] == ch) {
+                if (runes[j] == runes[i]) {
                     count = count + 1
                 }
             }
@@ -96,7 +96,7 @@ func charPositions(s: String, target: String): String {
     s.cacheIndex()
     var positions = ""
     for (i in 0..s.size) {
-        if (s[i] == target) {
+        if (String(s[i]) == target) {
             if (positions.size > 0) { positions = positions + "," }
             positions = positions + tostring(i)
         }

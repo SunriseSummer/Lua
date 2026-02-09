@@ -31,28 +31,28 @@ expectEq(emojiBytes[3], 0x80, "😀 byte 3")
 
 // --- Section: Array<Byte> back to String ---
 let byteArr: Array<Byte> = s.toArray()
-let restored = __cangjie_string_from_byte_array(byteArr)
+let restored = String(byteArr)
 expectEq(restored, "Hello", "byte array -> String round trip")
 
-let cjkRestored = __cangjie_string_from_byte_array(cjkBytes)
+let cjkRestored = String(cjkBytes)
 expectEq(cjkRestored, "你", "CJK byte array -> String round trip")
 
-let emojiRestored = __cangjie_string_from_byte_array(emojiBytes)
+let emojiRestored = String(emojiBytes)
 expectEq(emojiRestored, "😀", "emoji byte array -> String round trip")
 
 // --- Section: Mixed string round trip ---
 let mixed = "Hello你好😀"
 let mixedBytes: Array<Byte> = mixed.toArray()
-let mixedRestored = __cangjie_string_from_byte_array(mixedBytes)
+let mixedRestored = String(mixedBytes)
 expectEq(mixedRestored, "Hello你好😀", "mixed string round trip")
 
 // --- Section: toRuneArray ---
 let runes: Array<Rune> = "AB你好".toRuneArray()
 expectEq(runes.size, 4, "toRuneArray size")
-expectEq(runes[0], "A", "toRuneArray[0]")
-expectEq(runes[1], "B", "toRuneArray[1]")
-expectEq(runes[2], "你", "toRuneArray[2]")
-expectEq(runes[3], "好", "toRuneArray[3]")
+expectEq(runes[0], r'A', "toRuneArray[0]")
+expectEq(runes[1], r'B', "toRuneArray[1]")
+expectEq(runes[2], r'\u{4F60}', "toRuneArray[2]")
+expectEq(runes[3], r'\u{597D}', "toRuneArray[3]")
 
 // --- Section: Empty string ---
 let emptyBytes: Array<Byte> = "".toArray()
@@ -61,7 +61,7 @@ expectEq(emptyBytes.size, 0, "empty toArray size")
 let emptyRunes: Array<Rune> = "".toRuneArray()
 expectEq(emptyRunes.size, 0, "empty toRuneArray size")
 
-let emptyRestored = __cangjie_string_from_byte_array(emptyBytes)
+let emptyRestored = String(emptyBytes)
 expectEq(emptyRestored, "", "empty byte array round trip")
 
 // --- Section: Array<Byte> iteration ---

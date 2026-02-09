@@ -97,7 +97,7 @@ expectTrue(byteLen > charLen, "byte len > char len for multibyte")
 expectEq(charLen, 4, "café has 4 chars")
 
 // Round-trip test
-let restored = __cangjie_string_from_byte_array(multibyte.toArray())
+let restored = String(multibyte.toArray())
 expectEq(restored, multibyte, "multibyte round-trip")
 
 if (!__test_failed) {

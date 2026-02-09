@@ -9,11 +9,11 @@ dofile("cangjie-tests/_testing.cj")
 // 4-byte: 😀 (U+1F600), 🎉 (U+1F389)
 let allWidths = "aé€😀b"
 expectEq(allWidths.size, 5, "mixed-width .size")
-expectEq(allWidths[0], "a", "1-byte char")
-expectEq(allWidths[1], "é", "2-byte char")
-expectEq(allWidths[2], "€", "3-byte char")
-expectEq(allWidths[3], "😀", "4-byte char")
-expectEq(allWidths[4], "b", "trailing 1-byte char")
+expectEq(allWidths[0], r'a', "1-byte char")
+expectEq(allWidths[1], r'\u{E9}', "2-byte char")
+expectEq(allWidths[2], r'\u{20AC}', "3-byte char")
+expectEq(allWidths[3], r'\u{1F600}', "4-byte char")
+expectEq(allWidths[4], r'b', "trailing 1-byte char")
 
 // --- Section: Slice boundaries across byte widths ---
 expectEq(allWidths[0..1], "a", "slice before 2-byte")
@@ -93,24 +93,24 @@ expectTrue("café".endsWith("fé"), "endsWith multi-byte suffix")
 // --- Section: ToRuneArray for mixed byte widths ---
 let runes = "aé€😀".toRuneArray()
 expectEq(runes.size, 4, "toRuneArray mixed size")
-expectEq(runes[0], "a", "toRuneArray 1-byte")
-expectEq(runes[1], "é", "toRuneArray 2-byte")
-expectEq(runes[2], "€", "toRuneArray 3-byte")
-expectEq(runes[3], "😀", "toRuneArray 4-byte")
+expectEq(runes[0], r'a', "toRuneArray 1-byte")
+expectEq(runes[1], r'\u{E9}', "toRuneArray 2-byte")
+expectEq(runes[2], r'\u{20AC}', "toRuneArray 3-byte")
+expectEq(runes[3], r'\u{1F600}', "toRuneArray 4-byte")
 
 // --- Section: Concatenation preserves UTF-8 ---
 let c1 = "Hello" + "你好"
 let c2 = "Hello你好"
 expectEq(c1, c2, "concat equals direct")
 expectEq(c1.size, 7, "concat size")
-expectEq(c1[5], "你", "concat index into CJK")
+expectEq(c1[5], r'\u{4F60}', "concat index into CJK")
 
 // --- Section: String interpolation with multi-byte ---
 let name = "café"
 let msg = "I love ${name}!"
 expectEq(msg.size, 12, "interpolation multi-byte size")
-expectEq(msg[7], "c", "interpolation index 7")
-expectEq(msg[10], "é", "interpolation index 10 (2-byte)")
+expectEq(msg[7], r'c', "interpolation index 7")
+expectEq(msg[10], r'\u{E9}', "interpolation index 10 (2-byte)")
 
 // --- Section: Count with multi-byte ---
 expectEq("你好你好你".count("你"), 3, "count 3-byte char")

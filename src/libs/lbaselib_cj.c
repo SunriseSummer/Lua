@@ -2004,11 +2004,16 @@ static int str_toRuneArray_cj (lua_State *L) {
   while (pos < len) {
     const char *next = cjU_decode(s + pos, NULL);
     size_t clen;
+    long cp;
     if (next == NULL) {
       next = s + pos + 1;
     }
     clen = (size_t)(next - (s + pos));
-    lua_pushlstring(L, s + pos, clen);
+    cp = cjU_decodesingle(s + pos, clen);
+    if (cp >= 0)
+      lua_pushrune(L, (lua_Integer)cp);
+    else
+      lua_pushlstring(L, s + pos, clen);
     lua_rawseti(L, -2, idx++);
     pos = (size_t)(next - s);
   }
