@@ -1428,7 +1428,7 @@ static int cangjie_option_isNone (lua_State *L) {
   return 1;
 }
 
-/* Option.getOrDefault(defaultFn: () -> T) */
+/* Option.getOrDefault(default) - accepts a value or a function */
 static int cangjie_option_getOrDefault (lua_State *L) {
   lua_getfield(L, 1, "__tag");
   if (lua_isstring(L, -1) && strcmp(lua_tostring(L, -1), "Some") == 0) {
@@ -1437,9 +1437,11 @@ static int cangjie_option_getOrDefault (lua_State *L) {
     return 1;
   }
   lua_pop(L, 1);
-  /* Call the default-value function: defaultFn() */
+  /* Return the default value (call it if it's a function, otherwise return directly) */
   lua_pushvalue(L, 2);
-  lua_call(L, 0, 1);
+  if (lua_isfunction(L, -1)) {
+    lua_call(L, 0, 1);
+  }
   return 1;
 }
 
