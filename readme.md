@@ -100,6 +100,7 @@ let l = String(bytes)       // Array<Byte>（UTF-8 字节数组）转为字符�
 ### 字符串
 
 - **原生 UTF-8 支持**：字符串默认采用 UTF-8 编解码，索引、切片、长度等操作均基于 Unicode 字符（而非字节）
+- **无效 UTF-8 容错**：对通过 `Array<Byte>` 构造的非法 UTF-8 字节序列，`.size`/索引/`split("")` 按单字节计数，`toRuneArray()` 与索引返回 `U+FFFD` 替换字符
 - **插值字符串**：`"Hello, ${name}!"` 支持在 `${}` 中嵌入任意表达式
 - **字符串拼接**：可以使用 `+` 拼接两个字符串（也支持 `String + Rune`、`Rune + String`），也支持 Lua 风格的 `..`
 - **索引取值**：`s[0]` 返回第 0 个 Unicode 字符（**Rune 类型**，0-based）
