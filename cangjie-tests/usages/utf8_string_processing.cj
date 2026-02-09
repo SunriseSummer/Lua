@@ -78,7 +78,7 @@ func isNumericString(s: String): Bool {
     if (s.isEmpty()) { return false }
     for (i in 0..s.size) {
         let c = s[i]
-        if (c < "0" || c > "9") {
+        if (c < r'0' || c > r'9') {
             return false
         }
     }
@@ -97,7 +97,7 @@ expectTrue(byteLen > charLen, "byte len > char len for multibyte")
 expectEq(charLen, 4, "café has 4 chars")
 
 // Round-trip test
-let restored = __cangjie_string_from_byte_array(multibyte.toArray())
+let restored = String(multibyte.toArray())
 expectEq(restored, multibyte, "multibyte round-trip")
 
 if (!__test_failed) {

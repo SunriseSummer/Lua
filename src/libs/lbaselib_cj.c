@@ -338,6 +338,9 @@ static int cangjie_bool_call (lua_State *L) {
 ** Rune is now a native TValue type (LUA_TRUNE) — no table/metatable.
 ** ============================================================ */
 
+/* Forward declaration for str_fromUtf8 (used by String(table)) */
+static int str_fromUtf8 (lua_State *L);
+
 
 /* Int64(value) - convert to integer.
 ** For numbers: truncates float to integer, passes integer through.
@@ -451,6 +454,10 @@ int luaB_cangjie_string (lua_State *L) {
     case LUA_TNIL: {
       lua_pushliteral(L, "nil");
       return 1;
+    }
+    case LUA_TTABLE: {
+      /* Table (byte array) -> String: delegate to str_fromUtf8 */
+      return str_fromUtf8(L);
     }
     default: {
       luaL_tolstring(L, 1, NULL);
@@ -798,6 +805,41 @@ static int cangjie_array_iter_next (lua_State *L) {
   return 1;  /* return value */
 }
 
+/*
+** String iterator: yields each Unicode character as a Rune value.
+** Upvalue 1 = string, upvalue 2 = byte offset (integer).
+*/
+static int cangjie_string_iter_next (lua_State *L) {
+  size_t len;
+  const char *s = lua_tolstring(L, lua_upvalueindex(1), &len);
+  lua_Integer off = lua_tointeger(L, lua_upvalueindex(2));
+  int nbytes;
+  long cp;
+  if ((size_t)off >= len) {
+    lua_pushnil(L);
+    return 1;  /* end of string */
+  }
+  nbytes = cjU_charlen((unsigned char)s[off]);
+  if (nbytes == 0 || (size_t)(off + nbytes) > len) {
+    /* Invalid UTF-8: skip one byte, yield U+FFFD replacement character */
+    lua_pushinteger(L, off + 1);
+    lua_copy(L, -1, lua_upvalueindex(2));
+    lua_pop(L, 1);
+    lua_pushrune(L, 0xFFFD);
+    return 1;
+  }
+  cp = cjU_decodesingle(s + off, (size_t)nbytes);
+  /* Update byte offset */
+  lua_pushinteger(L, off + nbytes);
+  lua_copy(L, -1, lua_upvalueindex(2));
+  lua_pop(L, 1);
+  if (cp >= 0)
+    lua_pushrune(L, (lua_Integer)cp);
+  else
+    lua_pushrune(L, 0xFFFD);  /* replacement character for invalid decode */
+  return 1;
+}
+
 int luaB_iter (lua_State *L) {
   if (lua_istable(L, 1)) {
     /* For tables: create a closure iterator that yields values (0-based) */
@@ -807,6 +849,15 @@ int luaB_iter (lua_State *L) {
     lua_pushnil(L);            /* state (unused) */
     lua_pushnil(L);            /* initial control value */
     return 3;  /* return iterator, state, initial */
+  }
+  else if (lua_isstring(L, 1)) {
+    /* For strings: create a closure iterator that yields Rune values */
+    lua_pushvalue(L, 1);       /* push string as upvalue 1 */
+    lua_pushinteger(L, 0);     /* push byte offset as upvalue 2 */
+    lua_pushcclosure(L, cangjie_string_iter_next, 2);
+    lua_pushnil(L);
+    lua_pushnil(L);
+    return 3;
   }
   else if (lua_isfunction(L, 1)) {
     /* Already an iterator function, pass through */
@@ -1957,11 +2008,16 @@ static int str_toRuneArray_cj (lua_State *L) {
   while (pos < len) {
     const char *next = cjU_decode(s + pos, NULL);
     size_t clen;
+    long cp;
     if (next == NULL) {
       next = s + pos + 1;
     }
     clen = (size_t)(next - (s + pos));
-    lua_pushlstring(L, s + pos, clen);
+    cp = cjU_decodesingle(s + pos, clen);
+    if (cp >= 0)
+      lua_pushrune(L, (lua_Integer)cp);
+    else
+      lua_pushrune(L, 0xFFFD);  /* replacement character for invalid decode */
     lua_rawseti(L, -2, idx++);
     pos = (size_t)(next - s);
   }
@@ -2180,9 +2236,15 @@ int luaB_str_index (lua_State *L) {
         return luaL_error(L, "string index %I out of range (size %I)",
                           (long long)idx, (long long)cachedCC);
       }
-      lua_pushlstring(L, s + offsets[idx],
-                      (size_t)(offsets[idx + 1] - offsets[idx]));
-      return 1;
+      {
+        size_t clen = (size_t)(offsets[idx + 1] - offsets[idx]);
+        long cp = cjU_decodesingle(s + offsets[idx], clen);
+        if (cp >= 0)
+          lua_pushrune(L, (lua_Integer)cp);
+        else
+          lua_pushrune(L, 0xFFFD);  /* replacement character */
+        return 1;
+      }
     }
 
     /* Single-pass scan: find char at idx without separate charcount call */
@@ -2191,7 +2253,11 @@ int luaB_str_index (lua_State *L) {
       size_t clen;
       lua_Integer totalChars;
       if (utf8_single_pass_index(s, len, idx, &byteOff, &clen, &totalChars)) {
-        lua_pushlstring(L, s + byteOff, clen);
+        long cp = cjU_decodesingle(s + byteOff, clen);
+        if (cp >= 0)
+          lua_pushrune(L, (lua_Integer)cp);
+        else
+          lua_pushrune(L, 0xFFFD);  /* replacement character */
         return 1;
       }
       /* Out of range */
@@ -2237,6 +2303,39 @@ int luaB_str_index (lua_State *L) {
 int luaB_str_newindex (lua_State *L) {
   return luaL_error(L,
       "strings are immutable; use string concatenation to build new strings");
+}
+
+
+/*
+** __add metamethod for strings.
+** Handles: string + string, string + Rune, Rune + string
+** by converting operands to strings and concatenating.
+*/
+static int luaB_str_add (lua_State *L) {
+  luaL_Buffer b;
+  size_t l;
+  const char *s;
+  luaL_buffinit(L, &b);
+  /* Process first operand */
+  if (lua_isrune(L, 1)) {
+    char buf[8];
+    int nbytes = cjU_utf8encode(buf, lua_torune(L, 1));
+    luaL_addlstring(&b, buf, (size_t)nbytes);
+  } else {
+    s = luaL_checklstring(L, 1, &l);
+    luaL_addlstring(&b, s, l);
+  }
+  /* Process second operand */
+  if (lua_isrune(L, 2)) {
+    char buf[8];
+    int nbytes = cjU_utf8encode(buf, lua_torune(L, 2));
+    luaL_addlstring(&b, buf, (size_t)nbytes);
+  } else {
+    s = luaL_checklstring(L, 2, &l);
+    luaL_addlstring(&b, s, l);
+  }
+  luaL_pushresult(&b);
+  return 1;
 }
 
 
@@ -2344,6 +2443,9 @@ int luaB_setup_string_meta (lua_State *L) {
   /* Set __len to return UTF-8 character count */
   lua_pushcfunction(L, luaB_str_len_utf8);
   lua_setfield(L, -2, "__len");
+  /* Set __add to handle string+Rune, Rune+string concatenation */
+  lua_pushcfunction(L, luaB_str_add);
+  lua_setfield(L, -2, "__add");
 
   /* Register String.fromUtf8 as a global helper */
   lua_pushcfunction(L, str_fromUtf8);

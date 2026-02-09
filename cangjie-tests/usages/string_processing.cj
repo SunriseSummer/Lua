@@ -7,7 +7,7 @@ func reverseStr(s: String): String {
     var result = ""
     var i = s.size - 1
     while (i >= 0) {
-        result = result + s[i]
+        result = result + String(s[i])
         i = i - 1
     }
     return result
@@ -21,7 +21,7 @@ expectEq(reverseStr("a"), "a", "reverse single char")
 func countChar(s: String, target: String): Int64 {
     var count: Int64 = 0
     for (i in 0..s.size) {
-        if (s[i] == target) {
+        if (String(s[i]) == target) {
             count = count + 1
         }
     }
@@ -56,7 +56,7 @@ expectFalse(isPalindrome("hello"), "not palindrome hello")
 func everyNth(s: String, n: Int64): String {
     var result = ""
     for (i in 0..s.size:n) {
-        result = result + s[i]
+        result = result + String(s[i])
     }
     return result
 }

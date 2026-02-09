@@ -15,20 +15,24 @@ expectEq(s3.size, 1, "single char string .size")
 let s4 = "hello world"
 expectEq(s4.size, 11, "string with space .size")
 
-// --- Section: String indexing (0-based) ---
+// --- Section: String indexing (0-based, returns Rune) ---
 let s = "abcde"
-expectEq(s[0], "a", "string index 0")
-expectEq(s[1], "b", "string index 1")
-expectEq(s[2], "c", "string index 2")
-expectEq(s[3], "d", "string index 3")
-expectEq(s[4], "e", "string index 4")
+expectEq(s[0], r'a', "string index 0")
+expectEq(s[1], r'b', "string index 1")
+expectEq(s[2], r'c', "string index 2")
+expectEq(s[3], r'd', "string index 3")
+expectEq(s[4], r'e', "string index 4")
 
 // Index with variable
 var idx = 2
-expectEq(s[idx], "c", "string index variable")
+expectEq(s[idx], r'c', "string index variable")
 
 // Index computed from .size
-expectEq(s[s.size - 1], "e", "string index from size")
+expectEq(s[s.size - 1], r'e', "string index from size")
+
+// --- Section: String indexing returns Rune type ---
+expectTrue(type(s[0]) == "Rune", "string index returns Rune type")
+expectTrue(s[0] == r'a', "string index == Rune literal")
 
 // --- Section: String slicing (0-based, exclusive) ---
 expectEq(s[0..3], "abc", "string slice 0..3 (exclusive)")
@@ -44,14 +48,14 @@ expectEq(s[0..=4], "abcde", "string slice full (inclusive)")
 // --- Section: String indexing with for loop ---
 var chars = ""
 for (i in 0..s.size) {
-    chars = chars + s[i]
+    chars = chars + String(s[i])
 }
 expectEq(chars, "abcde", "string for-in index loop")
 
 // --- Section: String indexing with step ---
 var everyOther = ""
 for (i in 0..s.size:2) {
-    everyOther = everyOther + s[i]
+    everyOther = everyOther + String(s[i])
 }
 expectEq(everyOther, "ace", "string for-in step 2")
 
