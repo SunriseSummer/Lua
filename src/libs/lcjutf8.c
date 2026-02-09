@@ -18,6 +18,36 @@
 
 
 /*
+** Encode a Unicode code point as UTF-8 into buf (forward).
+** Returns the number of bytes written (1-4), or 0 if invalid code point.
+** buf must have space for at least 4 bytes.
+*/
+int cjU_utf8encode (char *buf, lua_Integer cp) {
+  if (cp < 0 || cp > 0x10FFFF) return 0;
+  if (cp >= 0xD800 && cp <= 0xDFFF) return 0;  /* reject surrogates */
+  if (cp <= 0x7F) {
+    buf[0] = (char)cp;
+    return 1;
+  } else if (cp <= 0x7FF) {
+    buf[0] = (char)(0xC0 | (cp >> 6));
+    buf[1] = (char)(0x80 | (cp & 0x3F));
+    return 2;
+  } else if (cp <= 0xFFFF) {
+    buf[0] = (char)(0xE0 | (cp >> 12));
+    buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[2] = (char)(0x80 | (cp & 0x3F));
+    return 3;
+  } else {
+    buf[0] = (char)(0xF0 | (cp >> 18));
+    buf[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    buf[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    buf[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+  }
+}
+
+
+/*
 ** Determine UTF-8 byte length from lead byte.
 ** Returns 1-4 for valid lead bytes, 0 for invalid.
 */

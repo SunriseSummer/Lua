@@ -428,7 +428,7 @@ int luaB_cangjie_string (lua_State *L) {
   if (lua_isrune(L, 1)) {
     lua_Integer cp = lua_torune(L, 1);
     char buf[8];
-    int len = luaO_utf8encode(buf, cp);
+    int len = cjU_utf8encode(buf, cp);
     if (len == 0)
       return luaL_error(L, "invalid Rune code point");
     lua_pushlstring(L, buf, (size_t)len);
@@ -517,7 +517,7 @@ int luaB_cangjie_rune (lua_State *L) {
   {
     lua_Integer cp = luaL_checkinteger(L, 1);
     char buf[8];
-    int len = luaO_utf8encode(buf, cp);
+    int len = cjU_utf8encode(buf, cp);
     if (len == 0) {
       return luaL_error(L, "invalid Unicode code point: %I",
                         (LUAI_UACINT)cp);

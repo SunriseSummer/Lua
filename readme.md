@@ -26,7 +26,7 @@
 
 #### Rune 类型
 
-字符类型使用 `Rune` 表示，是运行时内置的原生类型（Tagged Value），可以表示 Unicode 字符集中的所有字符。Rune 字面量**仅**使用 `r` 前缀形式，编译时直接生成 Rune 常量：
+字符类型使用 `Rune` 表示，是运行时内置的原生类型（Tagged Value），可以表示 Unicode 字符集中的所有字符。Rune 字面量**仅**使用 `r` 前缀形式，编译时直接生成 Rune 类型值：
 
 ```cangjie
 // r 前缀表示 Rune 字面量（独立的 Rune 类型）

@@ -128,7 +128,7 @@ Rune 在字符串拼接/插值时自动转换为 UTF-8 字符串。
 **lobject.c** — `luaO_tostringbuff()` 增加 Rune 分支：
 ```c
 if (ttisrune(obj)) {
-  int nbytes = luaO_utf8encode(buff, runevalue(obj));
+  int nbytes = cjU_utf8encode(buff, runevalue(obj));
   if (nbytes == 0) { buff[0] = '?'; return 1; }
   return cast_uint(nbytes);
 }
@@ -163,16 +163,16 @@ metatable 初始化函数 `luaB_rune_init()` 不再需要实际操作。
 - `lauxlib.c` — inline UTF-8 编码（luaL_tolstring）
 - `lbaselib_cj.c` — `utf8_encode()`, `utf8_decode_single()`, `utf8_char_len()`, `utf8_decode_cj()`, `utf8_charcount()`, `utf8_byte_offset()`
 
-优化后，统一为两层：
+优化后，统一到 `lcjutf8.c` / `lcjutf8.h`：
 
-| 层级 | 文件 | 函数 | 用途 |
-|------|------|------|------|
-| 核心层 | `lobject.c` / `lobject.h` | `luaO_utf8encode()` | 码点→UTF-8 编码（TValue 转换用） |
-| 库层 | `lcjutf8.c` / `lcjutf8.h` | `cjU_charlen()` | 判断 UTF-8 前导字节长度 |
-| | | `cjU_decodesingle()` | 解码单字符串为码点 |
-| | | `cjU_decode()` | 解码一个 UTF-8 序列 |
-| | | `cjU_charcount()` | 统计字符串中 UTF-8 字符数 |
-| | | `cjU_byteoffset()` | 字符索引→字节偏移 |
+| 文件 | 函数 | 用途 |
+|------|------|------|
+| `lcjutf8.c` / `lcjutf8.h` | `cjU_utf8encode()` | 码点→UTF-8 编码 |
+| | `cjU_charlen()` | 判断 UTF-8 前导字节长度 |
+| | `cjU_decodesingle()` | 解码单字符串为码点 |
+| | `cjU_decode()` | 解码一个 UTF-8 序列 |
+| | `cjU_charcount()` | 统计字符串中 UTF-8 字符数 |
+| | `cjU_byteoffset()` | 字符索引→字节偏移 |
 
 ## 性能对比
 
@@ -191,13 +191,13 @@ metatable 初始化函数 `luaB_rune_init()` 不再需要实际操作。
 | 文件 | 变更说明 |
 |------|----------|
 | `src/include/lua.h` | 添加 `LUA_TRUNE`、`lua_pushrune`、`lua_torune`、`lua_isrune` |
-| `src/include/lobject.h` | 添加 Rune 类型宏、声明 `luaO_utf8encode` |
+| `src/include/lobject.h` | 添加 Rune 类型宏 |
 | `src/include/lparser.h` | 添加 `VKRUNE` 表达式类型 |
 | `src/include/lvm.h` | 更新 `cvt2str` 宏支持 Rune |
-| `src/include/lcjutf8.h` | **新文件** — 共享 UTF-8 工具函数声明 |
+| `src/include/lcjutf8.h` | **新文件** — 共享 UTF-8 工具函数声明（含 `cjU_utf8encode`） |
 | `src/core/runtime/lapi.c` | 实现 `lua_pushrune`、`lua_torune` |
 | `src/core/runtime/lvm.c` | Rune 原生相等/大小比较 |
-| `src/core/object/lobject.c` | `luaO_utf8encode()`、`luaO_tostringbuff()` Rune 分支 |
+| `src/core/object/lobject.c` | `luaO_tostringbuff()` Rune 分支 |
 | `src/core/object/ltm.c` | 类型名称数组添加 "Rune" |
 | `src/compiler/lparser.c` | Rune 字面量编译为 VKRUNE 常量 |
 | `src/compiler/lcode.c` | VKRUNE 代码生成 |

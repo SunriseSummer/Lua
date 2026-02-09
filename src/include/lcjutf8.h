@@ -17,6 +17,14 @@
 
 
 /*
+** Encode a Unicode code point as UTF-8 into buf (forward).
+** Returns the number of bytes written (1-4), or 0 if invalid code point.
+** buf must have space for at least 4 bytes.
+*/
+LUAI_FUNC int cjU_utf8encode (char *buf, lua_Integer cp);
+
+
+/*
 ** Determine UTF-8 byte length from lead byte.
 ** Returns 1-4 for valid lead bytes, 0 for invalid.
 */
