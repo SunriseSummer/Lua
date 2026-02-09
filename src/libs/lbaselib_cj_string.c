@@ -221,17 +221,10 @@ static int utf8_single_pass_index (const char *s, size_t len,
 ** ============================================================
 */
 
-/* bound method helper: wraps (cfunc, self) into a closure that
-   calls cfunc with self as first argument */
+/* str_bound_call — Delegates to the shared cj_bound_method_call()
+** helper defined in lbaselib_cj.h (eliminates duplicate implementation). */
 static int str_bound_call (lua_State *L) {
-  int nargs = lua_gettop(L);
-  int i;
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push cfunc */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self (string) */
-  for (i = 1; i <= nargs; i++)
-    lua_pushvalue(L, i);  /* push call arguments */
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - nargs;
+  return cj_bound_method_call(L);
 }
 
 /* s:isEmpty() -> Bool */

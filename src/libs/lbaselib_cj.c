@@ -79,21 +79,12 @@ static const char *const cj_enum_metamethods[] = {
 ** ============================================================
 */
 
-/* Upvalue-based bound method: when called, prepend the bound object.
-** Used by class instances, type extensions, enum values, and Option. */
+/* cangjie_bound_method — Upvalue-based bound method wrapper.
+** Delegates to the shared inline helper cj_bound_method_call() defined
+** in lbaselib_cj.h.  All modules (OOP, string, option) use the same
+** helper so that bound-method semantics are consistent everywhere. */
 static int cangjie_bound_method (lua_State *L) {
-  int nargs = lua_gettop(L);
-  int i;
-  int top_before;
-  /* upvalue 1 = the original function, upvalue 2 = the bound object */
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self */
-  for (i = 1; i <= nargs; i++) {
-    lua_pushvalue(L, i);  /* push original args */
-  }
-  top_before = nargs;  /* original args count */
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - top_before;  /* only return the new results */
+  return cj_bound_method_call(L);
 }
 
 /* Custom __index: if the value from the class table is a function,

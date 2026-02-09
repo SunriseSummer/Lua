@@ -31,20 +31,10 @@
 #include "lbaselib_cj.h"
 
 
-/* Upvalue-based bound method: when called, prepend the bound object.
-** Local copy for Option module (same logic as cangjie_bound_method). */
+/* option_bound_method — Delegates to the shared cj_bound_method_call()
+** helper defined in lbaselib_cj.h (eliminates duplicate implementation). */
 static int option_bound_method (lua_State *L) {
-  int nargs = lua_gettop(L);
-  int i;
-  int top_before;
-  lua_pushvalue(L, lua_upvalueindex(1));  /* push function */
-  lua_pushvalue(L, lua_upvalueindex(2));  /* push self */
-  for (i = 1; i <= nargs; i++) {
-    lua_pushvalue(L, i);  /* push original args */
-  }
-  top_before = nargs;
-  lua_call(L, nargs + 1, LUA_MULTRET);
-  return lua_gettop(L) - top_before;
+  return cj_bound_method_call(L);
 }
 
 

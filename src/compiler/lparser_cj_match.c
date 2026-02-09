@@ -273,6 +273,14 @@ static int is_match_case_end (LexState *ls) {
 }
 
 static void match_case_body_returning (LexState *ls);
+
+/* Maximum number of match cases in a single match expression.
+** This limit prevents stack overflow from too many jump targets. */
+#define CJ_MAX_MATCH_CASES 256
+
+/* Maximum number of parameters in a single enum/tuple pattern. */
+#define CJ_MAX_PATTERN_PARAMS 32
+
 static void matchstat_impl (LexState *ls, int line, int autoreturn) {
   /*
   ** match '(' expr ')' '{' case_clauses '}'
@@ -287,7 +295,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
   */
   FuncState *fs = ls->fs;
   expdesc match_val;
-  int jmp_to_end[256];
+  int jmp_to_end[CJ_MAX_MATCH_CASES];
   int njumps = 0;
   TString *match_var_name;
 
@@ -320,7 +328,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       enterblock(fs, &bl, 0);
       if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
-      if (njumps < 256)
+      if (njumps < CJ_MAX_MATCH_CASES)
         jmp_to_end[njumps++] = luaK_jump(fs);
     }
     /* === Tuple pattern: (p1, p2, ...) => body === */
@@ -328,10 +336,10 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       int npatterns = 0;
       /* Each sub-pattern can be: name (binding), _ (wildcard),
       ** or EnumCtor (tag check on element) */
-      TString *tpat_names[32];  /* binding name or NULL for wildcard */
-      TString *tpat_tags[32];   /* enum tag for sub-pattern or NULL */
+      TString *tpat_names[CJ_MAX_PATTERN_PARAMS];  /* binding name or NULL for wildcard */
+      TString *tpat_tags[CJ_MAX_PATTERN_PARAMS];   /* enum tag for sub-pattern or NULL */
       int condjmp;
-      int sub_jumps[32];
+      int sub_jumps[CJ_MAX_PATTERN_PARAMS];
       int nsub_jumps = 0;
 
       luaX_next(ls);  /* skip '(' */
@@ -339,14 +347,14 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
         if (ls->t.token == TK_NAME) {
           TString *nm = ls->t.seminfo.ts;
           if (strcmp(getstr(nm), "_") == 0) {
-            if (npatterns < 32) {
+            if (npatterns < CJ_MAX_PATTERN_PARAMS) {
               tpat_names[npatterns] = NULL;
               tpat_tags[npatterns] = NULL;
               npatterns++;
             }
           }
           else {
-            if (npatterns < 32) {
+            if (npatterns < CJ_MAX_PATTERN_PARAMS) {
               tpat_names[npatterns] = nm;
               tpat_tags[npatterns] = NULL;
               npatterns++;
@@ -385,7 +393,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
 
-      if (njumps < 256)
+      if (njumps < CJ_MAX_MATCH_CASES)
         jmp_to_end[njumps++] = luaK_jump(fs);
       luaK_patchtohere(fs, condjmp);
       {
@@ -402,7 +410,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       if (ls->t.token == '(') {
         /* Enum constructor pattern: Ctor(p1, p2, ...) => body */
         int nparams = 0;
-        TString *param_names[32];
+        TString *param_names[CJ_MAX_PATTERN_PARAMS];
         int condjmp;
 
         luaX_next(ls);  /* skip '(' */
@@ -410,10 +418,10 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
           if (ls->t.token == TK_NAME) {
             TString *nm = ls->t.seminfo.ts;
             if (strcmp(getstr(nm), "_") == 0) {
-              if (nparams < 32) param_names[nparams++] = NULL;
+              if (nparams < CJ_MAX_PATTERN_PARAMS) param_names[nparams++] = NULL;
             }
             else {
-              if (nparams < 32) param_names[nparams++] = nm;
+              if (nparams < CJ_MAX_PATTERN_PARAMS) param_names[nparams++] = nm;
             }
             luaX_next(ls);
           }
@@ -428,7 +436,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
         if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
-        if (njumps < 256)
+        if (njumps < CJ_MAX_MATCH_CASES)
           jmp_to_end[njumps++] = luaK_jump(fs);
         luaK_patchtohere(fs, condjmp);
       }
@@ -453,7 +461,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
         if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
-        if (njumps < 256)
+        if (njumps < CJ_MAX_MATCH_CASES)
           jmp_to_end[njumps++] = luaK_jump(fs);
         luaK_patchtohere(fs, condjmp);
       }
@@ -467,7 +475,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
         if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
         leaveblock(fs);
 
-        if (njumps < 256)
+        if (njumps < CJ_MAX_MATCH_CASES)
           jmp_to_end[njumps++] = luaK_jump(fs);
         luaK_patchtohere(fs, condjmp);
       }
@@ -496,7 +504,7 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       if (autoreturn) match_case_body_returning(ls); else match_case_body(ls);
       leaveblock(fs);
 
-      if (njumps < 256)
+      if (njumps < CJ_MAX_MATCH_CASES)
         jmp_to_end[njumps++] = luaK_jump(fs);
       luaK_patchtohere(fs, condjmp);
     }
