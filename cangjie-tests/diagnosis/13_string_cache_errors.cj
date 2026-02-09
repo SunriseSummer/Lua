@@ -24,6 +24,34 @@ expectRuntimeError("immutable after cacheIndex",
     'let s = "hello"; s.cacheIndex(); s[0] = "H"',
     "immutable")
 
+expectRuntimeError("immutable after cacheIndex middle",
+    'let s = "hello"; s.cacheIndex(); s[2] = "X"',
+    "immutable")
+
+expectRuntimeError("immutable after cacheIndex string key",
+    'let s = "hello"; s.cacheIndex(); s["x"] = 1',
+    "immutable")
+
+expectRuntimeError("immutable after cacheIndex dot notation",
+    'let s = "hello"; s.cacheIndex(); s.foo = 42',
+    "immutable")
+
+expectRuntimeError("var immutable after cacheIndex",
+    'var s = "hello"; s.cacheIndex(); s[0] = "H"',
+    "immutable")
+
+expectRuntimeError("CJK immutable after cacheIndex",
+    'let s = "你好世界"; s.cacheIndex(); s[1] = "坏"',
+    "immutable")
+
+expectRuntimeError("emoji immutable after cacheIndex",
+    'let s = "Hi😀🎉"; s.cacheIndex(); s[2] = "🌍"',
+    "immutable")
+
+expectRuntimeError("immutable after double cacheIndex",
+    'let s = "hello"; s.cacheIndex(); s.cacheIndex(); s[0] = "X"',
+    "immutable")
+
 // --- Section: cacheIndex on various edge cases without error ---
 expectNoError("cacheIndex on empty string",
     'let s = ""; s.cacheIndex()')
