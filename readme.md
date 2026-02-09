@@ -117,6 +117,10 @@ let k = String(r'A')        // Rune 转为字符串 "A"
   - `s.count(sub)` — 统计子串出现次数
   - `s.toArray()` — 转为 `Array<Byte>`（UTF-8 字节数组）
   - `s.toRuneArray()` — 转为 `Array<Rune>`（Unicode 字符数组）
+  - `s.cacheIndex()` — 构建索引偏移表，使后续随机索引操作为 O(1) 复杂度；返回 self 可链式调用
+- **性能优化**：
+  - 字符数（`.size` / `#`）采用缓存机制，首次计算后自动缓存，后续访问 O(1)
+  - 索引操作 `s[i]` 默认单趟扫描（不做冗余解码），调用 `s.cacheIndex()` 后升级为 O(1)
 
 ```cangjie
 let s = "Hello你好😀"
@@ -128,6 +132,16 @@ println(s.contains("你好"))  // true
 println(s.indexOf("你好"))   // 5
 println(s.toArray().size)    // 15（UTF-8 字节数）
 println(s.toRuneArray().size) // 8（Unicode 字符数）
+
+// cacheIndex() 构建索引表，后续索引 O(1)
+let long = "Hello你好世界"
+long.cacheIndex()
+println(long[5])            // "你"（O(1) 索引）
+println(long[5..=6])        // "你好"（O(1) 切片）
+
+// 链式调用
+let rev = "αβγ".cacheIndex()
+println(rev[2])             // "γ"
 
 // Array<Byte> 与 String 互转
 let bytes: Array<Byte> = s.toArray()       // String -> Array<Byte>
