@@ -1793,6 +1793,183 @@ static lua_Integer utf8_byte_offset (const char *s, size_t len,
 
 /*
 ** ============================================================
+** UTF-8 caching infrastructure
+** ============================================================
+*/
+
+/* Registry keys for cache tables */
+static const char CJ_UTF8_CHARCOUNT_KEY[] = "__cj_utf8_cc";
+static const char CJ_UTF8_INDEX_KEY[] = "__cj_utf8_idx";
+
+/*
+** Initialize the UTF-8 cache tables in the registry.
+** Called once during luaB_setup_string_meta.
+*/
+static void utf8_cache_init (lua_State *L) {
+  /* Create char-count cache: weak-keyed table */
+  lua_newtable(L);                        /* cache table */
+  lua_newtable(L);                        /* metatable */
+  lua_pushliteral(L, "k");
+  lua_setfield(L, -2, "__mode");          /* weak keys */
+  lua_setmetatable(L, -2);
+  lua_setfield(L, LUA_REGISTRYINDEX, CJ_UTF8_CHARCOUNT_KEY);
+
+  /* Create index-offset cache: weak-keyed table */
+  lua_newtable(L);
+  lua_newtable(L);
+  lua_pushliteral(L, "k");
+  lua_setfield(L, -2, "__mode");
+  lua_setmetatable(L, -2);
+  lua_setfield(L, LUA_REGISTRYINDEX, CJ_UTF8_INDEX_KEY);
+}
+
+/*
+** Get cached UTF-8 character count for a string at stack index 'idx'.
+** If not cached, computes it, caches it, and returns the count.
+** Returns the character count (or byte length as fallback for invalid UTF-8).
+*/
+static lua_Integer utf8_cached_charcount (lua_State *L, int idx) {
+  lua_Integer cc;
+  size_t len;
+  const char *s = lua_tolstring(L, idx, &len);
+  if (s == NULL) return 0;
+
+  /* Look up in cache */
+  lua_getfield(L, LUA_REGISTRYINDEX, CJ_UTF8_CHARCOUNT_KEY);
+  lua_pushvalue(L, idx);      /* push the string as key */
+  lua_rawget(L, -2);          /* cache[string] */
+  if (!lua_isnil(L, -1)) {
+    cc = lua_tointeger(L, -1);
+    lua_pop(L, 2);  /* pop value and cache table */
+    return cc;
+  }
+  lua_pop(L, 1);  /* pop nil */
+
+  /* Compute and cache */
+  cc = utf8_charcount(s, len);
+  if (cc < 0) cc = (lua_Integer)len;  /* fallback */
+  lua_pushvalue(L, idx);      /* key: the string */
+  lua_pushinteger(L, cc);     /* value: char count */
+  lua_rawset(L, -3);          /* cache[string] = cc */
+  lua_pop(L, 1);              /* pop cache table */
+  return cc;
+}
+
+/*
+** Retrieve the cached index offset table for a string at stack index 'idx'.
+** Returns a pointer to the lua_Integer array (byte offsets for each char),
+** or NULL if not cached. Sets *charCount to the number of characters.
+** The array has charCount+1 entries: offsets[i] = byte offset of char i,
+** offsets[charCount] = total byte length.
+*/
+static const lua_Integer *utf8_get_cached_offsets (lua_State *L, int idx,
+                                                   lua_Integer *charCount) {
+  const lua_Integer *offsets;
+  lua_getfield(L, LUA_REGISTRYINDEX, CJ_UTF8_INDEX_KEY);
+  lua_pushvalue(L, idx);
+  lua_rawget(L, -2);
+  if (lua_isuserdata(L, -1)) {
+    size_t udSize = lua_rawlen(L, -1);
+    lua_Integer nChars = (lua_Integer)(udSize / sizeof(lua_Integer)) - 1;
+    offsets = (const lua_Integer *)lua_touserdata(L, -1);
+    if (charCount) *charCount = nChars;
+    lua_pop(L, 2);  /* pop userdata and cache table */
+    return offsets;
+  }
+  lua_pop(L, 2);  /* pop nil and cache table */
+  if (charCount) *charCount = -1;
+  return NULL;
+}
+
+/*
+** Build and cache the index offset table for a string at stack index 'idx'.
+** Returns a pointer to the cached lua_Integer array.
+** The array has charCount+1 entries.
+*/
+static const lua_Integer *utf8_build_index_cache (lua_State *L, int idx) {
+  size_t len;
+  const char *s = lua_tolstring(L, idx, &len);
+  lua_Integer cc, i;
+  lua_Integer *offsets;
+  size_t pos;
+  if (s == NULL) return NULL;
+
+  /* First compute char count */
+  cc = utf8_charcount(s, len);
+  if (cc < 0) cc = (lua_Integer)len;
+
+  /* Also cache the char count */
+  lua_getfield(L, LUA_REGISTRYINDEX, CJ_UTF8_CHARCOUNT_KEY);
+  lua_pushvalue(L, idx);
+  lua_pushinteger(L, cc);
+  lua_rawset(L, -3);
+  lua_pop(L, 1);
+
+  /* Allocate userdata for offsets: cc+1 entries */
+  offsets = (lua_Integer *)lua_newuserdatauv(L, (size_t)(cc + 1) * sizeof(lua_Integer), 0);
+
+  /* Fill the offset table */
+  pos = 0;
+  i = 0;
+  while (pos < len && i < cc) {
+    const char *next;
+    offsets[i] = (lua_Integer)pos;
+    next = utf8_decode_cj(s + pos, NULL);
+    if (next == NULL) { pos++; }
+    else { pos = (size_t)(next - s); }
+    i++;
+  }
+  offsets[cc] = (lua_Integer)len;  /* sentinel: one past end */
+
+  /* Store in cache: idx_cache[string] = userdata */
+  lua_getfield(L, LUA_REGISTRYINDEX, CJ_UTF8_INDEX_KEY);
+  lua_pushvalue(L, idx);      /* key: the string */
+  lua_pushvalue(L, -3);       /* value: the userdata */
+  lua_rawset(L, -3);
+  lua_pop(L, 2);  /* pop cache table and userdata */
+
+  return offsets;
+}
+
+/*
+** Single-pass UTF-8 index: find the byte offset and length of the
+** charIdx-th (0-based) character.  Returns 1 on success, 0 on out-of-range.
+** On success, sets *byteOff and *charLen.
+** On failure, sets *totalChars to the total character count.
+*/
+static int utf8_single_pass_index (const char *s, size_t len,
+                                   lua_Integer charIdx,
+                                   lua_Integer *byteOff, size_t *charLen,
+                                   lua_Integer *totalChars) {
+  lua_Integer n = 0;
+  size_t pos = 0;
+  if (charIdx < 0) {
+    /* Still need total count for error message */
+    *totalChars = utf8_charcount(s, len);
+    if (*totalChars < 0) *totalChars = (lua_Integer)len;
+    return 0;
+  }
+  while (pos < len) {
+    const char *next = utf8_decode_cj(s + pos, NULL);
+    size_t clen;
+    if (next == NULL) { next = s + pos + 1; }
+    clen = (size_t)(next - (s + pos));
+    if (n == charIdx) {
+      *byteOff = (lua_Integer)pos;
+      *charLen = clen;
+      return 1;  /* found */
+    }
+    pos = (size_t)(next - s);
+    n++;
+  }
+  /* Out of range: n is the total char count */
+  *totalChars = n;
+  return 0;
+}
+
+
+/*
+** ============================================================
 ** Cangjie string member methods (built-in)
 ** ============================================================
 */
@@ -2076,7 +2253,7 @@ static int str_lastIndexOf_cj (lua_State *L) {
   size_t slen, sublen;
   const char *s = luaL_checklstring(L, 1, &slen);
   const char *sub = luaL_checklstring(L, 2, &sublen);
-  lua_Integer charCount = utf8_charcount(s, slen);
+  lua_Integer charCount = utf8_cached_charcount(L, 1);
   lua_Integer fromCharIdx = luaL_optinteger(L, 3, charCount);
   lua_Integer byteOff, lastBytePos, charIdx;
   size_t pos;
@@ -2124,8 +2301,8 @@ static int str_count_cj (lua_State *L) {
   const char *p;
   if (sublen == 0) {
     /* count of empty string: utf8 char count + 1 */
-    lua_Integer cc = utf8_charcount(s, slen);
-    lua_pushinteger(L, cc < 0 ? 1 : cc + 1);
+    lua_Integer cc = utf8_cached_charcount(L, 1);
+    lua_pushinteger(L, cc + 1);
     return 1;
   }
   p = s;
@@ -2167,6 +2344,19 @@ static int str_fromUtf8 (lua_State *L) {
 }
 
 
+/*
+** s:cacheIndex() -> self
+** Build an index offset table so that subsequent indexing is O(1).
+** Returns the string itself for chaining.
+*/
+static int str_cacheIndex (lua_State *L) {
+  luaL_checkstring(L, 1);
+  utf8_build_index_cache(L, 1);
+  lua_pushvalue(L, 1);  /* return self */
+  return 1;
+}
+
+
 /* Method dispatch table for string methods */
 typedef struct {
   const char *name;
@@ -2190,6 +2380,7 @@ static const StrMethod str_methods[] = {
   {"indexOf", str_indexOf_cj},
   {"lastIndexOf", str_lastIndexOf_cj},
   {"count", str_count_cj},
+  {"cacheIndex", str_cacheIndex},
   {NULL, NULL}
 };
 
@@ -2214,32 +2405,39 @@ int luaB_str_index (lua_State *L) {
   const char *s = luaL_checklstring(L, 1, &len);
   if (lua_type(L, 2) == LUA_TNUMBER) {
     lua_Integer idx = lua_tointeger(L, 2);
-    lua_Integer charCount = utf8_charcount(s, len);
-    lua_Integer byteOff;
-    const char *next;
-    size_t clen;
-    if (charCount < 0) charCount = (lua_Integer)len;  /* fallback */
-    if (idx < 0 || idx >= charCount) {
-      return luaL_error(L, "string index %I out of range (size %I)",
-                        (long long)idx, (long long)charCount);
+    lua_Integer cachedCC;
+    const lua_Integer *offsets;
+
+    /* Try index cache first (O(1) if available) */
+    offsets = utf8_get_cached_offsets(L, 1, &cachedCC);
+    if (offsets != NULL) {
+      if (idx < 0 || idx >= cachedCC) {
+        return luaL_error(L, "string index %I out of range (size %I)",
+                          (long long)idx, (long long)cachedCC);
+      }
+      lua_pushlstring(L, s + offsets[idx],
+                      (size_t)(offsets[idx + 1] - offsets[idx]));
+      return 1;
     }
-    byteOff = utf8_byte_offset(s, len, idx);
-    if (byteOff < 0 || (size_t)byteOff >= len) {
+
+    /* Single-pass scan: find char at idx without separate charcount call */
+    {
+      lua_Integer byteOff;
+      size_t clen;
+      lua_Integer totalChars;
+      if (utf8_single_pass_index(s, len, idx, &byteOff, &clen, &totalChars)) {
+        lua_pushlstring(L, s + byteOff, clen);
+        return 1;
+      }
+      /* Out of range */
       return luaL_error(L, "string index %I out of range (size %I)",
-                        (long long)idx, (long long)charCount);
+                        (long long)idx, (long long)totalChars);
     }
-    next = utf8_decode_cj(s + byteOff, NULL);
-    if (next == NULL) next = s + byteOff + 1;
-    clen = (size_t)(next - (s + byteOff));
-    lua_pushlstring(L, s + byteOff, clen);
-    return 1;
   }
   if (lua_type(L, 2) == LUA_TSTRING) {
     const char *key = lua_tostring(L, 2);
     if (strcmp(key, "size") == 0) {
-      lua_Integer charCount = utf8_charcount(s, len);
-      if (charCount < 0) charCount = (lua_Integer)len;
-      lua_pushinteger(L, charCount);
+      lua_pushinteger(L, utf8_cached_charcount(L, 1));
       return 1;
     }
     /* Check built-in string methods */
@@ -2288,11 +2486,29 @@ int luaB_str_slice (lua_State *L) {
   lua_Integer start = luaL_checkinteger(L, 2);
   lua_Integer end = luaL_checkinteger(L, 3);
   int inclusive = lua_toboolean(L, 4);
-  lua_Integer charCount = utf8_charcount(s, len);
+  lua_Integer charCount;
   lua_Integer startByte, endByte;
-  if (charCount < 0) charCount = (lua_Integer)len;
+  const lua_Integer *offsets;
+
   if (!inclusive) end--;
   if (start < 0) start = 0;
+
+  /* Try index cache first */
+  offsets = utf8_get_cached_offsets(L, 1, &charCount);
+  if (offsets != NULL) {
+    if (end >= charCount) end = charCount - 1;
+    if (end < start) {
+      lua_pushliteral(L, "");
+      return 1;
+    }
+    startByte = offsets[start];
+    endByte = offsets[end + 1];
+    lua_pushlstring(L, s + startByte, (size_t)(endByte - startByte));
+    return 1;
+  }
+
+  /* Use cached char count for boundary clamping */
+  charCount = utf8_cached_charcount(L, 1);
   if (end >= charCount) end = charCount - 1;
   if (end < start) {
     lua_pushliteral(L, "");
@@ -2333,11 +2549,8 @@ int luaB_string_from_byte_array (lua_State *L) {
 ** Return UTF-8 character count for __len metamethod.
 */
 static int luaB_str_len_utf8 (lua_State *L) {
-  size_t len;
-  const char *s = luaL_checklstring(L, 1, &len);
-  lua_Integer charCount = utf8_charcount(s, len);
-  if (charCount < 0) charCount = (lua_Integer)len;
-  lua_pushinteger(L, charCount);
+  luaL_checkstring(L, 1);
+  lua_pushinteger(L, utf8_cached_charcount(L, 1));
   return 1;
 }
 
@@ -2347,6 +2560,9 @@ static int luaB_str_len_utf8 (lua_State *L) {
 ** Called during interpreter initialization.
 */
 int luaB_setup_string_meta (lua_State *L) {
+  /* Initialize UTF-8 cache tables */
+  utf8_cache_init(L);
+
   lua_pushliteral(L, "");           /* push any string */
   if (!lua_getmetatable(L, -1)) {   /* get its metatable */
     lua_pop(L, 1);
