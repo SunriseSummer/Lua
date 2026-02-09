@@ -609,7 +609,8 @@ let b: ?Int64 = None
 a.isSome()          // true
 a.isNone()          // false
 a.getOrThrow()      // 42（None 时抛错）
-b.getOrDefault({ => 0 })   // 0（参数为 () -> T 类型函数）
+b.getOrDefault(0)              // 0（直接传入默认值）
+b.getOrDefault({ => 0 })      // 0（传入 lambda 延迟求值，仅在 None 时调用）
 
 // 模式匹配
 match (a) {
@@ -1058,10 +1059,10 @@ bash run_tests.sh
 │       ├── ltests.c              #   内部测试框架
 │       └── ltests.h              #   测试头文件
 ├── cangjie-tests/                # 仓颉语言测试用例
-│   ├── *.cj                      #   基础语言特性测试（72 个）
-│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（5 个）
-│   ├── usages/                   #   综合应用案例（16 个）
-│   └── diagnosis/                #   错误检测和诊断测试（10 个）
+│   ├── *.cj                      #   基础语言特性测试（84 个）
+│   ├── ext-features/             #   融合 Lua 动态特性的扩展测试（7 个）
+│   ├── usages/                   #   综合应用案例（23 个）
+│   └── diagnosis/                #   错误检测和诊断测试（15 个）
 ├── testes/                       # Lua 原生测试套件
 └── manual/                       # Lua 参考手册
 ```
