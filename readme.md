@@ -609,8 +609,8 @@ let b: ?Int64 = None
 a.isSome()          // true
 a.isNone()          // false
 a.getOrThrow()      // 42（None 时抛错）
-b.getOrDefault(0)              // 0（参数为默认值或 () -> T 类型函数）
-b.getOrDefault({ => 0 })      // 0（亦可传入 lambda 延迟求值）
+b.getOrDefault(0)              // 0（直接传入默认值）
+b.getOrDefault({ => 0 })      // 0（传入 lambda 延迟求值，仅在 None 时调用）
 
 // 模式匹配
 match (a) {

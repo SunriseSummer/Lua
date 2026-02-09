@@ -173,6 +173,7 @@ static int docall (lua_State *L, int narg, int nres) {
 
 
 static void print_version (void) {
+  /* \xf0\x9f\x8c\x95 is the UTF-8 encoding of 🌕 (U+1F315 Full Moon) */
   const char *banner = "Welcome to MoonCangjie\xf0\x9f\x8c\x95" "Powered by " LUA_RELEASE;
   lua_writestring(banner, strlen(banner));
   lua_writeline();
