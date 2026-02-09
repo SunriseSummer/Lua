@@ -16,10 +16,10 @@ expectEq(ascii[0..=4], "hello", "cached ASCII inclusive slice")
 let cjk = "你好世界"
 cjk.cacheIndex()
 expectEq(cjk.size, 4, "cached CJK .size")
-expectEq(cjk[0], r'\u{4F60}', "cached CJK index 0")
-expectEq(cjk[1], r'\u{597D}', "cached CJK index 1")
-expectEq(cjk[2], r'\u{4E16}', "cached CJK index 2")
-expectEq(cjk[3], r'\u{754C}', "cached CJK index 3")
+expectEq(cjk[0], r'你', "cached CJK index 0")
+expectEq(cjk[1], r'好', "cached CJK index 1")
+expectEq(cjk[2], r'世', "cached CJK index 2")
+expectEq(cjk[3], r'界', "cached CJK index 3")
 
 // --- Section: cacheIndex with CJK slicing ---
 expectEq(cjk[0..2], "你好", "cached CJK slice 0..2")
@@ -34,8 +34,8 @@ mixed.cacheIndex()
 expectEq(mixed.size, 7, "cached mixed .size")
 expectEq(mixed[0], r'H', "cached mixed index 0")
 expectEq(mixed[4], r'o', "cached mixed index 4")
-expectEq(mixed[5], r'\u{4F60}', "cached mixed index 5")
-expectEq(mixed[6], r'\u{597D}', "cached mixed index 6")
+expectEq(mixed[5], r'你', "cached mixed index 5")
+expectEq(mixed[6], r'好', "cached mixed index 6")
 expectEq(mixed[0..5], "Hello", "cached mixed slice ASCII part")
 expectEq(mixed[5..=6], "你好", "cached mixed slice CJK part")
 
@@ -45,15 +45,15 @@ emoji.cacheIndex()
 expectEq(emoji.size, 4, "cached emoji .size")
 expectEq(emoji[0], r'H', "cached emoji index 0")
 expectEq(emoji[1], r'i', "cached emoji index 1")
-expectEq(emoji[2], r'\u{1F600}', "cached emoji index 2")
-expectEq(emoji[3], r'\u{1F389}', "cached emoji index 3")
+expectEq(emoji[2], r'😀', "cached emoji index 2")
+expectEq(emoji[3], r'🎉', "cached emoji index 3")
 expectEq(emoji[2..=3], "😀🎉", "cached emoji slice")
 
 // --- Section: cacheIndex returns self (chaining) ---
 let chained = "测试链式".cacheIndex()
 expectEq(chained, "测试链式", "cacheIndex returns self")
-expectEq(chained[0], r'\u{6D4B}', "chained cacheIndex index 0")
-expectEq(chained[3], r'\u{5F0F}', "chained cacheIndex index 3")
+expectEq(chained[0], r'测', "chained cacheIndex index 0")
+expectEq(chained[3], r'式', "chained cacheIndex index 3")
 
 // --- Section: Empty string with cacheIndex ---
 let empty = ""
@@ -69,22 +69,22 @@ expectEq(single[0], r'X', "cached single index 0")
 let singleCjk = "龙"
 singleCjk.cacheIndex()
 expectEq(singleCjk.size, 1, "cached single CJK .size")
-expectEq(singleCjk[0], r'\u{9F99}', "cached single CJK index 0")
+expectEq(singleCjk[0], r'龙', "cached single CJK index 0")
 
 // --- Section: Consistency without vs with cacheIndex ---
 let s = "café☕🌍xyz"
 expectEq(s[0], r'c', "uncached s[0]")
-expectEq(s[3], r'\u{E9}', "uncached s[3]")
-expectEq(s[4], r'\u{2615}', "uncached s[4]")
-expectEq(s[5], r'\u{1F30D}', "uncached s[5]")
+expectEq(s[3], r'é', "uncached s[3]")
+expectEq(s[4], r'☕', "uncached s[4]")
+expectEq(s[5], r'🌍', "uncached s[5]")
 expectEq(s[6], r'x', "uncached s[6]")
 let uncachedSize = s.size
 
 s.cacheIndex()
 expectEq(s[0], r'c', "cached s[0]")
-expectEq(s[3], r'\u{E9}', "cached s[3]")
-expectEq(s[4], r'\u{2615}', "cached s[4]")
-expectEq(s[5], r'\u{1F30D}', "cached s[5]")
+expectEq(s[3], r'é', "cached s[3]")
+expectEq(s[4], r'☕', "cached s[4]")
+expectEq(s[5], r'🌍', "cached s[5]")
 expectEq(s[6], r'x', "cached s[6]")
 expectEq(s.size, uncachedSize, "cached size matches uncached")
 

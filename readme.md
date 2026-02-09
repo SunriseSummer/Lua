@@ -130,7 +130,7 @@ println(s.size)        // 8（Unicode 字符数，非字节数）
 println(s[5])          // r'你'（返回 Rune 类型）
 println(type(s[5]))    // "Rune"
 println(s[5..=6])      // "你好"（返回 String 类型）
-println(type(s[5..=6]))// "string"
+println(type(s[5..=6]))// "String"
 println(s.isEmpty())   // false
 println(s.contains("你好"))  // true
 println(s.indexOf("你好"))   // 5

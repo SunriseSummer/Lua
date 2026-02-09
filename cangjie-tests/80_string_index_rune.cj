@@ -8,9 +8,9 @@ expectTrue(type(s[0]) == "Rune", "s[0] is Rune type")
 expectTrue(type(s[4]) == "Rune", "s[4] is Rune type")
 
 // --- Section: Range index returns String type ---
-expectTrue(type(s[0..3]) == "string", "s[0..3] is string type")
-expectTrue(type(s[0..=0]) == "string", "s[0..=0] is string type (single char range)")
-expectTrue(type(s[2..2]) == "string", "s[2..2] is string type (empty range)")
+expectTrue(type(s[0..3]) == "String", "s[0..3] is String type")
+expectTrue(type(s[0..=0]) == "String", "s[0..=0] is String type (single char range)")
+expectTrue(type(s[2..2]) == "String", "s[2..2] is String type (empty range)")
 
 // --- Section: Rune comparison with literals ---
 expectEq(s[0], r'h', "s[0] == r'h'")
@@ -40,12 +40,12 @@ expectEq(String(emoji[0]), "😀", "String(emoji[0]) == '😀'")
 
 // --- Section: Rune identity via Rune() on indexed value ---
 expectEq(Rune(s[0]), r'h', "Rune(s[0]) == r'h'")
-expectEq(Rune(cjk[0]), r'\u{4F60}', "Rune(cjk[0]) identity")
+expectEq(Rune(cjk[0]), r'你', "Rune(cjk[0]) identity")
 expectEq(s[0], Rune(s[0]), "s[0] == Rune(s[0]) identity")
 
 // --- Section: Range slice is always String even for single char ---
-expectTrue(type(s[0..=0]) == "string", "single char inclusive range is string")
-expectTrue(type(s[0..1]) == "string", "single char exclusive range is string")
+expectTrue(type(s[0..=0]) == "String", "single char inclusive range is String")
+expectTrue(type(s[0..1]) == "String", "single char exclusive range is String")
 expectEq(s[0..=0], "h", "s[0..=0] == 'h' (string)")
 expectEq(s[0..1], "h", "s[0..1] == 'h' (string)")
 
@@ -82,8 +82,8 @@ for (ch in "你好") {
     cjkCount = cjkCount + 1
 }
 expectEq(cjkCount, 2, "for-in CJK produces 2 Runes")
-expectEq(cjkFirst, r'\u{4F60}', "for-in CJK rune 0")
-expectEq(cjkSecond, r'\u{597D}', "for-in CJK rune 1")
+expectEq(cjkFirst, r'你', "for-in CJK rune 0")
+expectEq(cjkSecond, r'好', "for-in CJK rune 1")
 
 // --- Section: for-in string with mixed content ---
 var mixedCount = 0
@@ -98,8 +98,8 @@ for (ch in "A你😀") {
 }
 expectEq(mixedCount, 3, "for-in mixed produces 3 Runes")
 expectEq(mixR0, r'A', "for-in mixed rune 0")
-expectEq(mixR1, r'\u{4F60}', "for-in mixed rune 1")
-expectEq(mixR2, r'\u{1F600}', "for-in mixed rune 2")
+expectEq(mixR1, r'你', "for-in mixed rune 1")
+expectEq(mixR2, r'😀', "for-in mixed rune 2")
 
 // --- Section: for-in empty string ---
 var emptyCount = 0

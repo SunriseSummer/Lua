@@ -8,8 +8,8 @@ let s = "你好世界Hello"
 s.cacheIndex()
 
 // After cacheIndex, indexing should be O(1) via offset table
-expectEq(s[0], r'\u{4F60}', "cached index 0")
-expectEq(s[3], r'\u{754C}', "cached index 3")
+expectEq(s[0], r'你', "cached index 0")
+expectEq(s[3], r'界', "cached index 3")
 expectEq(s[4], r'H', "cached index 4")
 expectEq(s[8], r'o', "cached index 8")
 expectEq(s.size, 9, "cached size")
@@ -36,17 +36,17 @@ longMixed.cacheIndex()
 // Access in reverse order (benefits from O(1) lookup)
 expectEq(longMixed[13], r'J', "cached reverse access last")
 expectEq(longMixed[9], r'F', "cached reverse access mid")
-expectEq(longMixed[5], r'\u{4F60}', "cached reverse access CJK")
+expectEq(longMixed[5], r'你', "cached reverse access CJK")
 expectEq(longMixed[0], r'A', "cached reverse access first")
 
 // --- Section: cacheIndex with emoji sequences ---
 let emojiStr = "🌍🌎🌏🌐"
 emojiStr.cacheIndex()
 expectEq(emojiStr.size, 4, "cached emoji size")
-expectEq(emojiStr[0], r'\u{1F30D}', "cached emoji index 0")
-expectEq(emojiStr[1], r'\u{1F30E}', "cached emoji index 1")
-expectEq(emojiStr[2], r'\u{1F30F}', "cached emoji index 2")
-expectEq(emojiStr[3], r'\u{1F310}', "cached emoji index 3")
+expectEq(emojiStr[0], r'🌍', "cached emoji index 0")
+expectEq(emojiStr[1], r'🌎', "cached emoji index 1")
+expectEq(emojiStr[2], r'🌏', "cached emoji index 2")
+expectEq(emojiStr[3], r'🌐', "cached emoji index 3")
 expectEq(emojiStr[1..3], "🌎🌏", "cached emoji slice")
 
 // --- Section: cacheIndex with for-in loop ---

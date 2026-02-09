@@ -11,22 +11,22 @@ expectEq(ascii[4], r'o', "ASCII index 4")
 expectTrue(type(ascii[0]) == "Rune", "ASCII index returns Rune type")
 expectEq(ascii[0..3], "hel", "ASCII slice 0..3")
 expectEq(ascii[0..=4], "hello", "ASCII inclusive slice")
-expectTrue(type(ascii[0..3]) == "string", "ASCII slice returns string type")
+expectTrue(type(ascii[0..3]) == "String", "ASCII slice returns String type")
 
 // --- Section: CJK strings ---
 let cjk = "你好世界"
 expectEq(cjk.size, 4, "CJK .size is 4 characters")
-expectEq(cjk[0], r'\u{4F60}', "CJK index 0 returns '你'")
-expectEq(cjk[1], r'\u{597D}', "CJK index 1 returns '好'")
-expectEq(cjk[2], r'\u{4E16}', "CJK index 2 returns '世'")
-expectEq(cjk[3], r'\u{754C}', "CJK index 3 returns '界'")
+expectEq(cjk[0], r'你', "CJK index 0 returns '你'")
+expectEq(cjk[1], r'好', "CJK index 1 returns '好'")
+expectEq(cjk[2], r'世', "CJK index 2 returns '世'")
+expectEq(cjk[3], r'界', "CJK index 3 returns '界'")
 
 // --- Section: CJK slicing (returns string) ---
 expectEq(cjk[0..2], "你好", "CJK slice 0..2")
 expectEq(cjk[1..3], "好世", "CJK slice 1..3")
 expectEq(cjk[0..=3], "你好世界", "CJK inclusive slice full")
 expectEq(cjk[2..=2], "世", "CJK inclusive slice single char (still string)")
-expectTrue(type(cjk[2..=2]) == "string", "CJK single-char slice is string type")
+expectTrue(type(cjk[2..=2]) == "String", "CJK single-char slice is String type")
 expectEq(cjk[2..2], "", "CJK empty slice")
 
 // --- Section: Mixed ASCII and CJK ---
@@ -34,8 +34,8 @@ let mixed = "Hello你好"
 expectEq(mixed.size, 7, "mixed .size is 7")
 expectEq(mixed[0], r'H', "mixed index 0")
 expectEq(mixed[4], r'o', "mixed index 4")
-expectEq(mixed[5], r'\u{4F60}', "mixed index 5 (CJK)")
-expectEq(mixed[6], r'\u{597D}', "mixed index 6 (CJK)")
+expectEq(mixed[5], r'你', "mixed index 5 (CJK)")
+expectEq(mixed[6], r'好', "mixed index 6 (CJK)")
 expectEq(mixed[0..5], "Hello", "mixed slice ASCII part")
 expectEq(mixed[5..=6], "你好", "mixed slice CJK part")
 
@@ -44,14 +44,14 @@ let emoji = "Hi😀🎉"
 expectEq(emoji.size, 4, "emoji .size is 4")
 expectEq(emoji[0], r'H', "emoji index 0")
 expectEq(emoji[1], r'i', "emoji index 1")
-expectEq(emoji[2], r'\u{1F600}', "emoji index 2")
-expectEq(emoji[3], r'\u{1F389}', "emoji index 3")
+expectEq(emoji[2], r'😀', "emoji index 2")
+expectEq(emoji[3], r'🎉', "emoji index 3")
 expectEq(emoji[2..=3], "😀🎉", "emoji slice")
 
 // --- Section: Indexed character is Rune ---
 // String indexing returns Rune type. Compare with Rune literals.
 expectEq(ascii[0], r'h', "ascii[0] == r'h'")
-expectEq(cjk[0], r'\u{4F60}', "cjk[0] == Rune('你')")
+expectEq(cjk[0], r'你', "cjk[0] == Rune('你')")
 
 // Compare Rune directly
 expectTrue(ascii[0] == r'h', "indexed Rune == r'h'")
@@ -90,18 +90,18 @@ expectEq(single_ascii[0], r'A', "single ASCII index")
 
 let single_cjk = "中"
 expectEq(single_cjk.size, 1, "single CJK .size")
-expectEq(single_cjk[0], r'\u{4E2D}', "single CJK index")
+expectEq(single_cjk[0], r'中', "single CJK index")
 
 let single_emoji = "🌍"
 expectEq(single_emoji.size, 1, "single emoji .size")
-expectEq(single_emoji[0], r'\u{1F30D}', "single emoji index")
+expectEq(single_emoji[0], r'🌍', "single emoji index")
 
 // --- Section: Interpolation with UTF-8 ---
 let name = "仓颉"
 let greeting = "Hello, ${name}!"
 expectEq(greeting.size, 10, "interpolation UTF-8 .size")
-expectEq(greeting[7], r'\u{4ED3}', "interpolation UTF-8 index 7")
-expectEq(greeting[8], r'\u{9889}', "interpolation UTF-8 index 8")
+expectEq(greeting[7], r'仓', "interpolation UTF-8 index 7")
+expectEq(greeting[8], r'颉', "interpolation UTF-8 index 8")
 
 // --- Section: String concatenation with UTF-8 ---
 let concat = "你" + "好" + "世" + "界"

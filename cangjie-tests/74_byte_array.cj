@@ -51,8 +51,8 @@ let runes: Array<Rune> = "AB你好".toRuneArray()
 expectEq(runes.size, 4, "toRuneArray size")
 expectEq(runes[0], r'A', "toRuneArray[0]")
 expectEq(runes[1], r'B', "toRuneArray[1]")
-expectEq(runes[2], r'\u{4F60}', "toRuneArray[2]")
-expectEq(runes[3], r'\u{597D}', "toRuneArray[3]")
+expectEq(runes[2], r'你', "toRuneArray[2]")
+expectEq(runes[3], r'好', "toRuneArray[3]")
 
 // --- Section: Empty string ---
 let emptyBytes: Array<Byte> = "".toArray()
