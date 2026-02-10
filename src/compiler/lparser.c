@@ -76,6 +76,9 @@ static void statlist_autoreturning (LexState *ls);
 static void ifstat_returning (LexState *ls, int line);
 static void matchstat_returning (LexState *ls, int line);
 static int is_match_case_end (LexState *ls);
+static TString *parse_return_type_annotation (LexState *ls,
+                                              int allow_decl_keywords,
+                                              int require_type);
 
 
 static l_noret error_expected (LexState *ls, int token) {
@@ -861,6 +864,7 @@ static void open_func (LexState *ls, FuncState *fs, BlockCnt *bl) {
   fs->ndebugvars = 0;
   fs->nactvar = 0;
   fs->needclose = 0;
+  fs->ret_type = NULL;
   fs->firstlocal = ls->dyd->actvar.n;
   fs->firstlabel = ls->dyd->label.n;
   fs->bl = NULL;
@@ -1378,36 +1382,7 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   checknext(ls, ')');
   /* optional return type annotation ': Type' - skip it */
   if (testnext(ls, ':')) {
-    int depth = 0;
-    if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
-    for (;;) {
-      if (ls->t.token == TK_NAME) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '<' || ls->t.token == '(') {
-        depth++;
-        luaX_next(ls);
-      }
-      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
-        depth--;
-        luaX_next(ls);
-        if (depth == 0 && ls->t.token == '-') {
-          if (luaX_lookahead(ls) == '>') {
-            luaX_next(ls);  /* skip '-' */
-            luaX_next(ls);  /* skip '>' */
-          }
-        }
-      }
-      else if (ls->t.token == ',' && depth > 0) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '?' && depth > 0) {
-        luaX_next(ls);
-      }
-      else {
-        break;
-      }
-    }
+    new_fs.ret_type = parse_return_type_annotation(ls, 0, 1);
   }
   checknext(ls, '{' /*}*/);
   statlist_autoreturning(ls);
@@ -1439,45 +1414,7 @@ static int body_or_abstract (LexState *ls, expdesc *e, int ismethod, int line) {
   checknext(ls, ')');
   /* optional return type annotation */
   if (testnext(ls, ':')) {
-    int depth = 0;
-    if (ls->t.token == '?') luaX_next(ls);
-    for (;;) {
-      if (ls->t.token == TK_NAME) {
-        if (depth == 0) {
-          /* At top level, check if this NAME is the start of a new
-          ** declaration rather than part of the return type. */
-          const char *nm = getstr(ls->t.seminfo.ts);
-          if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0) {
-            break;  /* known declaration keywords - stop */
-          }
-          if (luaX_lookahead(ls) == '(') break;
-        }
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '<' || ls->t.token == '(') {
-        depth++;
-        luaX_next(ls);
-      }
-      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
-        depth--;
-        luaX_next(ls);
-        if (depth == 0 && ls->t.token == '-') {
-          if (luaX_lookahead(ls) == '>') {
-            luaX_next(ls);
-            luaX_next(ls);
-          }
-        }
-      }
-      else if (ls->t.token == ',' && depth > 0) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '?' && depth > 0) {
-        luaX_next(ls);
-      }
-      else {
-        break;
-      }
-    }
+    new_fs.ret_type = parse_return_type_annotation(ls, 1, 0);
   }
   if (ls->t.token != '{') {
     /* Abstract method - no body. Close the function scope and return 0. */
@@ -1515,36 +1452,7 @@ static void body_init (LexState *ls, expdesc *e, int line) {
   checknext(ls, ')');
   /* skip optional return type annotation */
   if (testnext(ls, ':')) {
-    int depth = 0;
-    if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
-    for (;;) {
-      if (ls->t.token == TK_NAME) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '<' || ls->t.token == '(') {
-        depth++;
-        luaX_next(ls);
-      }
-      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
-        depth--;
-        luaX_next(ls);
-        if (depth == 0 && ls->t.token == '-') {
-          if (luaX_lookahead(ls) == '>') {
-            luaX_next(ls);  /* skip '-' */
-            luaX_next(ls);  /* skip '>' */
-          }
-        }
-      }
-      else if (ls->t.token == ',' && depth > 0) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '?' && depth > 0) {
-        luaX_next(ls);
-      }
-      else {
-        break;
-      }
-    }
+    new_fs.ret_type = parse_return_type_annotation(ls, 0, 1);
   }
   checknext(ls, '{' /*}*/);
   statlist(ls);
@@ -3707,6 +3615,79 @@ static int skip_letvar_type (LexState *ls) {
   return is_rune;
 }
 
+static int should_check_return_type (const char *tname) {
+  return (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0 ||
+          strcmp(tname, "Bool") == 0 || strcmp(tname, "String") == 0 ||
+          strcmp(tname, "Rune") == 0 || strcmp(tname, "Option") == 0);
+}
+
+static TString *parse_return_type_annotation (LexState *ls,
+                                              int allow_decl_keywords,
+                                              int require_type) {
+  int depth = 0;
+  int has_type = 0;
+  int is_option = 0;
+  TString *top_name = NULL;
+  if (ls->t.token == '?') {
+    is_option = 1;
+    luaX_next(ls);
+  }
+  for (;;) {
+    if (ls->t.token == TK_NAME) {
+      if (!has_type && depth == 0) {
+        top_name = ls->t.seminfo.ts;
+        if (allow_decl_keywords) {
+          const char *nm = getstr(top_name);
+          if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0)
+            break;
+          if (luaX_lookahead(ls) == '(') break;
+        }
+      }
+      has_type = 1;
+      luaX_next(ls);
+    }
+    else if (ls->t.token == '<' || ls->t.token == '(') {
+      if (ls->t.token == '(') has_type = 1;
+      depth++;
+      luaX_next(ls);
+    }
+    else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+      int was_paren = (ls->t.token == ')');
+      depth--;
+      luaX_next(ls);
+      if (was_paren && ls->t.token == '-' && luaX_lookahead(ls) == '>') {
+        luaX_next(ls);
+        luaX_next(ls);
+      }
+    }
+    else if (ls->t.token == TK_SHR && depth >= 2) {
+      depth -= 2;
+      luaX_next(ls);
+    }
+    else if (ls->t.token == ',' && depth > 0) {
+      luaX_next(ls);
+    }
+    else if (ls->t.token == TK_NOT && depth > 0) {
+      /* '!' in named params for function types */
+      luaX_next(ls);
+    }
+    else if (ls->t.token == '?' && depth > 0) {
+      luaX_next(ls);
+    }
+    else {
+      break;
+    }
+  }
+  if (require_type && !has_type) {
+    luaX_syntaxerror(ls, "type name expected after ':'");
+  }
+  if (is_option)
+    return luaS_new(ls->L, "Option");
+  if (top_name != NULL && should_check_return_type(getstr(top_name)))
+    return top_name;
+  return NULL;
+}
+
 static void letvarstat (LexState *ls, int isconst) {
   /* stat -> LET|VAR NAME [':' type] ['=' explist] */
   FuncState *fs = ls->fs;
@@ -3868,6 +3849,21 @@ static void funcstat (LexState *ls, int line) {
 /* Cangjie runtime call helpers */
 #include "lparser_cj_runtime.c"
 
+static void maybe_emit_return_type_check (LexState *ls, expdesc *e) {
+  FuncState *fs = ls->fs;
+  if (fs->ret_type == NULL) return;
+  {
+    expdesc args[2];
+    int base;
+    args[0] = *e;
+    init_exp(&args[1], VKSTR, 0);
+    args[1].u.strval = fs->ret_type;
+    base = emit_runtime_call_base(ls, "__cangjie_check_return", args, 2, 1);
+    fs->freereg = cast_byte(base + 1);
+    init_exp(e, VNONRELOC, base);
+  }
+}
+
 /* Cangjie type definition parsing (struct, class, interface, extend, enum) */
 #include "lparser_cj_types.c"
 
@@ -3960,6 +3956,9 @@ static void retstat (LexState *ls) {
     nret = 0;  /* return no values */
   else {
     nret = explist(ls, &e);  /* optional return values */
+    if (nret == 1 && !hasmultret(e.k)) {
+      maybe_emit_return_type_check(ls, &e);
+    }
     if (hasmultret(e.k)) {
       luaK_setmultret(fs, &e);
       if (e.k == VCALL && nret == 1 && !fs->bl->insidetbc) {  /* tail call? */

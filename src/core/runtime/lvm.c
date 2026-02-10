@@ -1657,6 +1657,10 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         StkId ra = RA(i);
         int cond;
         TValue *rb = vRB(i);
+        if ((ttisrune(s2v(ra)) && ttisnumber(rb)) ||
+            (ttisnumber(s2v(ra)) && ttisrune(rb))) {
+          luaG_ordererror(L, s2v(ra), rb);
+        }
         Protect(cond = luaV_equalobj(L, s2v(ra), rb));
         docondjump();
         vmbreak;
@@ -1672,8 +1676,13 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
       vmcase(OP_EQK) {
         StkId ra = RA(i);
         TValue *rb = KB(i);
+        int cond;
         /* basic types do not use '__eq'; we can use raw equality */
-        int cond = luaV_rawequalobj(s2v(ra), rb);
+        if ((ttisrune(s2v(ra)) && ttisnumber(rb)) ||
+            (ttisnumber(s2v(ra)) && ttisrune(rb))) {
+          luaG_ordererror(L, s2v(ra), rb);
+        }
+        cond = luaV_rawequalobj(s2v(ra), rb);
         docondjump();
         vmbreak;
       }
@@ -1681,6 +1690,11 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         StkId ra = RA(i);
         int cond;
         int im = GETARG_sB(i);
+        if (ttisrune(s2v(ra))) {
+          TValue aux;
+          setivalue(&aux, im);
+          luaG_ordererror(L, s2v(ra), &aux);
+        }
         if (ttisinteger(s2v(ra)))
           cond = (ivalue(s2v(ra)) == im);
         else if (ttisfloat(s2v(ra)))

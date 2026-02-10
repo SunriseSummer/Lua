@@ -124,6 +124,7 @@ static void statlist_autoreturning_ex (LexState *ls, int in_match_case) {
                                    : block_follow(ls, 1);
             if (at_end) {
               /* Last expression - auto-return */
+              maybe_emit_return_type_check(ls, &e);
               luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
               lua_assert(fs->f->maxstacksize >= fs->freereg &&
                          fs->freereg >= luaY_nvarstack(fs));
@@ -155,6 +156,7 @@ static void statlist_autoreturning_ex (LexState *ls, int in_match_case) {
           expr(ls, &e);
           at_end = in_match_case ? is_match_case_end(ls) : block_follow(ls, 1);
           if (at_end) {
+            maybe_emit_return_type_check(ls, &e);
             luaK_ret(fs, luaK_exp2anyreg(fs, &e), 1);
             lua_assert(fs->f->maxstacksize >= fs->freereg &&
                        fs->freereg >= luaY_nvarstack(fs));
