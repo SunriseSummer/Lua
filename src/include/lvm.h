@@ -55,7 +55,8 @@ typedef enum {
 /* convert an object to a float (without string coercion) */
 #define tonumberns(o,n) \
 	(ttisfloat(o) ? ((n) = fltvalue(o), 1) : \
-	(ttisinteger(o) ? ((n) = cast_num(ivalue(o)), 1) : 0))
+	(ttisint64(o) ? ((n) = cast_num(ivalue(o)), 1) : \
+	(ttisuint64(o) ? ((n) = cast_num(u64value(o)), 1) : 0)))
 
 
 /* convert an object to an integer (including string coercion) */
@@ -130,7 +131,12 @@ LUAI_FUNC void luaV_concat (lua_State *L, int total);
 LUAI_FUNC lua_Integer luaV_idiv (lua_State *L, lua_Integer x, lua_Integer y);
 LUAI_FUNC lua_Integer luaV_mod (lua_State *L, lua_Integer x, lua_Integer y);
 LUAI_FUNC lua_Number luaV_modf (lua_State *L, lua_Number x, lua_Number y);
+LUAI_FUNC lua_Unsigned luaV_uidiv (lua_State *L, lua_Unsigned x, lua_Unsigned y);
+LUAI_FUNC lua_Unsigned luaV_umod (lua_State *L, lua_Unsigned x, lua_Unsigned y);
 LUAI_FUNC lua_Integer luaV_shiftl (lua_Integer x, lua_Integer y);
+LUAI_FUNC lua_Unsigned luaV_ushiftl (lua_Unsigned x, lua_Integer y);
 LUAI_FUNC void luaV_objlen (lua_State *L, StkId ra, const TValue *rb);
+
+#define luaV_ushiftr(x,y)	luaV_ushiftl((x), intop(-, 0, (y)))
 
 #endif

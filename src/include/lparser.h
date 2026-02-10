@@ -31,6 +31,7 @@ typedef enum {
   VK,  /* constant in 'k'; info = index of constant in 'k' */
   VKFLT,  /* floating constant; nval = numerical float value */
   VKINT,  /* integer constant; ival = numerical integer value */
+  VKUINT,  /* unsigned integer constant; uval = numerical uint64 value */
   VKRUNE, /* Rune constant; ival = Unicode code point */
   VKSTR,  /* string constant; strval = TString address;
              (string is fixed by the scanner) */
@@ -80,6 +81,7 @@ typedef struct expdesc {
   expkind k;
   union {
     lua_Integer ival;    /* for VKINT */
+    lua_Unsigned uval;  /* for VKUINT */
     lua_Number nval;  /* for VKFLT */
     TString *strval;  /* for VKSTR */
     int info;  /* for generic use */

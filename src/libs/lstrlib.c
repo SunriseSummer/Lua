@@ -258,7 +258,7 @@ static const luaL_Reg stringmetamethods[] = {
 #else		/* }{ */
 
 static int tonum (lua_State *L, int arg) {
-  if (lua_type(L, arg) == LUA_TNUMBER) {  /* already a number? */
+  if (lua_isnumber(L, arg)) {  /* already a number? */
     lua_pushvalue(L, arg);
     return 1;
   }
@@ -304,7 +304,7 @@ static int arith_add (lua_State *L) {
     return 1;
   }
   /* Cangjie: string + number = concatenation (auto-convert) */
-  if (lua_type(L, 1) == LUA_TSTRING && lua_type(L, 2) == LUA_TNUMBER) {
+  if (lua_type(L, 1) == LUA_TSTRING && lua_isnumber(L, 2)) {
     luaL_tolstring(L, 2, NULL);
     lua_remove(L, 2);
     lua_concat(L, 2);
@@ -968,7 +968,7 @@ static int str_gsub (lua_State *L) {
   int changed = 0;  /* change flag */
   MatchState ms;
   luaL_Buffer b;
-  luaL_argexpected(L, tr == LUA_TNUMBER || tr == LUA_TSTRING ||
+  luaL_argexpected(L, lua_isnumber(L, 3) || tr == LUA_TSTRING ||
                    tr == LUA_TFUNCTION || tr == LUA_TTABLE, 3,
                       "string/function/table");
   luaL_buffinit(L, &b);
@@ -1197,12 +1197,18 @@ static void addliteral (lua_State *L, luaL_Buffer *b, int arg) {
       addquoted(b, s, len);
       break;
     }
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TUINT64:
+    case LUA_TFLOAT64: {
       char *buff = luaL_prepbuffsize(b, MAX_ITEM);
       int nb;
-      if (!lua_isinteger(L, arg))  /* float? */
+      if (lua_type(L, arg) == LUA_TFLOAT64)  /* float? */
         nb = quotefloat(L, buff, lua_tonumber(L, arg));
-      else {  /* integers */
+      else if (lua_type(L, arg) == LUA_TUINT64) {
+        lua_Unsigned n = lua_touintegerx(L, arg, NULL);
+        nb = l_sprintf(buff, MAX_ITEM, LUA_UNSIGNED_FMT, (LUA_UNSIGNED)n);
+      }
+      else {  /* Int64 */
         lua_Integer n = lua_tointeger(L, arg);
         const char *format = (n == LUA_MININTEGER)  /* corner case? */
                            ? "0x%" LUA_INTEGER_FRMLEN "x"  /* use hex */
@@ -1906,4 +1912,3 @@ LUAMOD_API int luaopen_string (lua_State *L) {
   luaB_setup_string_meta(L);
   return 1;
 }
-

@@ -52,7 +52,7 @@ static const char *const luaX_tokens [] = {
     "<<", ">>", "::", "=>", "..=",
     "&&", "||", "!", "**", "??",
     "<eof>",
-    "<number>", "<integer>", "<name>", "<string>", "<rune>"
+    "<float64>", "<int64>", "<uint64>", "<name>", "<string>", "<rune>"
 };
 
 
@@ -111,7 +111,7 @@ const char *luaX_token2str (LexState *ls, int token) {
 static const char *txtToken (LexState *ls, int token) {
   switch (token) {
     case TK_NAME: case TK_STRING: case TK_RUNE:
-    case TK_FLT: case TK_INT:
+    case TK_FLT: case TK_INT: case TK_UINT:
       save(ls, '\0');
       return luaO_pushfstring(ls->L, "'%s'", luaZ_buffer(ls->buff));
     default:
@@ -260,6 +260,9 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   const char *expo = "Ee";
   int first = ls->current;
   int ishex = 0;
+  int hasdot = 0;
+  int hasexp = 0;
+  int suffix = 0;  /* 0: none, 1: i64, 2: u64, 3: f64 */
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
   if (first == '0' && check_next2(ls, "xX")) {  /* hexadecimal? */
@@ -267,9 +270,11 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
     ishex = 1;
   }
   for (;;) {
-    if (check_next2(ls, expo))  /* exponent mark? */
+    if (check_next2(ls, expo)) {  /* exponent mark? */
+      hasexp = 1;
       check_next2(ls, "-+");  /* optional exponent sign */
-    else if (lisxdigit(ls->current))  /* hex digit */
+    }
+    else if (ishex ? lisxdigit(ls->current) : lisdigit(ls->current))
       save_and_next(ls);
     else if (ls->current == '.') {
       /* Don't consume '.' if next char is also '.' (range operator) */
@@ -317,24 +322,70 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
           }
         }
       }
+      hasdot = 1;
       save_and_next(ls);
     }
     else break;
   }
+  if (ls->current == 'i' || ls->current == 'u' || ls->current == 'f') {
+    int kind = ls->current;
+    next(ls);  /* skip suffix letter */
+    if (ls->current != '6')
+      lexerror(ls, "malformed number", TK_FLT);
+    next(ls);
+    if (ls->current != '4')
+      lexerror(ls, "malformed number", TK_FLT);
+    next(ls);
+    if (kind == 'i') suffix = 1;
+    else if (kind == 'u') suffix = 2;
+    else suffix = 3;
+  }
   if (lislalpha(ls->current))  /* is numeral touching a letter? */
-    save_and_next(ls);  /* force an error */
-  save(ls, '\0');
-  if (luaO_str2num(luaZ_buffer(ls->buff), &obj) == 0)  /* format error? */
     lexerror(ls, "malformed number", TK_FLT);
-  if (ttisinteger(&obj)) {
+  save(ls, '\0');
+  if (suffix == 1 || suffix == 2) {
+    if (hasdot || hasexp)
+      lexerror(ls, "integer literal cannot have decimal point or exponent",
+               TK_INT);
+  }
+  if (suffix == 0 && !hasdot && hasexp)
+    lexerror(ls, "Float64 literal requires '.' or 'f64' suffix", TK_FLT);
+
+  if (suffix == 2) {  /* u64 */
+    lua_Unsigned u;
+    if (!luaO_str2u64(luaZ_buffer(ls->buff), &u))
+      lexerror(ls, "malformed number", TK_INT);
+    seminfo->u = u;
+    return TK_UINT;
+  }
+  if (suffix == 1) {  /* i64 */
+    if (luaO_str2num(luaZ_buffer(ls->buff), &obj) == 0 ||
+        !ttisint64(&obj))
+      lexerror(ls, "malformed number", TK_INT);
     seminfo->i = ivalue(&obj);
     return TK_INT;
   }
-  else {
-    lua_assert(ttisfloat(&obj));
+  if (suffix == 3) {  /* f64 */
+    if (luaO_str2num(luaZ_buffer(ls->buff), &obj) == 0)
+      lexerror(ls, "malformed number", TK_FLT);
+    seminfo->r = ttisfloat(&obj) ? fltvalue(&obj)
+                                 : cast_num(ttisuint64(&obj) ? u64value(&obj)
+                                                             : ivalue(&obj));
+    return TK_FLT;
+  }
+  if (luaO_str2num(luaZ_buffer(ls->buff), &obj) == 0)  /* format error? */
+    lexerror(ls, "malformed number", TK_FLT);
+  if (ttisint64(&obj)) {
+    seminfo->i = ivalue(&obj);
+    return TK_INT;
+  }
+  if (ttisfloat(&obj)) {
     seminfo->r = fltvalue(&obj);
     return TK_FLT;
   }
+  lua_assert(ttisuint64(&obj));
+  seminfo->u = u64value(&obj);
+  return TK_UINT;
 }
 
 
@@ -869,4 +920,3 @@ int luaX_lookahead (LexState *ls) {
   ls->lookahead.token = llex(ls, &ls->lookahead.seminfo);
   return ls->lookahead.token;
 }
-

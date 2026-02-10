@@ -419,8 +419,9 @@ static void matchstat_impl (LexState *ls, int line, int autoreturn) {
       }
     }
     /* === Constant patterns === */
-    else if (ls->t.token == TK_INT || ls->t.token == TK_FLT ||
-             ls->t.token == TK_STRING || ls->t.token == TK_TRUE ||
+    else if (ls->t.token == TK_INT || ls->t.token == TK_UINT ||
+             ls->t.token == TK_FLT || ls->t.token == TK_STRING ||
+             ls->t.token == TK_TRUE ||
              ls->t.token == TK_FALSE || ls->t.token == TK_NIL) {
       expdesc pat_val;
       BlockCnt bl2;
@@ -525,4 +526,3 @@ static void matchexpr (LexState *ls, expdesc *v, int line) {
            luaK_codeABC(prev_fs, OP_CALL, base2, 1, 2));
   prev_fs->freereg = cast_byte(base2 + 1);
 }
-

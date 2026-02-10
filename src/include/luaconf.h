@@ -491,11 +491,15 @@
 /* The following definitions are good for most cases here */
 
 #define LUA_INTEGER_FMT		"%" LUA_INTEGER_FRMLEN "d"
+#define LUA_UNSIGNED_FMT	"%" LUA_INTEGER_FRMLEN "u"
 
 #define LUAI_UACINT		LUA_INTEGER
 
 #define lua_integer2str(s,sz,n)  \
 	l_sprintf((s), sz, LUA_INTEGER_FMT, (LUAI_UACINT)(n))
+
+#define lua_unsigned2str(s,sz,n)  \
+	l_sprintf((s), sz, LUA_UNSIGNED_FMT, (LUA_UNSIGNED)(n))
 
 /*
 ** use LUAI_UACINT here to avoid problems with promotions (which
@@ -757,4 +761,3 @@
 
 
 #endif
-

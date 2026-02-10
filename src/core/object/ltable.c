@@ -191,6 +191,12 @@ static Node *mainpositionTV (const Table *t, const TValue *key) {
       lua_Integer i = ivalue(key);
       return hashint(t, i);
     }
+    case LUA_VNUMUINT: {
+      lua_Unsigned u = u64value(key);
+      if (u <= (lua_Unsigned)LUA_MAXINTEGER)
+        return hashint(t, l_castU2S(u));
+      return hashmod(t, u);
+    }
     case LUA_VNUMFLT: {
       lua_Number n = fltvalue(key);
       return hashmod(t, l_hashfloat(n));
@@ -268,6 +274,8 @@ static int equalkey (const TValue *k1, const Node *n2, int deadok) {
         return 1;
       case LUA_VNUMINT:
         return (ivalue(k1) == keyival(n2));
+      case LUA_VNUMUINT:
+        return (u64value(k1) == l_castS2U(keyival(n2)));
       case LUA_VNUMFLT:
         return luai_numeq(fltvalue(k1), fltvalueraw(keyval(n2)));
       case LUA_VLIGHTUSERDATA:
@@ -1024,6 +1032,13 @@ lu_byte luaH_get (Table *t, const TValue *key, TValue *res) {
       break;
     case LUA_VNUMINT:
       return luaH_getint(t, ivalue(key), res);
+    case LUA_VNUMUINT: {
+      lua_Unsigned u = u64value(key);
+      if (u <= (lua_Unsigned)LUA_MAXINTEGER)
+        return luaH_getint(t, l_castU2S(u), res);
+      slot = getgeneric(t, key, 0);
+      break;
+    }
     case LUA_VNIL:
       slot = &absentkey;
       break;
@@ -1132,6 +1147,12 @@ int luaH_pset (Table *t, const TValue *key, TValue *val) {
   switch (ttypetag(key)) {
     case LUA_VSHRSTR: return luaH_psetshortstr(t, tsvalue(key), val);
     case LUA_VNUMINT: return psetint(t, ivalue(key), val);
+    case LUA_VNUMUINT: {
+      lua_Unsigned u = u64value(key);
+      if (u <= (lua_Unsigned)LUA_MAXINTEGER)
+        return psetint(t, l_castU2S(u), val);
+      return finishnodeset(t, getgeneric(t, key, 0), val);
+    }
     case LUA_VNIL: return HNOTFOUND;
     case LUA_VNUMFLT: {
       lua_Integer k;
@@ -1167,6 +1188,13 @@ void luaH_finishset (lua_State *L, Table *t, const TValue *key,
       }
       else if (l_unlikely(luai_numisnan(f)))
         luaG_runerror(L, "table index is NaN");
+    }
+    else if (ttisuint64(key)) {
+      lua_Unsigned u = u64value(key);
+      if (u <= (lua_Unsigned)LUA_MAXINTEGER) {
+        setivalue(&aux, l_castU2S(u));
+        actk = &aux;
+      }
     }
     else if (isextstr(key)) {  /* external string? */
       /* If string is short, must internalize it to be used as table key */

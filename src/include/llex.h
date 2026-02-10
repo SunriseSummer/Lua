@@ -42,7 +42,7 @@ enum RESERVED {
   TK_DBCOLON, TK_ARROW, TK_DOTDOTEQ,
   TK_AND, TK_OR, TK_NOT, TK_POW, TK_COALESCE,
   TK_EOS,
-  TK_FLT, TK_INT, TK_NAME, TK_STRING, TK_RUNE
+  TK_FLT, TK_INT, TK_UINT, TK_NAME, TK_STRING, TK_RUNE
 };
 
 /* number of reserved words */
@@ -52,6 +52,7 @@ enum RESERVED {
 typedef union {
   lua_Number r;
   lua_Integer i;
+  lua_Unsigned u;
   TString *ts;
 } SemInfo;  /* semantics information */
 

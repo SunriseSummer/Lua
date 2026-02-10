@@ -98,7 +98,7 @@ static const char *b_str2int (const char *s, unsigned base, lua_Integer *pn) {
 
 static int luaB_tonumber (lua_State *L) {
   if (lua_isnoneornil(L, 2)) {  /* standard conversion? */
-    if (lua_type(L, 1) == LUA_TNUMBER) {  /* already a number? */
+    if (lua_isnumber(L, 1)) {  /* already a number? */
       lua_settop(L, 1);  /* yes; return it */
       return 1;
     }
@@ -570,6 +570,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_iter", luaB_iter},
   {"Array", luaB_array_init},
   {"Int64", luaB_cangjie_int64},
+  {"UInt64", luaB_cangjie_uint64},
   {"Float64", luaB_cangjie_float64},
   {"String", luaB_cangjie_string},
   {"Bool", luaB_cangjie_bool},
@@ -599,4 +600,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   luaB_option_init(L);
   return 1;
 }
-
