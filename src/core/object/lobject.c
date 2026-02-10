@@ -133,6 +133,24 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
 }
 
 
+static lua_Unsigned uintarith (lua_State *L, int op, lua_Unsigned v1,
+                                               lua_Unsigned v2) {
+  switch (op) {
+    case LUA_OPADD: return v1 + v2;
+    case LUA_OPSUB: return v1 - v2;
+    case LUA_OPMUL: return v1 * v2;
+    case LUA_OPMOD: return luaV_umod(L, v1, v2);
+    case LUA_OPIDIV: return luaV_uidiv(L, v1, v2);
+    case LUA_OPBAND: return v1 & v2;
+    case LUA_OPBOR: return v1 | v2;
+    case LUA_OPBXOR: return v1 ^ v2;
+    case LUA_OPSHL: return luaV_ushiftl(v1, l_castU2S(v2));
+    case LUA_OPSHR: return luaV_ushiftr(v1, l_castU2S(v2));
+    case LUA_OPBNOT: return ~v1;
+    default: lua_assert(0); return 0;
+  }
+}
+
 static lua_Number numarith (lua_State *L, int op, lua_Number v1,
                                                   lua_Number v2) {
   switch (op) {
@@ -155,12 +173,22 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     case LUA_OPBAND: case LUA_OPBOR: case LUA_OPBXOR:
     case LUA_OPSHL: case LUA_OPSHR:
     case LUA_OPBNOT: {  /* operate only on integers */
-      lua_Integer i1; lua_Integer i2;
-      if (tointegerns(p1, &i1) && tointegerns(p2, &i2)) {
+      if (ttisuint64(p1) && ttisuint64(p2)) {
+        setuvalue(res, uintarith(L, op, uvalue(p1), uvalue(p2)));
+        return 1;
+      }
+      else if (ttisint64(p1) && ttisint64(p2)) {
+        setivalue(res, intarith(L, op, ivalue(p1), ivalue(p2)));
+        return 1;
+      }
+      else if ((ttisint64(p1) || ttisuint64(p1)) &&
+               (ttisint64(p2) || ttisuint64(p2))) {
+        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
+        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
         setivalue(res, intarith(L, op, i1, i2));
         return 1;
       }
-      else return 0;  /* fail */
+      return 0;  /* fail */
     }
     case LUA_OPDIV: case LUA_OPPOW: {  /* operate only on floats */
       lua_Number n1; lua_Number n2;
@@ -172,15 +200,26 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     }
     default: {  /* other operations */
       lua_Number n1; lua_Number n2;
-      if (ttisinteger(p1) && ttisinteger(p2)) {
-        setivalue(res, intarith(L, op, ivalue(p1), ivalue(p2)));
+      if (op == LUA_OPUNM && ttisuint64(p1)) {
+        setivalue(res, intarith(L, op, l_castU2S(uvalue(p1)), 0));
         return 1;
       }
-      else if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
+      if (ttisuint64(p1) && ttisuint64(p2)) {
+        setuvalue(res, uintarith(L, op, uvalue(p1), uvalue(p2)));
+        return 1;
+      }
+      if ((ttisint64(p1) || ttisuint64(p1)) &&
+          (ttisint64(p2) || ttisuint64(p2))) {
+        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
+        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
+        setivalue(res, intarith(L, op, i1, i2));
+        return 1;
+      }
+      if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
         setfltvalue(res, numarith(L, op, n1, n2));
         return 1;
       }
-      else return 0;  /* fail */
+      return 0;  /* fail */
     }
   }
 }
@@ -336,6 +375,8 @@ static const char *l_str2d (const char *s, lua_Number *result) {
 
 #define MAXBY10		cast(lua_Unsigned, LUA_MAXINTEGER / 10)
 #define MAXLASTD	cast_int(LUA_MAXINTEGER % 10)
+#define UMAXBY10	cast(lua_Unsigned, LUA_MAXUNSIGNED / 10)
+#define UMAXLASTD	cast_int(LUA_MAXUNSIGNED % 10)
 
 static const char *l_str2int (const char *s, lua_Integer *result) {
   lua_Unsigned a = 0;
@@ -368,19 +409,98 @@ static const char *l_str2int (const char *s, lua_Integer *result) {
   }
 }
 
+static const char *l_str2uint (const char *s, lua_Unsigned *result) {
+  lua_Unsigned a = 0;
+  int empty = 1;
+  while (lisspace(cast_uchar(*s))) s++;  /* skip initial spaces */
+  if (*s == '+') s++;  /* optional plus */
+  if (s[0] == '0' &&
+      (s[1] == 'x' || s[1] == 'X')) {  /* hex? */
+    s += 2;  /* skip '0x' */
+    for (; lisxdigit(cast_uchar(*s)); s++) {
+      lua_Unsigned d = luaO_hexavalue(*s);
+      if (a > (LUA_MAXUNSIGNED - d) / 16)
+        return NULL;  /* overflow */
+      a = a * 16 + d;
+      empty = 0;
+    }
+  }
+  else {  /* decimal */
+    for (; lisdigit(cast_uchar(*s)); s++) {
+      int d = *s - '0';
+      if (a > UMAXBY10 || (a == UMAXBY10 && d > UMAXLASTD))
+        return NULL;  /* overflow */
+      a = a * 10 + cast_uint(d);
+      empty = 0;
+    }
+  }
+  while (lisspace(cast_uchar(*s))) s++;  /* skip trailing spaces */
+  if (empty || *s != '\0') return NULL;
+  *result = a;
+  return s;
+}
+
+int luaO_str2u64 (const char *s, lua_Unsigned *result) {
+  return (l_str2uint(s, result) != NULL);
+}
+
 
 size_t luaO_str2num (const char *s, TValue *o) {
-  lua_Integer i; lua_Number n;
+  lua_Integer i;
+  lua_Number n;
+  lua_Unsigned u;
   const char *e;
-  if ((e = l_str2int(s, &i)) != NULL) {  /* try as an integer */
+  size_t len = strlen(s);
+  const char *end = s + len;
+  const char *trim = end;
+  char buff[L_MAXLENNUM + 1];
+  const char *numstr = s;
+  int suffix = 0;  /* 0 none, 1 i64, 2 u64, 3 f64 */
+  while (trim > s && lisspace(cast_uchar(*(trim - 1))))
+    trim--;
+  if (trim - s >= 3) {
+    const char *p = trim - 3;
+    if (p[0] == 'i' && p[1] == '6' && p[2] == '4') suffix = 1;
+    else if (p[0] == 'u' && p[1] == '6' && p[2] == '4') suffix = 2;
+    else if (p[0] == 'f' && p[1] == '6' && p[2] == '4') suffix = 3;
+    if (suffix != 0)
+      trim = p;
+  }
+  if (trim != end) {
+    size_t nlen = cast_sizet(trim - s);
+    if (nlen > L_MAXLENNUM) return 0;
+    memcpy(buff, s, nlen);
+    buff[nlen] = '\0';
+    numstr = buff;
+  }
+  if (suffix == 2) {
+    if ((e = l_str2uint(numstr, &u)) != NULL)
+      setuvalue(o, u);
+    else
+      return 0;
+  }
+  else if (suffix == 3) {
+    if ((e = l_str2d(numstr, &n)) != NULL)
+      setfltvalue(o, n);
+    else
+      return 0;
+  }
+  else if (suffix == 1) {
+    if ((e = l_str2int(numstr, &i)) != NULL)
+      setivalue(o, i);
+    else
+      return 0;
+  }
+  else if ((e = l_str2int(numstr, &i)) != NULL) {  /* try as an integer */
     setivalue(o, i);
   }
-  else if ((e = l_str2d(s, &n)) != NULL) {  /* else try as a float */
+  else if ((e = l_str2d(numstr, &n)) != NULL) {  /* else try as a float */
     setfltvalue(o, n);
   }
   else
     return 0;  /* conversion failed */
-  return ct_diff2sz(e - s) + 1;  /* success; return string size */
+  UNUSED(e);
+  return len + 1;  /* success; return string size */
 }
 
 
@@ -455,6 +575,8 @@ unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
     if (nbytes == 0) { buff[0] = '?'; return 1; }
     return cast_uint(nbytes);
   }
+  else if (ttisuint64(obj))
+    len = lua_unsigned2str(buff, LUA_N2SBUFFSZ, uvalue(obj));
   else if (ttisinteger(obj))
     len = lua_integer2str(buff, LUA_N2SBUFFSZ, ivalue(obj));
   else
@@ -721,4 +843,3 @@ void luaO_chunkid (char *out, const char *source, size_t srclen) {
     memcpy(out, POS, (LL(POS) + 1) * sizeof(char));
   }
 }
-

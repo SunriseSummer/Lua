@@ -29,7 +29,7 @@ static const char udatatypename[] = "userdata";
 
 LUAI_DDEF const char *const luaT_typenames_[LUA_TOTALTYPES] = {
   "no value",
-  "nil", "boolean", udatatypename, "number",
+  "nil", "boolean", udatatypename, "Int64", "UInt64", "Float64",
   "String", "table", "function", udatatypename, "thread",
   "Rune",
   "upvalue", "proto" /* these last cases are used for tests only */
@@ -362,4 +362,3 @@ void luaT_getvarargs (lua_State *L, CallInfo *ci, StkId where, int wanted,
   for (; i < wanted; i++)   /* complete required results with nil */
     setnilvalue(s2v(where + i));
 }
-

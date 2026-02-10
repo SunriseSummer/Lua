@@ -406,6 +406,24 @@ LUA_API lua_Integer lua_tointegerx (lua_State *L, int idx, int *pisnum) {
 }
 
 
+LUA_API lua_Unsigned lua_touintegerx (lua_State *L, int idx, int *pisnum) {
+  lua_Unsigned res = 0;
+  const TValue *o = index2value(L, idx);
+  int isnum = 0;
+  if (ttisuint64(o)) {
+    res = uvalue(o);
+    isnum = 1;
+  }
+  else if (ttisint64(o) && ivalue(o) >= 0) {
+    res = l_castS2U(ivalue(o));
+    isnum = 1;
+  }
+  if (pisnum)
+    *pisnum = isnum;
+  return res;
+}
+
+
 LUA_API lua_Integer lua_torune (lua_State *L, int idx) {
   const TValue *o = index2value(L, idx);
   if (ttisrune(o))
@@ -538,6 +556,14 @@ LUA_API void lua_pushnumber (lua_State *L, lua_Number n) {
 LUA_API void lua_pushinteger (lua_State *L, lua_Integer n) {
   lua_lock(L);
   setivalue(s2v(L->top.p), n);
+  api_incr_top(L);
+  lua_unlock(L);
+}
+
+
+LUA_API void lua_pushuint64 (lua_State *L, lua_Unsigned n) {
+  lua_lock(L);
+  setuvalue(s2v(L->top.p), n);
   api_incr_top(L);
   lua_unlock(L);
 }
@@ -1490,5 +1516,4 @@ LUA_API void lua_upvaluejoin (lua_State *L, int fidx1, int n1,
   *up1 = *up2;
   luaC_objbarrier(L, f1, *up1);
 }
-
 

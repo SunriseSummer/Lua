@@ -309,7 +309,7 @@ static int cangjie_type_index_handler (lua_State *L) {
 
 /*
 ** __cangjie_extend_type(typename, methods_table)
-** Set up type extension for built-in types (Int64, Float64, String, Bool).
+** Set up type extension for built-in types (Int64, UInt64, Float64, String, Bool).
 ** Creates/updates metatables so that values of these types can call
 ** extension methods using dot syntax (e.g., 42.double()).
 ** Also registers built-in static methods (e.g., Float64.GetPI) and
@@ -337,6 +337,11 @@ static int cangjie_int64_call (lua_State *L) {
   return luaB_cangjie_int64(L);
 }
 
+static int cangjie_uint64_call (lua_State *L) {
+  lua_remove(L, 1);
+  return luaB_cangjie_uint64(L);
+}
+
 static int cangjie_string_call (lua_State *L) {
   lua_remove(L, 1);
   return luaB_cangjie_string(L);
@@ -350,7 +355,7 @@ static int cangjie_bool_call (lua_State *L) {
 
 /*
 ** ============================================================
-** Type conversion functions: Int64(), Float64(), String(), Bool(), Rune()
+** Type conversion functions: Int64(), UInt64(), Float64(), String(), Bool(), Rune()
 ** These are registered as globals and handle various type conversions
 ** as specified by the Cangjie language specification.
 ** ============================================================
@@ -378,13 +383,17 @@ int luaB_cangjie_int64 (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
-      if (lua_isinteger(L, 1)) {
-        lua_pushvalue(L, 1);  /* already integer */
-      } else {
-        lua_Number n = lua_tonumber(L, 1);
-        lua_pushinteger(L, (lua_Integer)n);  /* truncate */
-      }
+    case LUA_TINT64:
+      lua_pushvalue(L, 1);  /* already integer */
+      return 1;
+    case LUA_TUINT64: {
+      lua_Unsigned u = lua_touintegerx(L, 1, NULL);
+      lua_pushinteger(L, l_castU2S(u));
+      return 1;
+    }
+    case LUA_TFLOAT64: {
+      lua_Number n = lua_tonumber(L, 1);
+      lua_pushinteger(L, (lua_Integer)n);  /* truncate */
       return 1;
     }
     case LUA_TSTRING: {
@@ -416,6 +425,76 @@ int luaB_cangjie_int64 (lua_State *L) {
 }
 
 
+/* UInt64(value) - convert to unsigned integer.
+** For numbers: truncates float to integer, passes uint through, errors on negative.
+** For Rune: extracts the Unicode code point integer.
+** For strings: parses as number ("123" -> 123); errors if parse fails.
+** For booleans: true -> 1, false -> 0.
+ */
+int luaB_cangjie_uint64 (lua_State *L) {
+  if (lua_isrune(L, 1)) {
+    lua_Integer cp = lua_torune(L, 1);
+    if (cp < 0)
+      return luaL_error(L, "cannot convert negative Rune to UInt64");
+    lua_pushuint64(L, l_castS2U(cp));
+    return 1;
+  }
+  switch (lua_type(L, 1)) {
+    case LUA_TUINT64:
+      lua_pushvalue(L, 1);
+      return 1;
+    case LUA_TINT64: {
+      lua_Integer n = lua_tointeger(L, 1);
+      if (n < 0)
+        return luaL_error(L, "cannot convert negative Int64 to UInt64");
+      lua_pushuint64(L, l_castS2U(n));
+      return 1;
+    }
+    case LUA_TFLOAT64: {
+      lua_Number n = lua_tonumber(L, 1);
+      if (n < 0)
+        return luaL_error(L, "cannot convert negative Float64 to UInt64");
+      lua_pushuint64(L, (lua_Unsigned)n);
+      return 1;
+    }
+    case LUA_TSTRING: {
+      size_t len;
+      const char *s = lua_tolstring(L, 1, &len);
+      if (len == 0)
+        return luaL_error(L, "cannot convert empty string to UInt64");
+      if (lua_stringtonumber(L, s) != 0) {
+        int t = lua_type(L, -1);
+        if (t == LUA_TUINT64) {
+          return 1;
+        } else if (t == LUA_TINT64) {
+          lua_Integer n = lua_tointeger(L, -1);
+          lua_pop(L, 1);
+          if (n < 0)
+            return luaL_error(L, "cannot convert negative Int64 to UInt64");
+          lua_pushuint64(L, l_castS2U(n));
+          return 1;
+        } else {
+          lua_Number n = lua_tonumber(L, -1);
+          lua_pop(L, 1);
+          if (n < 0)
+            return luaL_error(L, "cannot convert negative Float64 to UInt64");
+          lua_pushuint64(L, (lua_Unsigned)n);
+          return 1;
+        }
+      }
+      return luaL_error(L, "cannot convert string '%s' to UInt64", s);
+    }
+    case LUA_TBOOLEAN: {
+      lua_pushuint64(L, lua_toboolean(L, 1) ? 1u : 0u);
+      return 1;
+    }
+    default:
+      return luaL_error(L, "cannot convert %s to UInt64",
+                        luaL_typename(L, 1));
+  }
+}
+
+
 /* Float64(value) - convert to float
 ** - Float64("3.14") -> parse string as float
 ** - Float64(42) -> integer to float (42.0)
@@ -423,7 +502,9 @@ int luaB_cangjie_int64 (lua_State *L) {
 */
 int luaB_cangjie_float64 (lua_State *L) {
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TUINT64:
+    case LUA_TFLOAT64: {
       lua_pushnumber(L, lua_tonumber(L, 1));
       return 1;
     }
@@ -461,7 +542,9 @@ int luaB_cangjie_string (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TUINT64:
+    case LUA_TFLOAT64: {
       /* Number -> string representation (both integer and float) */
       luaL_tolstring(L, 1, NULL);
       return 1;
@@ -587,6 +670,7 @@ int luaB_extend_type (lua_State *L) {
   {
     lua_CFunction call_fn = NULL;
     if (strcmp(tname, "Int64") == 0) call_fn = cangjie_int64_call;
+    else if (strcmp(tname, "UInt64") == 0) call_fn = cangjie_uint64_call;
     else if (strcmp(tname, "Float64") == 0) call_fn = cangjie_float64_call;
     else if (strcmp(tname, "String") == 0) call_fn = cangjie_string_call;
     else if (strcmp(tname, "Bool") == 0) call_fn = cangjie_bool_call;
@@ -603,8 +687,14 @@ int luaB_extend_type (lua_State *L) {
   }
 
   /* Create a representative value to get/set its metatable */
-  if (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0) {
+  if (strcmp(tname, "Int64") == 0) {
     lua_pushinteger(L, 0);  /* representative number */
+  }
+  else if (strcmp(tname, "UInt64") == 0) {
+    lua_pushuint64(L, 0);  /* representative number */
+  }
+  else if (strcmp(tname, "Float64") == 0) {
+    lua_pushnumber(L, 0.0);  /* representative number */
   }
   else if (strcmp(tname, "String") == 0) {
     lua_pushliteral(L, "");  /* representative string */

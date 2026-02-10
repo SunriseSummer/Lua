@@ -579,7 +579,7 @@ static int g_read (lua_State *L, FILE *f, int first) {
     luaL_checkstack(L, nargs+LUA_MINSTACK, "too many arguments");
     success = 1;
     for (n = first; nargs-- && success; n++) {
-      if (lua_type(L, n) == LUA_TNUMBER) {
+      if (lua_isnumber(L, n)) {
         size_t l = (size_t)luaL_checkinteger(L, n);
         success = (l == 0) ? test_eof(L, f) : read_chars(L, f, l);
       }
@@ -838,4 +838,3 @@ LUAMOD_API int luaopen_io (lua_State *L) {
   createstdfile(L, stderr, NULL, "stderr");
   return 1;
 }
-

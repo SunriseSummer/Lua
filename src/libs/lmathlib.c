@@ -28,7 +28,10 @@
 
 
 static int math_abs (lua_State *L) {
-  if (lua_isinteger(L, 1)) {
+  if (lua_type(L, 1) == LUA_TUINT64) {
+    lua_pushvalue(L, 1);
+  }
+  else if (lua_isinteger(L, 1)) {
     lua_Integer n = lua_tointeger(L, 1);
     if (n < 0) n = (lua_Integer)(0u - (lua_Unsigned)n);
     lua_pushinteger(L, n);
@@ -100,7 +103,7 @@ static void pushnumint (lua_State *L, lua_Number d) {
 
 
 static int math_floor (lua_State *L) {
-  if (lua_isinteger(L, 1))
+  if (lua_type(L, 1) == LUA_TUINT64 || lua_isinteger(L, 1))
     lua_settop(L, 1);  /* integer is its own floor */
   else {
     lua_Number d = l_mathop(floor)(luaL_checknumber(L, 1));
@@ -111,7 +114,7 @@ static int math_floor (lua_State *L) {
 
 
 static int math_ceil (lua_State *L) {
-  if (lua_isinteger(L, 1))
+  if (lua_type(L, 1) == LUA_TUINT64 || lua_isinteger(L, 1))
     lua_settop(L, 1);  /* integer is its own ceiling */
   else {
     lua_Number d = l_mathop(ceil)(luaL_checknumber(L, 1));
@@ -122,7 +125,13 @@ static int math_ceil (lua_State *L) {
 
 
 static int math_fmod (lua_State *L) {
-  if (lua_isinteger(L, 1) && lua_isinteger(L, 2)) {
+  if (lua_type(L, 1) == LUA_TUINT64 && lua_type(L, 2) == LUA_TUINT64) {
+    lua_Unsigned a = lua_touintegerx(L, 1, NULL);
+    lua_Unsigned d = lua_touintegerx(L, 2, NULL);
+    luaL_argcheck(L, d != 0, 2, "zero");
+    lua_pushuint64(L, a % d);
+  }
+  else if (lua_isinteger(L, 1) && lua_isinteger(L, 2)) {
     lua_Integer d = lua_tointeger(L, 2);
     if ((lua_Unsigned)d + 1u <= 1u) {  /* special cases: -1 or 0 */
       luaL_argcheck(L, d != 0, 2, "zero");
@@ -144,7 +153,11 @@ static int math_fmod (lua_State *L) {
 ** 'double'.
 */
 static int math_modf (lua_State *L) {
-  if (lua_isinteger(L ,1)) {
+  if (lua_type(L, 1) == LUA_TUINT64) {
+    lua_settop(L, 1);  /* number is its own integer part */
+    lua_pushnumber(L, 0);  /* no fractional part */
+  }
+  else if (lua_isinteger(L ,1)) {
     lua_settop(L, 1);  /* number is its own integer part */
     lua_pushnumber(L, 0);  /* no fractional part */
   }
@@ -260,8 +273,13 @@ static int math_max (lua_State *L) {
 
 
 static int math_type (lua_State *L) {
-  if (lua_type(L, 1) == LUA_TNUMBER)
-    lua_pushstring(L, (lua_isinteger(L, 1)) ? "integer" : "float");
+  int t = lua_type(L, 1);
+  if (t == LUA_TINT64)
+    lua_pushstring(L, "integer");
+  else if (t == LUA_TUINT64)
+    lua_pushstring(L, "uint");
+  else if (t == LUA_TFLOAT64)
+    lua_pushstring(L, "float");
   else {
     luaL_checkany(L, 1);
     luaL_pushfail(L);
@@ -762,4 +780,3 @@ LUAMOD_API int luaopen_math (lua_State *L) {
   setrandfunc(L);
   return 1;
 }
-

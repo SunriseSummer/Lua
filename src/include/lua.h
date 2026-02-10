@@ -64,15 +64,20 @@ typedef struct lua_State lua_State;
 #define LUA_TNIL		0
 #define LUA_TBOOLEAN		1
 #define LUA_TLIGHTUSERDATA	2
-#define LUA_TNUMBER		3
-#define LUA_TSTRING		4
-#define LUA_TTABLE		5
-#define LUA_TFUNCTION		6
-#define LUA_TUSERDATA		7
-#define LUA_TTHREAD		8
-#define LUA_TRUNE		9
+#define LUA_TINT64		3
+#define LUA_TUINT64		4
+#define LUA_TFLOAT64		5
+#define LUA_TSTRING		6
+#define LUA_TTABLE		7
+#define LUA_TFUNCTION		8
+#define LUA_TUSERDATA		9
+#define LUA_TTHREAD		10
+#define LUA_TRUNE		11
 
-#define LUA_NUMTYPES		10
+#define LUA_NUMTYPES		12
+
+/* compatibility alias (Cangjie separates Int64/UInt64/Float64) */
+#define LUA_TNUMBER		LUA_TINT64
 
 
 
@@ -200,6 +205,7 @@ LUA_API const char     *(lua_typename) (lua_State *L, int tp);
 
 LUA_API lua_Number      (lua_tonumberx) (lua_State *L, int idx, int *isnum);
 LUA_API lua_Integer     (lua_tointegerx) (lua_State *L, int idx, int *isnum);
+LUA_API lua_Unsigned    (lua_touintegerx) (lua_State *L, int idx, int *isnum);
 LUA_API lua_Integer     (lua_torune) (lua_State *L, int idx);
 LUA_API int             (lua_toboolean) (lua_State *L, int idx);
 LUA_API const char     *(lua_tolstring) (lua_State *L, int idx, size_t *len);
@@ -245,6 +251,7 @@ LUA_API int   (lua_compare) (lua_State *L, int idx1, int idx2, int op);
 LUA_API void        (lua_pushnil) (lua_State *L);
 LUA_API void        (lua_pushnumber) (lua_State *L, lua_Number n);
 LUA_API void        (lua_pushinteger) (lua_State *L, lua_Integer n);
+LUA_API void        (lua_pushuint64) (lua_State *L, lua_Unsigned n);
 LUA_API const char *(lua_pushlstring) (lua_State *L, const char *s, size_t len);
 LUA_API const char *(lua_pushexternalstring) (lua_State *L,
 		const char *s, size_t len, lua_Alloc falloc, void *ud);
@@ -411,6 +418,7 @@ LUA_API void (lua_closeslot) (lua_State *L, int idx);
 #define lua_isboolean(L,n)	(lua_type(L, (n)) == LUA_TBOOLEAN)
 #define lua_isthread(L,n)	(lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isrune(L,n)		(lua_type(L, (n)) == LUA_TRUNE)
+#define lua_isuint64(L,n)	(lua_type(L, (n)) == LUA_TUINT64)
 #define lua_isnone(L,n)		(lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n)	(lua_type(L, (n)) <= 0)
 

@@ -61,6 +61,9 @@ static int tonumeral (const expdesc *e, TValue *v) {
     case VKINT:
       if (v) setivalue(v, e->u.ival);
       return 1;
+    case VKUINT:
+      if (v) setuvalue(v, e->u.uval);
+      return 1;
     case VKFLT:
       if (v) setfltvalue(v, e->u.nval);
       return 1;
@@ -602,6 +605,15 @@ static int luaK_intK (FuncState *fs, lua_Integer n) {
   return k2proto(fs, &o, &o);  /* use integer itself as key */
 }
 
+/*
+** Add a UInt64 constant to list of constants and return its index.
+** The UInt64 TValue serves as both the lookup key and the stored value.
+*/
+static int luaK_uintK (FuncState *fs, lua_Unsigned n) {
+  TValue o;
+  setuvalue(&o, n);
+  return k2proto(fs, &o, &o);
+}
 
 /*
 ** Add a Rune constant to list of constants and return its index.
@@ -715,6 +727,9 @@ static void luaK_rune (FuncState *fs, int reg, lua_Integer cp) {
   luaK_codek(fs, reg, luaK_runeK(fs, cp));
 }
 
+static void luaK_uint (FuncState *fs, int reg, lua_Unsigned u) {
+  luaK_codek(fs, reg, luaK_uintK(fs, u));
+}
 
 static void luaK_float (FuncState *fs, int reg, lua_Number f) {
   lua_Integer fi;
@@ -748,6 +763,9 @@ static void const2exp (TValue *v, expdesc *e) {
   switch (ttypetag(v)) {
     case LUA_VNUMINT:
       e->k = VKINT; e->u.ival = ivalue(v);
+      break;
+    case LUA_VNUMUINT:
+      e->k = VKUINT; e->u.uval = uvalue(v);
       break;
     case LUA_VNUMFLT:
       e->k = VKFLT; e->u.nval = fltvalue(v);
@@ -931,6 +949,10 @@ static void discharge2reg (FuncState *fs, expdesc *e, int reg) {
       luaK_int(fs, reg, e->u.ival);
       break;
     }
+    case VKUINT: {
+      luaK_uint(fs, reg, e->u.uval);
+      break;
+    }
     case VKRUNE: {
       luaK_rune(fs, reg, e->u.ival);
       break;
@@ -1085,8 +1107,9 @@ static int luaK_exp2K (FuncState *fs, expdesc *e) {
       case VTRUE: info = boolT(fs); break;
       case VFALSE: info = boolF(fs); break;
       case VNIL: info = nilK(fs); break;
-      case VKINT: info = luaK_intK(fs, e->u.ival); break;
-      case VKRUNE: info = luaK_runeK(fs, e->u.ival); break;
+    case VKINT: info = luaK_intK(fs, e->u.ival); break;
+    case VKUINT: info = luaK_uintK(fs, e->u.uval); break;
+    case VKRUNE: info = luaK_runeK(fs, e->u.ival); break;
       case VKFLT: info = luaK_numberK(fs, e->u.nval); break;
       case VKSTR: info = stringK(fs, e->u.strval); break;
       case VK: info = e->u.info; break;
@@ -1211,7 +1234,8 @@ void luaK_goiftrue (FuncState *fs, expdesc *e) {
       pc = e->u.info;  /* save jump position */
       break;
     }
-    case VK: case VKFLT: case VKINT: case VKRUNE: case VKSTR: case VTRUE: {
+    case VK: case VKFLT: case VKINT: case VKUINT: case VKRUNE: case VKSTR:
+    case VTRUE: {
       pc = NO_JUMP;  /* always true; do nothing */
       break;
     }
@@ -1261,7 +1285,8 @@ static void codenot (FuncState *fs, expdesc *e) {
       e->k = VTRUE;  /* true == not nil == not false */
       break;
     }
-    case VK: case VKFLT: case VKINT: case VKRUNE: case VKSTR: case VTRUE: {
+    case VK: case VKFLT: case VKINT: case VKUINT: case VKRUNE: case VKSTR:
+    case VTRUE: {
       e->k = VFALSE;  /* false == not "x" == not 0.5 == not 1 == not true */
       break;
     }
@@ -1448,7 +1473,11 @@ static int constfolding (FuncState *fs, int op, expdesc *e1,
   if (!tonumeral(e1, &v1) || !tonumeral(e2, &v2) || !validop(op, &v1, &v2))
     return 0;  /* non-numeric operands or not safe to fold */
   luaO_rawarith(fs->ls->L, op, &v1, &v2, &res);  /* does operation */
-  if (ttisinteger(&res)) {
+  if (ttisuint64(&res)) {
+    e1->k = VKUINT;
+    e1->u.uval = uvalue(&res);
+  }
+  else if (ttisinteger(&res)) {
     e1->k = VKINT;
     e1->u.ival = ivalue(&res);
   }
@@ -1696,7 +1725,8 @@ static void codeeq (FuncState *fs, BinOpr opr, expdesc *e1, expdesc *e2) {
   int isfloat = 0;  /* not needed here, but kept for symmetry */
   OpCode op;
   if (e1->k != VNONRELOC) {
-    lua_assert(e1->k == VK || e1->k == VKINT || e1->k == VKFLT || e1->k == VKRUNE);
+    lua_assert(e1->k == VK || e1->k == VKINT || e1->k == VKUINT ||
+               e1->k == VKFLT || e1->k == VKRUNE);
     swapexps(e1, e2);
   }
   r1 = luaK_exp2anyreg(fs, e1);  /* 1st expression must be in register */

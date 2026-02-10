@@ -42,6 +42,7 @@ LUAI_FUNC int luaB_string_from_byte_array (lua_State *L);
 
 /* Cangjie type conversion functions */
 LUAI_FUNC int luaB_cangjie_int64 (lua_State *L);
+LUAI_FUNC int luaB_cangjie_uint64 (lua_State *L);
 LUAI_FUNC int luaB_cangjie_float64 (lua_State *L);
 LUAI_FUNC int luaB_cangjie_string (lua_State *L);
 LUAI_FUNC int luaB_cangjie_bool (lua_State *L);

@@ -792,6 +792,7 @@ static int is_builtin_type (LexState *ls, TString *name) {
   const char *s = getstr(name);
   UNUSED(ls);
   return (strcmp(s, "Int64") == 0 ||
+          strcmp(s, "UInt64") == 0 ||
           strcmp(s, "Float64") == 0 ||
           strcmp(s, "String") == 0 ||
           strcmp(s, "Bool") == 0);

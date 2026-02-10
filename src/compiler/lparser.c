@@ -1207,6 +1207,13 @@ static void parlist (LexState *ls) {
                 luaX_next(ls);
                 ndef++;
                 break;
+              case TK_UINT:
+                init_exp(&def_val[ndef], VKUINT, 0);
+                def_val[ndef].u.uval = ls->t.seminfo.u;
+                def_is_complex[ndef] = 0;
+                luaX_next(ls);
+                ndef++;
+                break;
               case TK_FLT:
                 init_exp(&def_val[ndef], VKFLT, 0);
                 def_val[ndef].u.nval = ls->t.seminfo.r;
@@ -1960,6 +1967,13 @@ static void primaryexp (LexState *ls, expdesc *v) {
       luaX_next(ls);
       return;
     }
+    case TK_UINT: {
+      /* UInt64 literal: allow suffix operations like 2u64.toString() */
+      init_exp(v, VKUINT, 0);
+      v->u.uval = ls->t.seminfo.u;
+      luaX_next(ls);
+      return;
+    }
     case TK_FLT: {
       /* Float literal: allow suffix operations like 3.14.toString() */
       init_exp(v, VKFLT, 0);
@@ -2439,6 +2453,11 @@ static void simpleexp (LexState *ls, expdesc *v) {
     case TK_INT: {
       init_exp(v, VKINT, 0);
       v->u.ival = ls->t.seminfo.i;
+      break;
+    }
+    case TK_UINT: {
+      init_exp(v, VKUINT, 0);
+      v->u.uval = ls->t.seminfo.u;
       break;
     }
     case TK_STRING: {
