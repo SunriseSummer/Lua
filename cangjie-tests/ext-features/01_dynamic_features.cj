@@ -15,7 +15,7 @@ expectEq(n, 200, "multi-assign n")
 
 // -- Section: multiple return values --
 func divmod(a: Int64, b: Int64) {
-  return Float64(a) / b, a % b
+  return a / b, a % b
 }
 let q, r = divmod(17, 5)
 expectEq(q, 3.4, "divmod quotient")

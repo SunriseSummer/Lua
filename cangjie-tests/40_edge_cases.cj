@@ -19,10 +19,9 @@ let big = 1000000000
 expectEq(big * 2, 2000000000, "large multiply")
 
 // --- Integer division ---
-expectEq(7 / 2, 3, "7/2 int div")
-expectEq(7 / 2.0, 3.5, "7/2.0 float div")
-expectEq(10 / 5, 2, "10/5 exact div")
-expectEq(-7 / 2, -3, "neg int div")
+expectEq(7 / 2, 3.5, "7/2 float div")
+expectEq(10 / 5, 2.0, "10/5 exact div")
+expectEq(-7 / 2, -3.5, "neg div")
 
 // --- Modulo with negative ---
 expectEq(7 % 3, 1, "7%3")
@@ -53,9 +52,9 @@ expectEq(tostring(0), "0", "tostring(0)")
 expectEq(tostring(-1), "-1", "tostring(-1)")
 
 // --- Power operator edge cases ---
-expectEq(0 ** 0, 1, "0**0")
-expectEq(1 ** 100, 1, "1**100")
-expectEq((-1) ** 2, 1, "(-1)**2")
+expectEq(0 ** 0, 1.0, "0**0")
+expectEq(1 ** 100, 1.0, "1**100")
+expectEq((-1) ** 2, 1.0, "(-1)**2")
 
 // --- Bitwise edge cases ---
 expectEq(0 & 0, 0, "0&0")

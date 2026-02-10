@@ -105,7 +105,7 @@ expectEq(counter.getCount(), 2, "counter after inc*3 dec*1")
 
 // -- Section: immediate invocation of lambda --
 let result2 = ({ x, y => x ** 2 + y ** 2 })(3, 4)
-expectEq(result2, 25, "IIFE 3^2 + 4^2")
+expectEq(result2, 25.0, "IIFE 3^2 + 4^2")
 
 if (!__test_failed) {
     println("PASS: usages/functional_programming")

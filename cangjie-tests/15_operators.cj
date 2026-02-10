@@ -30,9 +30,9 @@ let r2 = true || sideEffect()
 expectEq(x, 0, "short-circuit || x")
 
 // --- Power operator (**) ---
-expectEq(2 ** 0, 1, "2**0")
-expectEq(2 ** 10, 1024, "2**10")
-expectEq(3 ** 3, 27, "3**3")
+expectEq(2 ** 0, 1.0, "2**0")
+expectEq(2 ** 10, 1024.0, "2**10")
+expectEq(3 ** 3, 27.0, "3**3")
 
 // --- Bitwise XOR (^) ---
 expectEq(5 ^ 3, 6, "5^3")

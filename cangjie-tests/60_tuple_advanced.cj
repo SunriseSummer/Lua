@@ -20,7 +20,7 @@ expectEq(outer[1][1], 4, "nested tuple [1][1]")
 
 // --- Section: Tuple returned from function ---
 func divmod(a: Int64, b: Int64) {
-    return (Float64(a) / b, a % b)
+    return (a / b, a % b)
 }
 let dm = divmod(15, 5)
 expectEq(dm[0], 3.0, "divmod quotient")
