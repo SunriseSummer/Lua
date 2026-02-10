@@ -403,7 +403,13 @@ int luaB_cangjie_int64 (lua_State *L) {
         return luaL_error(L, "cannot convert empty string to Int64");
       /* Try to parse as a number */
       if (lua_stringtonumber(L, s) != 0) {
-        if (lua_isinteger(L, -1)) {
+        int t = lua_type(L, -1);
+        if (t == LUA_TINT64) {
+          return 1;
+        } else if (t == LUA_TUINT64) {
+          lua_Unsigned u = lua_touintegerx(L, -1, NULL);
+          lua_pop(L, 1);
+          lua_pushinteger(L, l_castU2S(u));
           return 1;
         } else {
           lua_Number n = lua_tonumber(L, -1);

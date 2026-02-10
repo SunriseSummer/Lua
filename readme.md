@@ -8,12 +8,13 @@
 
 - **不可变变量** `let`：`let x: Int64 = 42`
 - **可变变量** `var`：`var name: String = "hello"`
-- **类型注解**：支持 `Int64`、`Float64`、`String`、`Bool`、`Rune` 等类型标注，也支持泛型类型 `Array<Int64>`、嵌套泛型 `Array<Array<Int64>>`、函数类型 `(Int64, Int64) -> Int64`、泛型内函数类型 `Array<(Int64) -> Int64>` 等复合类型注解
+- **类型注解**：支持 `Int64`、`UInt64`、`Float64`、`String`、`Bool`、`Rune` 等类型标注，也支持泛型类型 `Array<Int64>`、嵌套泛型 `Array<Array<Int64>>`、函数类型 `(Int64, Int64) -> Int64`、泛型内函数类型 `Array<(Int64) -> Int64>` 等复合类型注解
 - **类型推断**：可省略类型注解，由右值推断类型
 
 ### 数据类型
 
 - Int64
+- UInt64
 - Float64
 - Bool
 - Rune（Unicode 字符类型）
@@ -59,11 +60,13 @@ Rune 是独立的类型，与整型和字符串严格区分。Rune 类型支持�
 
 ```cangjie
 let a = Int64(r'乐')        // Rune 字符转为对应的整型 Unicode 码点值 (0x4E50)
-let b = Float64("3.14")     // 字符串解析为浮点数
+    let b = Float64("3.14")     // 字符串解析为浮点数
+    let b2 = UInt64("42")       // 字符串解析为无符号整数
 let c = Int64("1234567")    // 字符串解析为整数
 let d = Bool("true")        // 字符串转为布尔值
 let e = Int64(3.14)         // 浮点数转为整数（截断）
-let f = Float64(42)         // 整数转为浮点数
+    let f = Float64(42)         // 整数转为浮点数
+    let f2 = UInt64(42)         // 整数转为 UInt64
 let g = String(65)          // 整数转为字符串 "65"
 let h = String(3.14)        // 浮点数转为字符串
 let i = String(true)        // 布尔值转为字符串
@@ -75,6 +78,16 @@ let l = String(bytes)       // Array<Byte>（UTF-8 字节数组）转为字符�
 **Rune 字面量**：仅 `r'x'` / `r"x"` 表示 Rune 字面量；`'x'` 和 `"x"` 都表示字符串。
 
 **Int64 转换规则**：`Int64(String)` 将表示数字的字符串解析为对应整数（`Int64("0")` = 0），解析失败时报错；`Int64(Rune)` 提取整型 Unicode 码点值（`Int64(r'A')` = 65）。
+
+**UInt64 转换规则**：`UInt64(String)` 将表示非负数字的字符串解析为无符号整数；`UInt64(Float64)` / `UInt64(Int64)` 进行截断转换，负数会报错；`UInt64(Rune)` 提取 Unicode 码点值。
+
+**数值字面量**：
+- 整数默认 `Int64`，可用后缀 `i64` / `u64` 指定类型（如 `42i64` / `42u64`）
+- `Float64` 字面量必须包含 `.` 或使用 `f64` 后缀（如 `3.` / `3.14` / `8f64`）
+
+**数值运算**：
+- 整数与浮点混合运算时，整数自动转为 `Float64`，结果为 `Float64`
+- `Int64` 与 `UInt64` 混合运算时，`UInt64` 转为 `Int64`，结果为 `Int64`
 
 **Rune() 转换函数**：`Rune(integer)` 是通过整型 Unicode 码点值构造 Rune 类型实例；`Rune(string)` 将仅含单个字符的字符串转为对应的 Rune 实例（`Rune("A")` == `r'A'`），如果 string 长度不为 1，转换会报错。`Rune(Rune)` 是恒等操作。
 

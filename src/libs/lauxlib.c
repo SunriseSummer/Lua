@@ -695,7 +695,8 @@ LUALIB_API int luaL_ref (lua_State *L, int t) {
     return LUA_REFNIL;  /* 'nil' has a unique fixed reference */
   }
   t = lua_absindex(L, t);
-  if (lua_rawgeti(L, t, 1) == LUA_TNUMBER)  /* already initialized? */
+  lua_rawgeti(L, t, 1);
+  if (lua_isnumber(L, -1))  /* already initialized? */
     ref = (int)lua_tointeger(L, -1);  /* ref = t[1] */
   else {  /* first access */
     lua_assert(!lua_toboolean(L, -1));  /* must be nil or false */
@@ -929,7 +930,9 @@ LUALIB_API const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
   }
   else {
     switch (lua_type(L, idx)) {
-      case LUA_TNUMBER: {
+      case LUA_TINT64:
+      case LUA_TUINT64:
+      case LUA_TFLOAT64: {
         char buff[LUA_N2SBUFFSZ];
         lua_numbertocstring(L, idx, buff);
         lua_pushstring(L, buff);
@@ -1209,4 +1212,3 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
     luaL_error(L, "version mismatch: app. needs %f, Lua core provides %f",
                   (LUAI_UACNUMBER)ver, (LUAI_UACNUMBER)v);
 }
-

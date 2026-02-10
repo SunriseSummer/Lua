@@ -1185,6 +1185,8 @@ void luaV_finishOp (lua_State *L) {
   int im = GETARG_sB(i);  \
   if (ttisinteger(ra))  \
     cond = opi(ivalue(ra), im);  \
+  else if (ttisuint64(ra))  \
+    cond = opi(l_castU2S(uvalue(ra)), im);  \
   else if (ttisfloat(ra)) {  \
     lua_Number fa = fltvalue(ra);  \
     lua_Number fim = cast_num(im);  \
@@ -1599,7 +1601,10 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rb = vRB(i);
         int ic = GETARG_sC(i);
         lua_Integer ib;
-        if (tointegerns(rb, &ib)) {
+        if (ttisuint64(rb)) {
+          pc++; setivalue(s2v(ra), luaV_shiftl(ic, l_castU2S(uvalue(rb))));
+        }
+        else if (tointegerns(rb, &ib)) {
           pc++; setivalue(s2v(ra), luaV_shiftl(ic, ib));
         }
         vmbreak;
@@ -1609,7 +1614,10 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rb = vRB(i);
         int ic = GETARG_sC(i);
         lua_Integer ib;
-        if (tointegerns(rb, &ib)) {
+        if (ttisuint64(rb)) {
+          pc++; setivalue(s2v(ra), luaV_shiftl(l_castU2S(uvalue(rb)), -ic));
+        }
+        else if (tointegerns(rb, &ib)) {
           pc++; setivalue(s2v(ra), luaV_shiftl(ib, -ic));
         }
         vmbreak;
