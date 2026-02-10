@@ -19,9 +19,9 @@ let big = 1000000000
 expectEq(big * 2, 2000000000, "large multiply")
 
 // --- Integer division ---
-expectEq(7 / 2, 3.5, "7/2 float div")
-expectEq(10 / 5, 2.0, "10/5 exact div")
-expectEq(-7 / 2, -3.5, "neg div")
+expectEq(7 / 2, 3, "7/2 trunc div")
+expectEq(10 / 5, 2, "10/5 exact div")
+expectEq(-7 / 2, -3, "neg div")
 
 // --- Modulo with negative ---
 expectEq(7 % 3, 1, "7%3")

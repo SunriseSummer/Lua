@@ -137,11 +137,14 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
 ** usual integer arithmetic wrap behavior of 'intop'.
 */
 static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
+  lua_Integer result;
+  lua_Integer factor;
+  lua_Unsigned e;
   if (exp < 0)
     return 0;
-  lua_Integer result = 1;
-  lua_Integer factor = base;
-  lua_Unsigned e = (lua_Unsigned)exp;
+  result = 1;
+  factor = base;
+  e = (lua_Unsigned)exp;
   while (e > 0) {
     if (e & 1u)
       result = intop(*, result, factor);
@@ -151,6 +154,15 @@ static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
   }
   *res = result;
   return 1;
+}
+
+static lua_Integer intdiv (lua_State *L, lua_Integer m, lua_Integer n) {
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+    if (n == 0)
+      luaG_runerror(L, "attempt to divide by zero");
+    return intop(-, 0, m);   /* n==-1; avoid overflow with 0x80000.../-1 */
+  }
+  return m / n;  /* C division truncates toward zero */
 }
 
 
@@ -185,6 +197,10 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     }
     case LUA_OPDIV: case LUA_OPPOW: {  /* operate only on floats */
       lua_Number n1; lua_Number n2;
+      if (op == LUA_OPDIV && ttisinteger(p1) && ttisinteger(p2)) {
+        setivalue(res, intdiv(L, ivalue(p1), ivalue(p2)));
+        return 1;
+      }
       if (op == LUA_OPPOW && ttisinteger(p1) && ttisinteger(p2)) {
         lua_Integer pow_result;
         if (intpow(ivalue(p1), ivalue(p2), &pow_result)) {
