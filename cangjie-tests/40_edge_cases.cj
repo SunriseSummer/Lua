@@ -52,9 +52,9 @@ expectEq(tostring(0), "0", "tostring(0)")
 expectEq(tostring(-1), "-1", "tostring(-1)")
 
 // --- Power operator edge cases ---
-expectEq(0 ** 0, 1.0, "0**0")
-expectEq(1 ** 100, 1.0, "1**100")
-expectEq((-1) ** 2, 1.0, "(-1)**2")
+expectEq(0 ** 0, 1, "0**0")
+expectEq(1 ** 100, 1, "1**100")
+expectEq((-1) ** 2, 1, "(-1)**2")
 
 // --- Bitwise edge cases ---
 expectEq(0 & 0, 0, "0&0")

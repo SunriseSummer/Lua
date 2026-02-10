@@ -34,9 +34,9 @@ expectEq(type(add), "Int64", "Int64 arithmetic keeps Int64")
 let div = 7 / 2
 let powVal = 2 ** 3
 expectEq(div, 3.5, "Int64 / Int64 yields Float64 value")
-expectEq(powVal, 8.0, "Int64 ** Int64 yields Float64 value")
+expectEq(powVal, 8, "Int64 ** Int64 yields Int64 value")
 expectEq(type(div), "Float64", "division yields Float64")
-expectEq(type(powVal), "Float64", "pow yields Float64")
+expectEq(type(powVal), "Int64", "pow yields Int64")
 
 let band = 5 & 3
 let bor = 5 | 2
