@@ -162,9 +162,25 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
       }
       else return 0;  /* fail */
     }
-    case LUA_OPDIV: case LUA_OPPOW: {  /* operate only on floats */
+    case LUA_OPDIV: {  /* integer division if both are Int64 */
       lua_Number n1; lua_Number n2;
-      if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
+      if (ttisinteger(p1) && ttisinteger(p2)) {
+        setivalue(res, luaV_divi(L, ivalue(p1), ivalue(p2)));
+        return 1;
+      }
+      else if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
+        setfltvalue(res, numarith(L, op, n1, n2));
+        return 1;
+      }
+      else return 0;  /* fail */
+    }
+    case LUA_OPPOW: {  /* integer power if both are Int64 */
+      lua_Number n1; lua_Number n2;
+      if (ttisinteger(p1) && ttisinteger(p2)) {
+        setivalue(res, luaV_powi(L, ivalue(p1), ivalue(p2)));
+        return 1;
+      }
+      else if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
         setfltvalue(res, numarith(L, op, n1, n2));
         return 1;
       }
@@ -721,4 +737,3 @@ void luaO_chunkid (char *out, const char *source, size_t srclen) {
     memcpy(out, POS, (LL(POS) + 1) * sizeof(char));
   }
 }
-

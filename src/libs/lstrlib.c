@@ -258,7 +258,7 @@ static const luaL_Reg stringmetamethods[] = {
 #else		/* }{ */
 
 static int tonum (lua_State *L, int arg) {
-  if (lua_type(L, arg) == LUA_TNUMBER) {  /* already a number? */
+  if (lua_type(L, arg) == LUA_TINT64 || lua_type(L, arg) == LUA_TFLOAT64) {
     lua_pushvalue(L, arg);
     return 1;
   }
@@ -304,7 +304,8 @@ static int arith_add (lua_State *L) {
     return 1;
   }
   /* Cangjie: string + number = concatenation (auto-convert) */
-  if (lua_type(L, 1) == LUA_TSTRING && lua_type(L, 2) == LUA_TNUMBER) {
+  if (lua_type(L, 1) == LUA_TSTRING &&
+      (lua_type(L, 2) == LUA_TINT64 || lua_type(L, 2) == LUA_TFLOAT64)) {
     luaL_tolstring(L, 2, NULL);
     lua_remove(L, 2);
     lua_concat(L, 2);
@@ -968,9 +969,9 @@ static int str_gsub (lua_State *L) {
   int changed = 0;  /* change flag */
   MatchState ms;
   luaL_Buffer b;
-  luaL_argexpected(L, tr == LUA_TNUMBER || tr == LUA_TSTRING ||
-                   tr == LUA_TFUNCTION || tr == LUA_TTABLE, 3,
-                      "string/function/table");
+  luaL_argexpected(L, tr == LUA_TINT64 || tr == LUA_TFLOAT64 ||
+                   tr == LUA_TSTRING || tr == LUA_TFUNCTION ||
+                   tr == LUA_TTABLE, 3, "string/function/table");
   luaL_buffinit(L, &b);
   if (anchor) {
     p++; lp--;  /* skip anchor character */
@@ -1197,7 +1198,8 @@ static void addliteral (lua_State *L, luaL_Buffer *b, int arg) {
       addquoted(b, s, len);
       break;
     }
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TFLOAT64: {
       char *buff = luaL_prepbuffsize(b, MAX_ITEM);
       int nb;
       if (!lua_isinteger(L, arg))  /* float? */
@@ -1906,4 +1908,3 @@ LUAMOD_API int luaopen_string (lua_State *L) {
   luaB_setup_string_meta(L);
   return 1;
 }
-

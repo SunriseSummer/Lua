@@ -774,7 +774,7 @@ l_noret luaG_callerror (lua_State *L, const TValue *o) {
 
 
 l_noret luaG_forerror (lua_State *L, const TValue *o, const char *what) {
-  luaG_runerror(L, "bad 'for' %s (number expected, got %s)",
+  luaG_runerror(L, "bad 'for' %s (Int64 or Float64 expected, got %s)",
                    what, luaT_objtypename(L, o));
 }
 
@@ -976,4 +976,3 @@ int luaG_traceexec (lua_State *L, const Instruction *pc) {
   }
   return 1;  /* keep 'trap' on */
 }
-

@@ -260,6 +260,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
   const char *expo = "Ee";
   int first = ls->current;
   int ishex = 0;
+  int hasdot = 0;
   lua_assert(lisdigit(ls->current));
   save_and_next(ls);
   if (first == '0' && check_next2(ls, "xX")) {  /* hexadecimal? */
@@ -317,6 +318,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
           }
         }
       }
+      hasdot = 1;
       save_and_next(ls);
     }
     else break;
@@ -331,6 +333,8 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
     return TK_INT;
   }
   else {
+    if (!hasdot)
+      lexerror(ls, "float literal must contain '.'", TK_FLT);
     lua_assert(ttisfloat(&obj));
     seminfo->r = fltvalue(&obj);
     return TK_FLT;
@@ -869,4 +873,3 @@ int luaX_lookahead (LexState *ls) {
   ls->lookahead.token = llex(ls, &ls->lookahead.seminfo);
   return ls->lookahead.token;
 }
-

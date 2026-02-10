@@ -98,7 +98,8 @@ static const char *b_str2int (const char *s, unsigned base, lua_Integer *pn) {
 
 static int luaB_tonumber (lua_State *L) {
   if (lua_isnoneornil(L, 2)) {  /* standard conversion? */
-    if (lua_type(L, 1) == LUA_TNUMBER) {  /* already a number? */
+    int t = lua_type(L, 1);
+    if (t == LUA_TINT64 || t == LUA_TFLOAT64) {  /* already a number? */
       lua_settop(L, 1);  /* yes; return it */
       return 1;
     }
@@ -276,7 +277,10 @@ static int luaB_collectgarbage (lua_State *L) {
 static int luaB_type (lua_State *L) {
   int t = lua_type(L, 1);
   luaL_argcheck(L, t != LUA_TNONE, 1, "value expected");
-  lua_pushstring(L, lua_typename(L, t));
+  if (t == LUA_TNUMBER)
+    lua_pushstring(L, lua_isinteger(L, 1) ? "Int64" : "Float64");
+  else
+    lua_pushstring(L, lua_typename(L, t));
   return 1;
 }
 
@@ -599,4 +603,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   luaB_option_init(L);
   return 1;
 }
-

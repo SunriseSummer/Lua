@@ -91,6 +91,8 @@ const TValue *luaT_gettmbyobj (lua_State *L, const TValue *o, TMS event) {
 */
 const char *luaT_objtypename (lua_State *L, const TValue *o) {
   Table *mt;
+  if (ttisnumber(o))
+    return ttisinteger(o) ? "Int64" : "Float64";
   if ((ttistable(o) && (mt = hvalue(o)->metatable) != NULL) ||
       (ttisfulluserdata(o) && (mt = uvalue(o)->metatable) != NULL)) {
     const TValue *name = luaH_Hgetshortstr(mt, luaS_new(L, "__name"));
@@ -362,4 +364,3 @@ void luaT_getvarargs (lua_State *L, CallInfo *ci, StkId where, int wanted,
   for (; i < wanted; i++)   /* complete required results with nil */
     setnilvalue(s2v(where + i));
 }
-
