@@ -98,7 +98,8 @@ static const char *b_str2int (const char *s, unsigned base, lua_Integer *pn) {
 
 static int luaB_tonumber (lua_State *L) {
   if (lua_isnoneornil(L, 2)) {  /* standard conversion? */
-    if (lua_type(L, 1) == LUA_TNUMBER) {  /* already a number? */
+    int t = lua_type(L, 1);
+    if (t == LUA_TINT64 || t == LUA_TFLOAT64) {  /* already a number? */
       lua_settop(L, 1);  /* yes; return it */
       return 1;
     }
@@ -599,4 +600,3 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   luaB_option_init(L);
   return 1;
 }
-

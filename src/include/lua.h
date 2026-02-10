@@ -71,8 +71,10 @@ typedef struct lua_State lua_State;
 #define LUA_TUSERDATA		7
 #define LUA_TTHREAD		8
 #define LUA_TRUNE		9
+#define LUA_TINT64		10
+#define LUA_TFLOAT64		11
 
-#define LUA_NUMTYPES		10
+#define LUA_NUMTYPES		12
 
 
 
