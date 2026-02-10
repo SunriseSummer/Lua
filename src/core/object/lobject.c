@@ -132,8 +132,8 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
   }
 }
 
-/* Integer exponentiation; returns 0 for negative exponents to allow
-** the caller to fall back to floating-point pow.
+/* Integer exponentiation; returns 1 on success (non-negative exponent),
+** or 0 to signal fallback to floating-point pow.
 */
 static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
   if (exp < 0)

@@ -38,6 +38,10 @@ expectEq(powVal, 8, "Int64 ** Int64 yields Int64 value")
 expectEq(type(div), "Float64", "division yields Float64")
 expectEq(type(powVal), "Int64", "pow yields Int64")
 
+let powNeg = 2 ** (-1)
+expectEq(powNeg, 0.5, "Int64 ** negative Int64 yields Float64 value")
+expectEq(type(powNeg), "Float64", "negative exponent yields Float64")
+
 let band = 5 & 3
 let bor = 5 | 2
 let bxor = 5 ^ 1
