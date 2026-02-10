@@ -785,6 +785,39 @@ lua_Integer luaV_idiv (lua_State *L, lua_Integer m, lua_Integer n) {
 
 
 /*
+** Truncated integer division (Cangjie semantics, like C/Java).
+** Unlike luaV_idiv (floor division), this rounds toward zero.
+*/
+lua_Integer luaV_div (lua_State *L, lua_Integer m, lua_Integer n) {
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+    if (n == 0)
+      luaG_runerror(L, "attempt to divide by zero");
+    return intop(-, 0, m);   /* n==-1; avoid overflow with 0x80000.../-1 */
+  }
+  else {
+    return m / n;  /* C division truncates toward zero */
+  }
+}
+
+
+/*
+** Integer power operation. Returns base^exp for non-negative exp.
+*/
+lua_Integer luaV_ipow (lua_State *L, lua_Integer base, lua_Integer exp) {
+  lua_Integer result = 1;
+  if (exp < 0)
+    luaG_runerror(L, "attempt to raise integer to negative power");
+  while (exp > 0) {
+    if (exp & 1)
+      result = intop(*, result, base);
+    base = intop(*, base, base);
+    exp >>= 1;
+  }
+  return result;
+}
+
+
+/*
 ** Integer modulus; return 'm % n'. (Assume that C '%' with
 ** negative operands follows C99 behavior. See previous comment
 ** about luaV_idiv.)
@@ -1465,11 +1498,13 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POWK) {
-        op_arithfK(L, luai_numpow);
+        savestate(L, ci);  /* in case of negative integer exponent */
+        op_arithK(L, luaV_ipow, luai_numpow);
         vmbreak;
       }
       vmcase(OP_DIVK) {
-        op_arithfK(L, luai_numdiv);
+        savestate(L, ci);  /* in case of division by 0 */
+        op_arithK(L, luaV_div, luai_numdiv);
         vmbreak;
       }
       vmcase(OP_IDIVK) {
@@ -1527,11 +1562,13 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POW) {
-        op_arithf(L, luai_numpow);
+        savestate(L, ci);  /* in case of negative integer exponent */
+        op_arith(L, luaV_ipow, luai_numpow);
         vmbreak;
       }
-      vmcase(OP_DIV) {  /* float division (always with floats) */
-        op_arithf(L, luai_numdiv);
+      vmcase(OP_DIV) {  /* truncated division for integers, float division for floats */
+        savestate(L, ci);  /* in case of division by 0 */
+        op_arith(L, luaV_div, luai_numdiv);
         vmbreak;
       }
       vmcase(OP_IDIV) {  /* floor division */
