@@ -34,6 +34,11 @@ expectNoError("null coalescing with None",
 expectNoError("null coalescing with Some",
     "var o: ?Int64 = Some(5); let r = o ?? 42")
 
+// --- Section: Return type mismatch for Option ---
+expectRuntimeError("return Option without Some/None",
+    "func parseInt(text: String): ?Int64 { return 1 }\nparseInt(\"1\")",
+    "return type mismatch")
+
 if (!__test_failed) {
     println("PASS: 15_option_errors")
 }
