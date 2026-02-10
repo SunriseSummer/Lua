@@ -369,6 +369,12 @@ static int cangjie_bool_call (lua_State *L) {
 
 /* str_fromUtf8 moved to lbaselib_cj_string.c; use luaB_string_from_byte_array */
 
+static lua_Integer cangjie_uint64_to_int64 (lua_State *L, lua_Unsigned u) {
+  if (!luai_uintfitsint(u))
+    luaL_error(L, "UInt64 value out of Int64 range");
+  return l_castU2S(u);
+}
+
 
 /* Int64(value) - convert to integer.
 ** For numbers: truncates float to integer, passes integer through.
@@ -388,7 +394,7 @@ int luaB_cangjie_int64 (lua_State *L) {
       return 1;
     case LUA_TUINT64: {
       lua_Unsigned u = lua_touintegerx(L, 1, NULL);
-      lua_pushinteger(L, l_castU2S(u));
+      lua_pushinteger(L, cangjie_uint64_to_int64(L, u));
       return 1;
     }
     case LUA_TFLOAT64: {
@@ -409,7 +415,7 @@ int luaB_cangjie_int64 (lua_State *L) {
         } else if (t == LUA_TUINT64) {
           lua_Unsigned u = lua_touintegerx(L, -1, NULL);
           lua_pop(L, 1);
-          lua_pushinteger(L, l_castU2S(u));
+          lua_pushinteger(L, cangjie_uint64_to_int64(L, u));
           return 1;
         } else {
           lua_Number n = lua_tonumber(L, -1);
@@ -460,6 +466,8 @@ int luaB_cangjie_uint64 (lua_State *L) {
       lua_Number n = lua_tonumber(L, 1);
       if (n < 0)
         return luaL_error(L, "cannot convert negative Float64 to UInt64");
+      if (n > cast_num(LUA_MAXUNSIGNED))
+        return luaL_error(L, "cannot convert Float64 to UInt64 (out of range)");
       lua_pushuint64(L, (lua_Unsigned)n);
       return 1;
     }
@@ -484,6 +492,8 @@ int luaB_cangjie_uint64 (lua_State *L) {
           lua_pop(L, 1);
           if (n < 0)
             return luaL_error(L, "cannot convert negative Float64 to UInt64");
+          if (n > cast_num(LUA_MAXUNSIGNED))
+            return luaL_error(L, "cannot convert Float64 to UInt64 (out of range)");
           lua_pushuint64(L, (lua_Unsigned)n);
           return 1;
         }

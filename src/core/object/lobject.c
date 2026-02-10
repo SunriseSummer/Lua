@@ -183,6 +183,9 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
       }
       else if ((ttisint64(p1) || ttisuint64(p1)) &&
                (ttisint64(p2) || ttisuint64(p2))) {
+        if ((ttisuint64(p1) && !luai_uintfitsint(uvalue(p1))) ||
+            (ttisuint64(p2) && !luai_uintfitsint(uvalue(p2))))
+          luaG_runerror(L, "UInt64 value out of Int64 range");
         lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
         lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
         setivalue(res, intarith(L, op, i1, i2));
@@ -201,6 +204,8 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     default: {  /* other operations */
       lua_Number n1; lua_Number n2;
       if (op == LUA_OPUNM && ttisuint64(p1)) {
+        if (!luai_uintfitsint(uvalue(p1)))
+          luaG_runerror(L, "UInt64 value out of Int64 range");
         setivalue(res, intarith(L, op, l_castU2S(uvalue(p1)), 0));
         return 1;
       }
@@ -210,6 +215,9 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
       }
       if ((ttisint64(p1) || ttisuint64(p1)) &&
           (ttisint64(p2) || ttisuint64(p2))) {
+        if ((ttisuint64(p1) && !luai_uintfitsint(uvalue(p1))) ||
+            (ttisuint64(p2) && !luai_uintfitsint(uvalue(p2))))
+          luaG_runerror(L, "UInt64 value out of Int64 range");
         lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
         lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
         setivalue(res, intarith(L, op, i1, i2));

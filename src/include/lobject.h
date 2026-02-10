@@ -392,6 +392,8 @@ typedef struct GCObject {
 #define chguvalue(obj,x) \
   { TValue *io=(obj); lua_assert(ttisuint64(io)); val_(io).i=l_castU2S((x)); }
 
+#define luai_uintfitsint(u)	((u) <= (lua_Unsigned)LUA_MAXINTEGER)
+
 /* }================================================================== */
 
 
