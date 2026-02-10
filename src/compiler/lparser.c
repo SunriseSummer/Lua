@@ -3615,7 +3615,7 @@ static int skip_letvar_type (LexState *ls) {
   return is_rune;
 }
 
-static int is_checked_return_type (const char *tname) {
+static int should_check_return_type (const char *tname) {
   return (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0 ||
           strcmp(tname, "Bool") == 0 || strcmp(tname, "String") == 0 ||
           strcmp(tname, "Rune") == 0 || strcmp(tname, "Option") == 0);
@@ -3668,6 +3668,7 @@ static TString *parse_return_type_annotation (LexState *ls,
       luaX_next(ls);
     }
     else if (ls->t.token == TK_NOT && depth > 0) {
+      /* '!' in named params for function types */
       luaX_next(ls);
     }
     else if (ls->t.token == '?' && depth > 0) {
@@ -3682,7 +3683,7 @@ static TString *parse_return_type_annotation (LexState *ls,
   }
   if (is_option)
     return luaS_new(ls->L, "Option");
-  if (top_name != NULL && is_checked_return_type(getstr(top_name)))
+  if (top_name != NULL && should_check_return_type(getstr(top_name)))
     return top_name;
   return NULL;
 }

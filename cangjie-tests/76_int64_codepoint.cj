@@ -47,6 +47,7 @@ expectEq(Int64(Rune(text[1])), 101, "Int64(Rune(text[1])) e=101")
 
 // Digit chars: Int64 parses string as number, Int64(Rune()) extracts code point
 let digits = "0123456789"
+// digits[0] returns Rune, so convert to String before numeric parsing
 expectEq(Int64(String(digits[0])), 0, "Int64(String(digits[0])) = 0 (number parse)")
 expectEq(Int64(digits[0]), 48, "Int64(digits[0]) = 48 (code point)")
 
