@@ -15,10 +15,10 @@ expectEq(7 % 1, 0, "7 % 1 = 0")
 expectEq(5 % 5, 0, "5 % 5 = 0")
 
 // --- Section: Power operator ---
-expectEq(2 ** 0, 1.0, "2**0 = 1")
-expectEq(2 ** 1, 2.0, "2**1 = 2")
-expectEq(0 ** 0, 1.0, "0**0 = 1")
-expectEq(1 ** 100, 1.0, "1**100 = 1")
+expectEq(2 ** 0, 1, "2**0 = 1")
+expectEq(2 ** 1, 2, "2**1 = 2")
+expectEq(0 ** 0, 1, "0**0 = 1")
+expectEq(1 ** 100, 1, "1**100 = 1")
 
 // --- Section: Bitwise operators ---
 expectEq(0xFF & 0x0F, 0x0F, "0xFF & 0x0F = 0x0F")

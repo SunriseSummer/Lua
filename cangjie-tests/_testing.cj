@@ -10,6 +10,14 @@ func expectEq(actual, expected, msg: String) {
     }
 }
 
+func expectType(actual, expected: String, msg: String) {
+    let t = type(actual)
+    if (t != expected) {
+        println("FAIL: ${msg} - expected type '${expected}', got '${t}'")
+        __test_failed = true
+    }
+}
+
 func expectTrue(cond: Bool, msg: String) {
     if (!cond) {
         println("FAIL: ${msg} - expected true, got false")

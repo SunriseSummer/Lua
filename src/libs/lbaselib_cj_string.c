@@ -644,7 +644,7 @@ static const StrMethod str_methods[] = {
 int luaB_str_index (lua_State *L) {
   size_t len;
   const char *s = luaL_checklstring(L, 1, &len);
-  if (lua_type(L, 2) == LUA_TNUMBER) {
+  if (lua_type(L, 2) == LUA_TINT64 || lua_type(L, 2) == LUA_TFLOAT64) {
     lua_Integer idx = lua_tointeger(L, 2);
     lua_Integer cachedCC;
     const lua_Integer *offsets;

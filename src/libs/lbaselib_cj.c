@@ -378,7 +378,8 @@ int luaB_cangjie_int64 (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TFLOAT64: {
       if (lua_isinteger(L, 1)) {
         lua_pushvalue(L, 1);  /* already integer */
       } else {
@@ -423,7 +424,8 @@ int luaB_cangjie_int64 (lua_State *L) {
 */
 int luaB_cangjie_float64 (lua_State *L) {
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TFLOAT64: {
       lua_pushnumber(L, lua_tonumber(L, 1));
       return 1;
     }
@@ -461,7 +463,8 @@ int luaB_cangjie_string (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TNUMBER: {
+    case LUA_TINT64:
+    case LUA_TFLOAT64: {
       /* Number -> string representation (both integer and float) */
       luaL_tolstring(L, 1, NULL);
       return 1;
@@ -603,8 +606,11 @@ int luaB_extend_type (lua_State *L) {
   }
 
   /* Create a representative value to get/set its metatable */
-  if (strcmp(tname, "Int64") == 0 || strcmp(tname, "Float64") == 0) {
-    lua_pushinteger(L, 0);  /* representative number */
+  if (strcmp(tname, "Int64") == 0) {
+    lua_pushinteger(L, 0);  /* representative Int64 */
+  }
+  else if (strcmp(tname, "Float64") == 0) {
+    lua_pushnumber(L, 0.0);  /* representative Float64 */
   }
   else if (strcmp(tname, "String") == 0) {
     lua_pushliteral(L, "");  /* representative string */

@@ -13,8 +13,8 @@
 
 ### 数据类型
 
-- Int64
-- Float64
+- Int64（原生 TValue 类型，type() 返回 "Int64"）
+- Float64（原生 TValue 类型，type() 返回 "Float64"）
 - Bool
 - Rune（Unicode 字符类型）
 - String

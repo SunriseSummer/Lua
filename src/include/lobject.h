@@ -353,10 +353,11 @@ typedef struct GCObject {
 */
 
 /* Variant tags for numbers */
-#define LUA_VNUMINT	makevariant(LUA_TNUMBER, 0)  /* integer numbers */
-#define LUA_VNUMFLT	makevariant(LUA_TNUMBER, 1)  /* float numbers */
+#define LUA_VNUMINT	makevariant(LUA_TINT64, 0)  /* integer numbers */
+#define LUA_VNUMFLT	makevariant(LUA_TFLOAT64, 0)  /* float numbers */
 
-#define ttisnumber(o)		checktype((o), LUA_TNUMBER)
+#define ttisnumber(o)		(checktype((o), LUA_TINT64) || \
+				 checktype((o), LUA_TFLOAT64))
 #define ttisfloat(o)		checktag((o), LUA_VNUMFLT)
 #define ttisinteger(o)		checktag((o), LUA_VNUMINT)
 
@@ -881,4 +882,3 @@ LUAI_FUNC void luaO_chunkid (char *out, const char *source, size_t srclen);
 
 
 #endif
-

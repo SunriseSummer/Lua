@@ -114,7 +114,7 @@ l_mem luaO_applyparam (lu_byte p, l_mem x) {
 
 
 static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
-                                                   lua_Integer v2) {
+                                                  lua_Integer v2) {
   switch (op) {
     case LUA_OPADD: return intop(+, v1, v2);
     case LUA_OPSUB:return intop(-, v1, v2);
@@ -130,6 +130,39 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
     case LUA_OPBNOT: return intop(^, ~l_castS2U(0), v1);
     default: lua_assert(0); return 0;
   }
+}
+
+/* Integer exponentiation; returns 1 on success (non-negative exponent),
+** or 0 to signal fallback to floating-point pow. Overflow follows the
+** usual integer arithmetic wrap behavior of 'intop'.
+*/
+static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
+  lua_Integer result;
+  lua_Integer factor;
+  lua_Unsigned e;
+  if (exp < 0)
+    return 0;
+  result = 1;
+  factor = base;
+  e = (lua_Unsigned)exp;
+  while (e > 0) {
+    if (e & 1u)
+      result = intop(*, result, factor);
+    e >>= 1;
+    if (e > 0)
+      factor = intop(*, factor, factor);
+  }
+  *res = result;
+  return 1;
+}
+
+static lua_Integer intdiv (lua_State *L, lua_Integer m, lua_Integer n) {
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+    if (n == 0)
+      luaG_runerror(L, "attempt to divide by zero");
+    return intop(-, 0, m);   /* n==-1; avoid overflow with 0x80000.../-1 */
+  }
+  return m / n;  /* C division truncates toward zero */
 }
 
 
@@ -164,6 +197,17 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     }
     case LUA_OPDIV: case LUA_OPPOW: {  /* operate only on floats */
       lua_Number n1; lua_Number n2;
+      if (op == LUA_OPDIV && ttisinteger(p1) && ttisinteger(p2)) {
+        setivalue(res, intdiv(L, ivalue(p1), ivalue(p2)));
+        return 1;
+      }
+      if (op == LUA_OPPOW && ttisinteger(p1) && ttisinteger(p2)) {
+        lua_Integer pow_result;
+        if (intpow(ivalue(p1), ivalue(p2), &pow_result)) {
+          setivalue(res, pow_result);
+          return 1;
+        }
+      }
       if (tonumberns(p1, n1) && tonumberns(p2, n2)) {
         setfltvalue(res, numarith(L, op, n1, n2));
         return 1;
@@ -721,4 +765,3 @@ void luaO_chunkid (char *out, const char *source, size_t srclen) {
     memcpy(out, POS, (LL(POS) + 1) * sizeof(char));
   }
 }
-
