@@ -23,7 +23,7 @@ func divmod(a: Int64, b: Int64) {
     return (a / b, a % b)
 }
 let dm = divmod(15, 5)
-expectEq(dm[0], 3.0, "divmod quotient")
+expectEq(dm[0], 3, "divmod quotient")
 expectEq(dm[1], 0, "divmod remainder")
 
 let dm2 = divmod(17, 5)

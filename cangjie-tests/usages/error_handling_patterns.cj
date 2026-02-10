@@ -116,7 +116,7 @@ func safeDivide(a: Int64, b: Int64): Result {
     return Ok(a / b)
 }
 
-expectEq(safeDivide(10, 2).unwrapOr(0), 5.0, "safeDivide 10/2")
+expectEq(safeDivide(10, 2).unwrapOr(0), 5, "safeDivide 10/2")
 expectEq(safeDivide(10, 0).unwrapOr(-1), -1, "safeDivide 10/0 default")
 
 // --- Section: Option + match for safe code ---

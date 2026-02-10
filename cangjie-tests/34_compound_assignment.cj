@@ -14,7 +14,7 @@ a *= 2
 expectEq(a, 24, "a *= 2")
 
 a /= 4
-expectEq(a, 6.0, "a /= 4")
+expectEq(a, 6, "a /= 4")
 
 // Floating point compound assignment
 var f = 1.0

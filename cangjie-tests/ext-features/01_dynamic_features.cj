@@ -18,7 +18,7 @@ func divmod(a: Int64, b: Int64) {
   return a / b, a % b
 }
 let q, r = divmod(17, 5)
-expectEq(q, 3.4, "divmod quotient")
+expectEq(q, 3, "divmod quotient")
 expectEq(r, 2, "divmod remainder")
 
 // -- Section: dynamic typing --
