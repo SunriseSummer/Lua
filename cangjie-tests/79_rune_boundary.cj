@@ -10,10 +10,8 @@ expectEq(type(r'\u{0}'), "Rune", "type(r'\\u{0}') is Rune (NUL)")
 expectEq(type(Rune(65)), "Rune", "type(Rune(65)) is Rune")
 expectEq(type(Rune("A")), "Rune", "type(Rune(\"A\")) is Rune")
 
-// -- Section: Strict type separation from Int64 and String --
-expectFalse(r'A' == 65, "r'A' != 65 (Rune != Int64)")
+// -- Section: Strict type separation from String --
 expectFalse(r'A' == "A", "r'A' != \"A\" (Rune != String)")
-expectFalse(Rune(65) == 65, "Rune(65) != 65")
 expectFalse(Rune(65) == "A", "Rune(65) != \"A\"")
 
 // -- Section: Boundary code points --

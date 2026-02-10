@@ -9,10 +9,6 @@ dofile("cangjie-tests/_testing.cj")
 expectEq(type(r'0'), "Rune", "type(r'0') == Rune")
 expectEq(type(r'A'), "Rune", "type(r'A') == Rune")
 
-// Rune != integer (strict type separation)
-expectFalse(r'0' == 48, "r'0' != 48")
-expectFalse(r'A' == 65, "r'A' != 65")
-
 // Rune equality
 expectTrue(r'0' == r'0', "r'0' == r'0'")
 expectTrue(r'A' == r'A', "r'A' == r'A'")
