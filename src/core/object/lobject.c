@@ -132,23 +132,24 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
   }
 }
 
+/* Integer exponentiation; returns 0 for negative exponents to allow
+** the caller to fall back to floating-point pow.
+*/
 static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
   if (exp < 0)
     return 0;
-  {
-    lua_Integer result = 1;
-    lua_Integer factor = base;
-    lua_Unsigned e = (lua_Unsigned)exp;
-    while (e > 0) {
-      if (e & 1u)
-        result = intop(*, result, factor);
-      e >>= 1;
-      if (e > 0)
-        factor = intop(*, factor, factor);
-    }
-    *res = result;
-    return 1;
+  lua_Integer result = 1;
+  lua_Integer factor = base;
+  lua_Unsigned e = (lua_Unsigned)exp;
+  while (e > 0) {
+    if (e & 1u)
+      result = intop(*, result, factor);
+    e >>= 1;
+    if (e > 0)
+      factor = intop(*, factor, factor);
   }
+  *res = result;
+  return 1;
 }
 
 
