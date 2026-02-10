@@ -260,11 +260,8 @@ static int math_max (lua_State *L) {
 
 
 static int math_type (lua_State *L) {
-  int t = lua_type(L, 1);
-  if (t == LUA_TINT64)
-    lua_pushstring(L, "integer");
-  else if (t == LUA_TFLOAT64)
-    lua_pushstring(L, "float");
+  if (lua_type(L, 1) == LUA_TNUMBER)
+    lua_pushstring(L, (lua_isinteger(L, 1)) ? "integer" : "float");
   else {
     luaL_checkany(L, 1);
     luaL_pushfail(L);
@@ -765,3 +762,4 @@ LUAMOD_API int luaopen_math (lua_State *L) {
   setrandfunc(L);
   return 1;
 }
+

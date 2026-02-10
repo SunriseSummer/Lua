@@ -429,7 +429,7 @@ LUALIB_API lua_Number luaL_checknumber (lua_State *L, int arg) {
   int isnum;
   lua_Number d = lua_tonumberx(L, arg, &isnum);
   if (l_unlikely(!isnum))
-    luaL_typeerror(L, arg, "Int64 or Float64");
+    tag_error(L, arg, LUA_TNUMBER);
   return d;
 }
 
@@ -443,7 +443,7 @@ static void interror (lua_State *L, int arg) {
   if (lua_isnumber(L, arg))
     luaL_argerror(L, arg, "number has no integer representation");
   else
-    luaL_typeerror(L, arg, "Int64");
+    tag_error(L, arg, LUA_TNUMBER);
 }
 
 
@@ -695,7 +695,7 @@ LUALIB_API int luaL_ref (lua_State *L, int t) {
     return LUA_REFNIL;  /* 'nil' has a unique fixed reference */
   }
   t = lua_absindex(L, t);
-  if (lua_rawgeti(L, t, 1) == LUA_TINT64)  /* already initialized? */
+  if (lua_rawgeti(L, t, 1) == LUA_TNUMBER)  /* already initialized? */
     ref = (int)lua_tointeger(L, -1);  /* ref = t[1] */
   else {  /* first access */
     lua_assert(!lua_toboolean(L, -1));  /* must be nil or false */
@@ -929,8 +929,7 @@ LUALIB_API const char *luaL_tolstring (lua_State *L, int idx, size_t *len) {
   }
   else {
     switch (lua_type(L, idx)) {
-      case LUA_TINT64:
-      case LUA_TFLOAT64: {
+      case LUA_TNUMBER: {
         char buff[LUA_N2SBUFFSZ];
         lua_numbertocstring(L, idx, buff);
         lua_pushstring(L, buff);
@@ -1210,3 +1209,4 @@ LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver, size_t sz) {
     luaL_error(L, "version mismatch: app. needs %f, Lua core provides %f",
                   (LUAI_UACNUMBER)ver, (LUAI_UACNUMBER)v);
 }
+

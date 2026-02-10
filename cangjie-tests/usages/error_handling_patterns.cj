@@ -113,7 +113,7 @@ func safeDivide(a: Int64, b: Int64): Result {
     if (b == 0) {
         return Err("division by zero")
     }
-    return Ok(Float64(a) / b)
+    return Ok(a / b)
 }
 
 expectEq(safeDivide(10, 2).unwrapOr(0), 5.0, "safeDivide 10/2")

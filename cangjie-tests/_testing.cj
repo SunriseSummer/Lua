@@ -31,14 +31,6 @@ func expectNil(actual, msg: String) {
     }
 }
 
-func expectType(value, expected: String, msg: String) {
-    let actual = type(value)
-    if (actual != expected) {
-        println("FAIL: ${msg} - expected type '${expected}', got '${actual}'")
-        __test_failed = true
-    }
-}
-
 // -- Diagnosis helpers: error expectation utilities --
 
 func expectLoadError(test_name: String, code: String, expected: String) {

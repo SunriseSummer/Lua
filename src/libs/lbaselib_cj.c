@@ -378,13 +378,13 @@ int luaB_cangjie_int64 (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TINT64: {
-      lua_pushvalue(L, 1);  /* already integer */
-      return 1;
-    }
-    case LUA_TFLOAT64: {
-      lua_Number n = lua_tonumber(L, 1);
-      lua_pushinteger(L, (lua_Integer)n);  /* truncate */
+    case LUA_TNUMBER: {
+      if (lua_isinteger(L, 1)) {
+        lua_pushvalue(L, 1);  /* already integer */
+      } else {
+        lua_Number n = lua_tonumber(L, 1);
+        lua_pushinteger(L, (lua_Integer)n);  /* truncate */
+      }
       return 1;
     }
     case LUA_TSTRING: {
@@ -423,8 +423,7 @@ int luaB_cangjie_int64 (lua_State *L) {
 */
 int luaB_cangjie_float64 (lua_State *L) {
   switch (lua_type(L, 1)) {
-    case LUA_TINT64:
-    case LUA_TFLOAT64: {
+    case LUA_TNUMBER: {
       lua_pushnumber(L, lua_tonumber(L, 1));
       return 1;
     }
@@ -462,8 +461,7 @@ int luaB_cangjie_string (lua_State *L) {
     return 1;
   }
   switch (lua_type(L, 1)) {
-    case LUA_TINT64:
-    case LUA_TFLOAT64: {
+    case LUA_TNUMBER: {
       /* Number -> string representation (both integer and float) */
       luaL_tolstring(L, 1, NULL);
       return 1;
