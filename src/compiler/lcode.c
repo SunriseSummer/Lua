@@ -1433,6 +1433,10 @@ static int validop (int op, TValue *v1, TValue *v2) {
     }
     case LUA_OPDIV: case LUA_OPIDIV: case LUA_OPMOD:  /* division by 0 */
       return (nvalue(v2) != 0);
+    case LUA_OPPOW:  /* integer negative exponent not allowed */
+      if (ttisinteger(v1) && ttisinteger(v2) && ivalue(v2) < 0)
+        return 0;
+      return 1;
     default: return 1;  /* everything else is valid */
   }
 }

@@ -22,10 +22,10 @@ extend Int64 {
 }
 
 let x = 2
-expectEq(x.pow(10), 1024.0, "variable.pow(10)")
-expectEq(2.pow(10), 1024.0, "2.pow(10)")
-expectEq(0.pow(5), 0.0, "0.pow(5)")
-expectEq(1.pow(100), 1.0, "1.pow(100)")
+expectEq(x.pow(10), 1024, "variable.pow(10)")
+expectEq(2.pow(10), 1024, "2.pow(10)")
+expectEq(0.pow(5), 0, "0.pow(5)")
+expectEq(1.pow(100), 1, "1.pow(100)")
 expectEq(3.double(), 6, "3.double()")
 expectEq(0.double(), 0, "0.double()")
 expectTrue(4.isEven(), "4.isEven()")
@@ -33,7 +33,7 @@ expectFalse(3.isEven(), "3.isEven()")
 expectTrue(0.isEven(), "0.isEven()")
 
 // Negative number in parens (unary minus is separate token)
-expectEq((-5).pow(2), 25.0, "(-5).pow(2)")
+expectEq((-5).pow(2), 25, "(-5).pow(2)")
 expectEq((-1).double(), -2, "(-1).double()")
 
 // -- Section: Float64 literal method calls --
@@ -111,7 +111,7 @@ expectFalse(3.even(), "3.even()")
 expectTrue(0.even(), "0.even()")
 
 // -- Section: Extend methods used in expressions --
-expectEq(2.pow(3) + 3.pow(2), 17.0, "2.pow(3) + 3.pow(2)")
+expectEq(2.pow(3) + 3.pow(2), 17, "2.pow(3) + 3.pow(2)")
 expectTrue(10.isEven() && 4.isEven(), "10.isEven() && 4.isEven()")
 expectFalse(3.isEven() || 5.isEven(), "3.isEven() || 5.isEven()")
 

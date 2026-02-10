@@ -785,6 +785,39 @@ lua_Integer luaV_idiv (lua_State *L, lua_Integer m, lua_Integer n) {
 
 
 /*
+** Integer division with truncation (like C/Java), used for Int64 '/'.
+*/
+lua_Integer luaV_divi (lua_State *L, lua_Integer m, lua_Integer n) {
+  if (l_unlikely(l_castS2U(n) + 1u <= 1u)) {  /* special cases: -1 or 0 */
+    if (n == 0)
+      luaG_runerror(L, "attempt to divide by zero");
+    return intop(-, 0, m);  /* n==-1; avoid overflow with mininteger/-1 */
+  }
+  return m / n;
+}
+
+
+/*
+** Integer power, used when both operands are Int64.
+*/
+lua_Integer luaV_powi (lua_State *L, lua_Integer m, lua_Integer n) {
+  lua_Integer result = 1;
+  lua_Integer base = m;
+  lua_Unsigned exp = l_castS2U(n);
+  if (n < 0)
+    luaG_runerror(L, "integer exponent must be non-negative");
+  while (exp != 0u) {
+    if (exp & 1u)
+      result = intop(*, result, base);
+    exp >>= 1;
+    if (exp != 0u)
+      base = intop(*, base, base);
+  }
+  return result;
+}
+
+
+/*
 ** Integer modulus; return 'm % n'. (Assume that C '%' with
 ** negative operands follows C99 behavior. See previous comment
 ** about luaV_idiv.)
@@ -1465,11 +1498,11 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POWK) {
-        op_arithfK(L, luai_numpow);
+        op_arithK(L, luaV_powi, luai_numpow);
         vmbreak;
       }
       vmcase(OP_DIVK) {
-        op_arithfK(L, luai_numdiv);
+        op_arithK(L, luaV_divi, luai_numdiv);
         vmbreak;
       }
       vmcase(OP_IDIVK) {
@@ -1527,11 +1560,11 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POW) {
-        op_arithf(L, luai_numpow);
+        op_arith(L, luaV_powi, luai_numpow);
         vmbreak;
       }
-      vmcase(OP_DIV) {  /* float division (always with floats) */
-        op_arithf(L, luai_numdiv);
+      vmcase(OP_DIV) {
+        op_arith(L, luaV_divi, luai_numdiv);
         vmbreak;
       }
       vmcase(OP_IDIV) {  /* floor division */

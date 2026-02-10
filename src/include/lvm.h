@@ -118,7 +118,9 @@ LUAI_FUNC int luaV_lessequal (lua_State *L, const TValue *l, const TValue *r);
 LUAI_FUNC int luaV_tonumber_ (const TValue *obj, lua_Number *n);
 LUAI_FUNC int luaV_tointeger (const TValue *obj, lua_Integer *p, F2Imod mode);
 LUAI_FUNC int luaV_tointegerns (const TValue *obj, lua_Integer *p,
-                                F2Imod mode);
+                               F2Imod mode);
+LUAI_FUNC lua_Integer luaV_divi (lua_State *L, lua_Integer m, lua_Integer n);
+LUAI_FUNC lua_Integer luaV_powi (lua_State *L, lua_Integer m, lua_Integer n);
 LUAI_FUNC int luaV_flttointeger (lua_Number n, lua_Integer *p, F2Imod mode);
 LUAI_FUNC lu_byte luaV_finishget (lua_State *L, const TValue *t, TValue *key,
                                                 StkId val, lu_byte tag);
