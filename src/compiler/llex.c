@@ -274,7 +274,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
       hasexp = 1;
       check_next2(ls, "-+");  /* optional exponent sign */
     }
-    else if (lisxdigit(ls->current))  /* hex digit */
+    else if (ishex ? lisxdigit(ls->current) : lisdigit(ls->current))
       save_and_next(ls);
     else if (ls->current == '.') {
       /* Don't consume '.' if next char is also '.' (range operator) */
@@ -369,7 +369,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
     if (luaO_str2num(luaZ_buffer(ls->buff), &obj) == 0)
       lexerror(ls, "malformed number", TK_FLT);
     seminfo->r = ttisfloat(&obj) ? fltvalue(&obj)
-                                 : cast_num(ttisuint64(&obj) ? uvalue(&obj)
+                                 : cast_num(ttisuint64(&obj) ? u64value(&obj)
                                                              : ivalue(&obj));
     return TK_FLT;
   }
@@ -384,7 +384,7 @@ static int read_numeral (LexState *ls, SemInfo *seminfo) {
     return TK_FLT;
   }
   lua_assert(ttisuint64(&obj));
-  seminfo->u = uvalue(&obj);
+  seminfo->u = u64value(&obj);
   return TK_UINT;
 }
 

@@ -112,7 +112,7 @@ int luaV_tonumber_ (const TValue *obj, lua_Number *n) {
     return 1;
   }
   else if (ttisuint64(obj)) {
-    *n = cast_num(uvalue(obj));
+    *n = cast_num(u64value(obj));
     return 1;
   }
   else if (l_strton(obj, &v)) {  /* string coercible to number? */
@@ -498,21 +498,21 @@ l_sinline int LTnum (const TValue *l, const TValue *r) {
   lua_assert(ttisnumber(l) && ttisnumber(r));
   if (ttisfloat(l) || ttisfloat(r)) {
     lua_Number lf = ttisfloat(l) ? fltvalue(l)
-                                 : cast_num(ttisuint64(l) ? uvalue(l)
+                                 : cast_num(ttisuint64(l) ? u64value(l)
                                                          : ivalue(l));
     lua_Number rf = ttisfloat(r) ? fltvalue(r)
-                                 : cast_num(ttisuint64(r) ? uvalue(r)
+                                 : cast_num(ttisuint64(r) ? u64value(r)
                                                          : ivalue(r));
     return luai_numlt(lf, rf);
   }
   if (ttisuint64(l)) {
-    lua_Unsigned lu = uvalue(l);
+    lua_Unsigned lu = u64value(l);
     if (ttisuint64(r))
-      return lu < uvalue(r);
+      return lu < u64value(r);
     return l_castU2S(lu) < ivalue(r);
   }
   if (ttisuint64(r))
-    return ivalue(l) < l_castU2S(uvalue(r));
+    return ivalue(l) < l_castU2S(u64value(r));
   return ivalue(l) < ivalue(r);
 }
 
@@ -524,21 +524,21 @@ l_sinline int LEnum (const TValue *l, const TValue *r) {
   lua_assert(ttisnumber(l) && ttisnumber(r));
   if (ttisfloat(l) || ttisfloat(r)) {
     lua_Number lf = ttisfloat(l) ? fltvalue(l)
-                                 : cast_num(ttisuint64(l) ? uvalue(l)
+                                 : cast_num(ttisuint64(l) ? u64value(l)
                                                          : ivalue(l));
     lua_Number rf = ttisfloat(r) ? fltvalue(r)
-                                 : cast_num(ttisuint64(r) ? uvalue(r)
+                                 : cast_num(ttisuint64(r) ? u64value(r)
                                                          : ivalue(r));
     return luai_numle(lf, rf);
   }
   if (ttisuint64(l)) {
-    lua_Unsigned lu = uvalue(l);
+    lua_Unsigned lu = u64value(l);
     if (ttisuint64(r))
-      return lu <= uvalue(r);
+      return lu <= u64value(r);
     return l_castU2S(lu) <= ivalue(r);
   }
   if (ttisuint64(r))
-    return ivalue(l) <= l_castU2S(uvalue(r));
+    return ivalue(l) <= l_castU2S(u64value(r));
   return ivalue(l) <= ivalue(r);
 }
 
@@ -604,7 +604,7 @@ int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
       lua_Integer i1;
       if (luaV_flttointeger(fltvalue(t1), &i1, F2Ieq)) {
         if (ttisuint64(t2))
-          return i1 >= 0 && l_castS2U(i1) == uvalue(t2);
+          return i1 >= 0 && l_castS2U(i1) == u64value(t2);
         return i1 == ivalue(t2);
       }
       return 0;
@@ -613,17 +613,17 @@ int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
       lua_Integer i2;
       if (luaV_flttointeger(fltvalue(t2), &i2, F2Ieq)) {
         if (ttisuint64(t1))
-          return i2 >= 0 && l_castS2U(i2) == uvalue(t1);
+          return i2 >= 0 && l_castS2U(i2) == u64value(t1);
         return i2 == ivalue(t1);
       }
       return 0;
     }
     if (ttisuint64(t1) && ttisuint64(t2))
-      return uvalue(t1) == uvalue(t2);
+      return u64value(t1) == u64value(t2);
     if (ttisuint64(t1))
-      return l_castU2S(uvalue(t1)) == ivalue(t2);
+      return l_castU2S(u64value(t1)) == ivalue(t2);
     if (ttisuint64(t2))
-      return ivalue(t1) == l_castU2S(uvalue(t2));
+      return ivalue(t1) == l_castU2S(u64value(t2));
     return ivalue(t1) == ivalue(t2);
   }
   if (ttype(t1) != ttype(t2))  /* not the same type? */
@@ -661,7 +661,7 @@ int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
       case LUA_VNUMINT:
         return (ivalue(t1) == ivalue(t2));
       case LUA_VNUMUINT:
-        return (uvalue(t1) == uvalue(t2));
+        return (u64value(t1) == u64value(t2));
       case LUA_VNUMFLT:
         return (fltvalue(t1) == fltvalue(t2));
       case LUA_VRUNE:
@@ -1028,7 +1028,7 @@ void luaV_finishOp (lua_State *L) {
     pc++; setivalue(ra, iop(L, iv1, imm));  \
   }  \
   else if (ttisuint64(v1)) {  \
-    lua_Unsigned uv1 = uvalue(v1); \
+    lua_Unsigned uv1 = u64value(v1); \
     if (!luai_uintfitsint(uv1)) \
       luaG_runerror(L, "UInt64 value out of Int64 range"); \
     lua_Integer iv1 = l_castU2S(uv1);  \
@@ -1082,17 +1082,17 @@ void luaV_finishOp (lua_State *L) {
   }  \
   else if (ttisuint64(v1) && ttisuint64(v2)) {  \
     StkId ra = RA(i); \
-    lua_Unsigned u1 = uvalue(v1); lua_Unsigned u2 = uvalue(v2);  \
-    pc++; setuvalue(s2v(ra), uop(L, u1, u2));  \
+    lua_Unsigned u1 = u64value(v1); lua_Unsigned u2 = u64value(v2);  \
+    pc++; setu64value(s2v(ra), uop(L, u1, u2));  \
   }  \
   else if ((ttisinteger(v1) || ttisuint64(v1)) && \
            (ttisinteger(v2) || ttisuint64(v2))) {  \
     StkId ra = RA(i); \
-    if ((ttisuint64(v1) && !luai_uintfitsint(uvalue(v1))) || \
-        (ttisuint64(v2) && !luai_uintfitsint(uvalue(v2)))) \
+    if ((ttisuint64(v1) && !luai_uintfitsint(u64value(v1))) || \
+        (ttisuint64(v2) && !luai_uintfitsint(u64value(v2)))) \
       luaG_runerror(L, "UInt64 value out of Int64 range"); \
-    lua_Integer i1 = ttisuint64(v1) ? l_castU2S(uvalue(v1)) : ivalue(v1); \
-    lua_Integer i2 = ttisuint64(v2) ? l_castU2S(uvalue(v2)) : ivalue(v2); \
+    lua_Integer i1 = ttisuint64(v1) ? l_castU2S(u64value(v1)) : ivalue(v1); \
+    lua_Integer i2 = ttisuint64(v2) ? l_castU2S(u64value(v2)) : ivalue(v2); \
     pc++; setivalue(s2v(ra), iop(L, i1, i2));  \
   }  \
   else op_arithf_aux(L, v1, v2, fop); }
@@ -1123,19 +1123,19 @@ void luaV_finishOp (lua_State *L) {
   TValue *v1 = vRB(i);  \
   TValue *v2 = KC(i);  \
   lua_Integer i1;  \
-  lua_Unsigned u2 = ttisuint64(v2) ? uvalue(v2) : l_castS2U(ivalue(v2)); \
+  lua_Unsigned u2 = ttisuint64(v2) ? u64value(v2) : l_castS2U(ivalue(v2)); \
   lua_Integer i2 = l_castU2S(u2);  \
   if (ttisuint64(v1) && ttisuint64(v2)) {  \
     StkId ra = RA(i); \
-    pc++; setuvalue(s2v(ra), op(uvalue(v1), u2)); \
+    pc++; setu64value(s2v(ra), op(u64value(v1), u2)); \
   } \
   else if ((ttisinteger(v1) || ttisuint64(v1)) && \
            (ttisinteger(v2) || ttisuint64(v2))) {  \
     StkId ra = RA(i); \
-    if ((ttisuint64(v1) && !luai_uintfitsint(uvalue(v1))) || \
+    if ((ttisuint64(v1) && !luai_uintfitsint(u64value(v1))) || \
         (ttisuint64(v2) && !luai_uintfitsint(u2))) \
       luaG_runerror(L, "UInt64 value out of Int64 range"); \
-    i1 = ttisuint64(v1) ? l_castU2S(uvalue(v1)) : ivalue(v1); \
+    i1 = ttisuint64(v1) ? l_castU2S(u64value(v1)) : ivalue(v1); \
     pc++; setivalue(s2v(ra), op(i1, i2));  \
   } \
   else if (tointegerns(v1, &i1)) {  \
@@ -1153,16 +1153,16 @@ void luaV_finishOp (lua_State *L) {
   lua_Integer i1; lua_Integer i2;  \
   if (ttisuint64(v1) && ttisuint64(v2)) {  \
     StkId ra = RA(i); \
-    pc++; setuvalue(s2v(ra), op(uvalue(v1), uvalue(v2)));  \
+    pc++; setu64value(s2v(ra), op(u64value(v1), u64value(v2)));  \
   } \
   else if ((ttisinteger(v1) || ttisuint64(v1)) && \
            (ttisinteger(v2) || ttisuint64(v2))) {  \
     StkId ra = RA(i); \
-    if ((ttisuint64(v1) && !luai_uintfitsint(uvalue(v1))) || \
-        (ttisuint64(v2) && !luai_uintfitsint(uvalue(v2)))) \
+    if ((ttisuint64(v1) && !luai_uintfitsint(u64value(v1))) || \
+        (ttisuint64(v2) && !luai_uintfitsint(u64value(v2)))) \
       luaG_runerror(L, "UInt64 value out of Int64 range"); \
-    i1 = ttisuint64(v1) ? l_castU2S(uvalue(v1)) : ivalue(v1); \
-    i2 = ttisuint64(v2) ? l_castU2S(uvalue(v2)) : ivalue(v2); \
+    i1 = ttisuint64(v1) ? l_castU2S(u64value(v1)) : ivalue(v1); \
+    i2 = ttisuint64(v2) ? l_castU2S(u64value(v2)) : ivalue(v2); \
     pc++; setivalue(s2v(ra), op(i1, i2));  \
   }}
 
@@ -1199,7 +1199,7 @@ void luaV_finishOp (lua_State *L) {
   if (ttisinteger(ra))  \
     cond = opi(ivalue(ra), im);  \
   else if (ttisuint64(ra))  \
-    cond = opi(l_castU2S(uvalue(ra)), im);  \
+    cond = opi(l_castU2S(u64value(ra)), im);  \
   else if (ttisfloat(ra)) {  \
     lua_Number fa = fltvalue(ra);  \
     lua_Number fim = cast_num(im);  \
@@ -1615,7 +1615,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         int ic = GETARG_sC(i);
         lua_Integer ib;
         if (ttisuint64(rb)) {
-          lua_Unsigned ub = uvalue(rb);
+          lua_Unsigned ub = u64value(rb);
           if (!luai_uintfitsint(ub))
             luaG_runerror(L, "UInt64 value out of Int64 range");
           ib = l_castU2S(ub);
@@ -1632,7 +1632,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         int ic = GETARG_sC(i);
         lua_Integer ib;
         if (ttisuint64(rb)) {
-          lua_Unsigned ub = uvalue(rb);
+          lua_Unsigned ub = u64value(rb);
           if (!luai_uintfitsint(ub))
             luaG_runerror(L, "UInt64 value out of Int64 range");
           ib = l_castU2S(ub);
@@ -1732,7 +1732,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           setivalue(s2v(ra), intop(-, 0, ib));
         }
         else if (ttisuint64(rb)) {
-          lua_Unsigned ub = uvalue(rb);
+          lua_Unsigned ub = u64value(rb);
           if (!luai_uintfitsint(ub))
             luaG_runerror(L, "UInt64 value out of Int64 range");
           lua_Integer ib = l_castU2S(ub);
@@ -1750,7 +1750,7 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         TValue *rb = vRB(i);
         lua_Integer ib;
         if (ttisuint64(rb)) {
-          setuvalue(s2v(ra), ~uvalue(rb));
+          setu64value(s2v(ra), ~u64value(rb));
         }
         else if (tointegerns(rb, &ib)) {
           setivalue(s2v(ra), intop(^, ~l_castS2U(0), ib));

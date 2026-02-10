@@ -62,7 +62,7 @@ static int tonumeral (const expdesc *e, TValue *v) {
       if (v) setivalue(v, e->u.ival);
       return 1;
     case VKUINT:
-      if (v) setuvalue(v, e->u.uval);
+      if (v) setu64value(v, e->u.uval);
       return 1;
     case VKFLT:
       if (v) setfltvalue(v, e->u.nval);
@@ -611,7 +611,7 @@ static int luaK_intK (FuncState *fs, lua_Integer n) {
 */
 static int luaK_uintK (FuncState *fs, lua_Unsigned n) {
   TValue o;
-  setuvalue(&o, n);
+  setu64value(&o, n);
   return k2proto(fs, &o, &o);
 }
 
@@ -765,7 +765,7 @@ static void const2exp (TValue *v, expdesc *e) {
       e->k = VKINT; e->u.ival = ivalue(v);
       break;
     case LUA_VNUMUINT:
-      e->k = VKUINT; e->u.uval = uvalue(v);
+      e->k = VKUINT; e->u.uval = u64value(v);
       break;
     case LUA_VNUMFLT:
       e->k = VKFLT; e->u.nval = fltvalue(v);
@@ -1475,7 +1475,7 @@ static int constfolding (FuncState *fs, int op, expdesc *e1,
   luaO_rawarith(fs->ls->L, op, &v1, &v2, &res);  /* does operation */
   if (ttisuint64(&res)) {
     e1->k = VKUINT;
-    e1->u.uval = uvalue(&res);
+    e1->u.uval = u64value(&res);
   }
   else if (ttisinteger(&res)) {
     e1->k = VKINT;

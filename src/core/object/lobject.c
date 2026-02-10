@@ -174,7 +174,7 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     case LUA_OPSHL: case LUA_OPSHR:
     case LUA_OPBNOT: {  /* operate only on integers */
       if (ttisuint64(p1) && ttisuint64(p2)) {
-        setuvalue(res, uintarith(L, op, uvalue(p1), uvalue(p2)));
+        setu64value(res, uintarith(L, op, u64value(p1), u64value(p2)));
         return 1;
       }
       else if (ttisint64(p1) && ttisint64(p2)) {
@@ -183,11 +183,11 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
       }
       else if ((ttisint64(p1) || ttisuint64(p1)) &&
                (ttisint64(p2) || ttisuint64(p2))) {
-        if ((ttisuint64(p1) && !luai_uintfitsint(uvalue(p1))) ||
-            (ttisuint64(p2) && !luai_uintfitsint(uvalue(p2))))
+        if ((ttisuint64(p1) && !luai_uintfitsint(u64value(p1))) ||
+            (ttisuint64(p2) && !luai_uintfitsint(u64value(p2))))
           luaG_runerror(L, "UInt64 value out of Int64 range");
-        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
-        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
+        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(u64value(p1)) : ivalue(p1);
+        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(u64value(p2)) : ivalue(p2);
         setivalue(res, intarith(L, op, i1, i2));
         return 1;
       }
@@ -204,22 +204,22 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     default: {  /* other operations */
       lua_Number n1; lua_Number n2;
       if (op == LUA_OPUNM && ttisuint64(p1)) {
-        if (!luai_uintfitsint(uvalue(p1)))
+        if (!luai_uintfitsint(u64value(p1)))
           luaG_runerror(L, "UInt64 value out of Int64 range");
-        setivalue(res, intarith(L, op, l_castU2S(uvalue(p1)), 0));
+        setivalue(res, intarith(L, op, l_castU2S(u64value(p1)), 0));
         return 1;
       }
       if (ttisuint64(p1) && ttisuint64(p2)) {
-        setuvalue(res, uintarith(L, op, uvalue(p1), uvalue(p2)));
+        setu64value(res, uintarith(L, op, u64value(p1), u64value(p2)));
         return 1;
       }
       if ((ttisint64(p1) || ttisuint64(p1)) &&
           (ttisint64(p2) || ttisuint64(p2))) {
-        if ((ttisuint64(p1) && !luai_uintfitsint(uvalue(p1))) ||
-            (ttisuint64(p2) && !luai_uintfitsint(uvalue(p2))))
+        if ((ttisuint64(p1) && !luai_uintfitsint(u64value(p1))) ||
+            (ttisuint64(p2) && !luai_uintfitsint(u64value(p2))))
           luaG_runerror(L, "UInt64 value out of Int64 range");
-        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(uvalue(p1)) : ivalue(p1);
-        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(uvalue(p2)) : ivalue(p2);
+        lua_Integer i1 = ttisuint64(p1) ? l_castU2S(u64value(p1)) : ivalue(p1);
+        lua_Integer i2 = ttisuint64(p2) ? l_castU2S(u64value(p2)) : ivalue(p2);
         setivalue(res, intarith(L, op, i1, i2));
         return 1;
       }
@@ -482,22 +482,28 @@ size_t luaO_str2num (const char *s, TValue *o) {
     numstr = buff;
   }
   if (suffix == 2) {
-    if ((e = l_str2uint(numstr, &u)) != NULL)
-      setuvalue(o, u);
-    else
+    if ((e = l_str2uint(numstr, &u)) != NULL) {
+      setu64value(o, u);
+    }
+    else {
       return 0;
+    }
   }
   else if (suffix == 3) {
-    if ((e = l_str2d(numstr, &n)) != NULL)
+    if ((e = l_str2d(numstr, &n)) != NULL) {
       setfltvalue(o, n);
-    else
+    }
+    else {
       return 0;
+    }
   }
   else if (suffix == 1) {
-    if ((e = l_str2int(numstr, &i)) != NULL)
+    if ((e = l_str2int(numstr, &i)) != NULL) {
       setivalue(o, i);
-    else
+    }
+    else {
       return 0;
+    }
   }
   else if ((e = l_str2int(numstr, &i)) != NULL) {  /* try as an integer */
     setivalue(o, i);
@@ -505,8 +511,9 @@ size_t luaO_str2num (const char *s, TValue *o) {
   else if ((e = l_str2d(numstr, &n)) != NULL) {  /* else try as a float */
     setfltvalue(o, n);
   }
-  else
+  else {
     return 0;  /* conversion failed */
+  }
   UNUSED(e);
   return len + 1;  /* success; return string size */
 }
@@ -584,7 +591,7 @@ unsigned luaO_tostringbuff (const TValue *obj, char *buff) {
     return cast_uint(nbytes);
   }
   else if (ttisuint64(obj))
-    len = lua_unsigned2str(buff, LUA_N2SBUFFSZ, uvalue(obj));
+    len = lua_unsigned2str(buff, LUA_N2SBUFFSZ, u64value(obj));
   else if (ttisinteger(obj))
     len = lua_integer2str(buff, LUA_N2SBUFFSZ, ivalue(obj));
   else

@@ -192,7 +192,7 @@ static Node *mainpositionTV (const Table *t, const TValue *key) {
       return hashint(t, i);
     }
     case LUA_VNUMUINT: {
-      lua_Unsigned u = uvalue(key);
+      lua_Unsigned u = u64value(key);
       if (u <= (lua_Unsigned)LUA_MAXINTEGER)
         return hashint(t, l_castU2S(u));
       return hashmod(t, u);
@@ -275,7 +275,7 @@ static int equalkey (const TValue *k1, const Node *n2, int deadok) {
       case LUA_VNUMINT:
         return (ivalue(k1) == keyival(n2));
       case LUA_VNUMUINT:
-        return (uvalue(k1) == l_castS2U(keyival(n2)));
+        return (u64value(k1) == l_castS2U(keyival(n2)));
       case LUA_VNUMFLT:
         return luai_numeq(fltvalue(k1), fltvalueraw(keyval(n2)));
       case LUA_VLIGHTUSERDATA:
@@ -1033,7 +1033,7 @@ lu_byte luaH_get (Table *t, const TValue *key, TValue *res) {
     case LUA_VNUMINT:
       return luaH_getint(t, ivalue(key), res);
     case LUA_VNUMUINT: {
-      lua_Unsigned u = uvalue(key);
+      lua_Unsigned u = u64value(key);
       if (u <= (lua_Unsigned)LUA_MAXINTEGER)
         return luaH_getint(t, l_castU2S(u), res);
       slot = getgeneric(t, key, 0);
@@ -1148,7 +1148,7 @@ int luaH_pset (Table *t, const TValue *key, TValue *val) {
     case LUA_VSHRSTR: return luaH_psetshortstr(t, tsvalue(key), val);
     case LUA_VNUMINT: return psetint(t, ivalue(key), val);
     case LUA_VNUMUINT: {
-      lua_Unsigned u = uvalue(key);
+      lua_Unsigned u = u64value(key);
       if (u <= (lua_Unsigned)LUA_MAXINTEGER)
         return psetint(t, l_castU2S(u), val);
       return finishnodeset(t, getgeneric(t, key, 0), val);
@@ -1190,7 +1190,7 @@ void luaH_finishset (lua_State *L, Table *t, const TValue *key,
         luaG_runerror(L, "table index is NaN");
     }
     else if (ttisuint64(key)) {
-      lua_Unsigned u = uvalue(key);
+      lua_Unsigned u = u64value(key);
       if (u <= (lua_Unsigned)LUA_MAXINTEGER) {
         setivalue(&aux, l_castU2S(u));
         actk = &aux;

@@ -365,14 +365,14 @@ typedef struct GCObject {
 
 #define nvalue(o)	check_exp(ttisnumber(o), \
 	(ttisfloat(o) ? fltvalue(o) \
-	  : (ttisuint64(o) ? cast_num(uvalue(o)) : cast_num(ivalue(o)))))
+	  : (ttisuint64(o) ? cast_num(u64value(o)) : cast_num(ivalue(o)))))
 #define fltvalue(o)	check_exp(ttisfloat(o), val_(o).n)
 #define ivalue(o)	check_exp(ttisint64(o), val_(o).i)
-#define uvalue(o)	check_exp(ttisuint64(o), l_castS2U(val_(o).i))
+#define u64value(o)	check_exp(ttisuint64(o), l_castS2U(val_(o).i))
 
 #define fltvalueraw(v)	((v).n)
 #define ivalueraw(v)	((v).i)
-#define uvalueraw(v)	l_castS2U((v).i)
+#define u64valueraw(v)	l_castS2U((v).i)
 
 #define setfltvalue(obj,x) \
   { TValue *io=(obj); val_(io).n=(x); settt_(io, LUA_VNUMFLT); }
@@ -386,10 +386,10 @@ typedef struct GCObject {
 #define chgivalue(obj,x) \
   { TValue *io=(obj); lua_assert(ttisint64(io)); val_(io).i=(x); }
 
-#define setuvalue(obj,x) \
+#define setu64value(obj,x) \
   { TValue *io=(obj); val_(io).i=l_castU2S((x)); settt_(io, LUA_VNUMUINT); }
 
-#define chguvalue(obj,x) \
+#define chgu64value(obj,x) \
   { TValue *io=(obj); lua_assert(ttisuint64(io)); val_(io).i=l_castU2S((x)); }
 
 #define luai_uintfitsint(u)	((u) <= (lua_Unsigned)LUA_MAXINTEGER)

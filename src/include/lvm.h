@@ -56,7 +56,7 @@ typedef enum {
 #define tonumberns(o,n) \
 	(ttisfloat(o) ? ((n) = fltvalue(o), 1) : \
 	(ttisint64(o) ? ((n) = cast_num(ivalue(o)), 1) : \
-	(ttisuint64(o) ? ((n) = cast_num(uvalue(o)), 1) : 0)))
+	(ttisuint64(o) ? ((n) = cast_num(u64value(o)), 1) : 0)))
 
 
 /* convert an object to an integer (including string coercion) */
