@@ -861,6 +861,7 @@ static void open_func (LexState *ls, FuncState *fs, BlockCnt *bl) {
   fs->ndebugvars = 0;
   fs->nactvar = 0;
   fs->needclose = 0;
+  fs->ret_is_option = 0;
   fs->firstlocal = ls->dyd->actvar.n;
   fs->firstlabel = ls->dyd->label.n;
   fs->bl = NULL;
@@ -1377,37 +1378,52 @@ static void body (LexState *ls, expdesc *e, int ismethod, int line) {
   parlist(ls);
   checknext(ls, ')');
   /* optional return type annotation ': Type' - skip it */
-  if (testnext(ls, ':')) {
-    int depth = 0;
-    if (ls->t.token == '?') luaX_next(ls);  /* skip ?Type sugar */
-    for (;;) {
-      if (ls->t.token == TK_NAME) {
-        luaX_next(ls);
+  {
+    int ret_is_option = 0;
+    if (testnext(ls, ':')) {
+      int depth = 0;
+      int has_type = 0;
+      if (ls->t.token == '?') {
+        ret_is_option = 1;
+        luaX_next(ls);  /* skip ?Type sugar */
       }
-      else if (ls->t.token == '<' || ls->t.token == '(') {
-        depth++;
-        luaX_next(ls);
-      }
-      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
-        depth--;
-        luaX_next(ls);
-        if (depth == 0 && ls->t.token == '-') {
-          if (luaX_lookahead(ls) == '>') {
-            luaX_next(ls);  /* skip '-' */
-            luaX_next(ls);  /* skip '>' */
+      for (;;) {
+        if (ls->t.token == TK_NAME) {
+          if (!has_type && depth == 0) {
+            const char *tname = getstr(ls->t.seminfo.ts);
+            if (strcmp(tname, "Option") == 0)
+              ret_is_option = 1;
+          }
+          has_type = 1;
+          luaX_next(ls);
+        }
+        else if (ls->t.token == '<' || ls->t.token == '(') {
+          depth++;
+          luaX_next(ls);
+        }
+        else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+          depth--;
+          luaX_next(ls);
+          if (depth == 0 && ls->t.token == '-') {
+            if (luaX_lookahead(ls) == '>') {
+              luaX_next(ls);  /* skip '-' */
+              luaX_next(ls);  /* skip '>' */
+            }
           }
         }
-      }
-      else if (ls->t.token == ',' && depth > 0) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '?' && depth > 0) {
-        luaX_next(ls);
-      }
-      else {
-        break;
+        else if (ls->t.token == ',' && depth > 0) {
+          luaX_next(ls);
+        }
+        else if (ls->t.token == '?' && depth > 0) {
+          luaX_next(ls);
+        }
+        else {
+          break;
+        }
       }
     }
+    new_fs.ret_is_option = cast_byte(ret_is_option);
+    new_fs.f->ret_is_option = cast_byte(ret_is_option);
   }
   checknext(ls, '{' /*}*/);
   statlist_autoreturning(ls);
@@ -1438,46 +1454,58 @@ static int body_or_abstract (LexState *ls, expdesc *e, int ismethod, int line) {
   parlist(ls);
   checknext(ls, ')');
   /* optional return type annotation */
-  if (testnext(ls, ':')) {
-    int depth = 0;
-    if (ls->t.token == '?') luaX_next(ls);
-    for (;;) {
-      if (ls->t.token == TK_NAME) {
-        if (depth == 0) {
-          /* At top level, check if this NAME is the start of a new
-          ** declaration rather than part of the return type. */
-          const char *nm = getstr(ls->t.seminfo.ts);
-          if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0) {
-            break;  /* known declaration keywords - stop */
+  {
+    int ret_is_option = 0;
+    if (testnext(ls, ':')) {
+      int depth = 0;
+      int has_type = 0;
+      if (ls->t.token == '?') {
+        ret_is_option = 1;
+        luaX_next(ls);
+      }
+      for (;;) {
+        if (ls->t.token == TK_NAME) {
+          if (depth == 0) {
+            /* At top level, check if this NAME is the start of a new
+            ** declaration rather than part of the return type. */
+            const char *nm = getstr(ls->t.seminfo.ts);
+            if (!has_type && strcmp(nm, "Option") == 0)
+              ret_is_option = 1;
+            if (strcmp(nm, "operator") == 0 || strcmp(nm, "static") == 0) {
+              break;  /* known declaration keywords - stop */
+            }
+            if (luaX_lookahead(ls) == '(') break;
           }
-          if (luaX_lookahead(ls) == '(') break;
+          has_type = 1;
+          luaX_next(ls);
         }
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '<' || ls->t.token == '(') {
-        depth++;
-        luaX_next(ls);
-      }
-      else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
-        depth--;
-        luaX_next(ls);
-        if (depth == 0 && ls->t.token == '-') {
-          if (luaX_lookahead(ls) == '>') {
-            luaX_next(ls);
-            luaX_next(ls);
+        else if (ls->t.token == '<' || ls->t.token == '(') {
+          depth++;
+          luaX_next(ls);
+        }
+        else if ((ls->t.token == '>' || ls->t.token == ')') && depth > 0) {
+          depth--;
+          luaX_next(ls);
+          if (depth == 0 && ls->t.token == '-') {
+            if (luaX_lookahead(ls) == '>') {
+              luaX_next(ls);
+              luaX_next(ls);
+            }
           }
         }
-      }
-      else if (ls->t.token == ',' && depth > 0) {
-        luaX_next(ls);
-      }
-      else if (ls->t.token == '?' && depth > 0) {
-        luaX_next(ls);
-      }
-      else {
-        break;
+        else if (ls->t.token == ',' && depth > 0) {
+          luaX_next(ls);
+        }
+        else if (ls->t.token == '?' && depth > 0) {
+          luaX_next(ls);
+        }
+        else {
+          break;
+        }
       }
     }
+    new_fs.ret_is_option = cast_byte(ret_is_option);
+    new_fs.f->ret_is_option = cast_byte(ret_is_option);
   }
   if (ls->t.token != '{') {
     /* Abstract method - no body. Close the function scope and return 0. */

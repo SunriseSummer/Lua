@@ -530,6 +530,47 @@ l_sinline int LEnum (const TValue *l, const TValue *r) {
   }
 }
 
+/*
+** Wrap a return value into Option when the function return type is Option<T>.
+*/
+static int is_option_value (lua_State *L, const TValue *v) {
+  if (ttistable(v)) {
+    const TValue *tag = luaH_Hgetshortstr(hvalue(v), luaS_new(L, "__tag"));
+    if (ttisstring(tag)) {
+      const char *tname = getstr(tsvalue(tag));
+      if (strcmp(tname, "Some") == 0 || strcmp(tname, "None") == 0)
+        return 1;
+    }
+  }
+  return 0;
+}
+
+static void wrap_option_return (lua_State *L, StkId ra) {
+  luaD_checkstack(L, 4);
+  TValue *val = s2v(ra);
+  if (ttisnil(val)) {
+    lua_getglobal(L, "None");
+    setobj2s(L, ra, s2v(L->top.p - 1));
+    L->top.p--;
+    return;
+  }
+  if (is_option_value(L, val))
+    return;
+  lua_newtable(L);
+  lua_pushliteral(L, "Some");
+  lua_setfield(L, -2, "__tag");
+  setobj2s(L, L->top.p, val);
+  L->top.p++;
+  lua_rawseti(L, -2, 1);
+  lua_getglobal(L, "__option_mt");
+  if (!lua_isnil(L, -1))
+    lua_setmetatable(L, -2);
+  else
+    lua_pop(L, 1);
+  setobj2s(L, ra, s2v(L->top.p - 1));
+  L->top.p--;
+}
+
 
 /*
 ** return 'l < r' for non-numbers.
@@ -585,6 +626,10 @@ int luaV_lessequal (lua_State *L, const TValue *l, const TValue *r) {
 */
 int luaV_equalobj (lua_State *L, const TValue *t1, const TValue *t2) {
   const TValue *tm;
+  if (L != NULL &&
+      ((ttisrune(t1) && ttisnumber(t2)) || (ttisrune(t2) && ttisnumber(t1)))) {
+    luaG_ordererror(L, t1, t2);
+  }
   if (ttype(t1) != ttype(t2))  /* not the same type? */
     return 0;
   else if (ttypetag(t1) != ttypetag(t2)) {
@@ -1673,7 +1718,12 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         StkId ra = RA(i);
         TValue *rb = KB(i);
         /* basic types do not use '__eq'; we can use raw equality */
-        int cond = luaV_rawequalobj(s2v(ra), rb);
+        int cond;
+        if ((ttisrune(s2v(ra)) && ttisnumber(rb)) ||
+            (ttisnumber(s2v(ra)) && ttisrune(rb))) {
+          Protect(luaG_ordererror(L, s2v(ra), rb));
+        }
+        cond = luaV_rawequalobj(s2v(ra), rb);
         docondjump();
         vmbreak;
       }
@@ -1685,6 +1735,12 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
           cond = (ivalue(s2v(ra)) == im);
         else if (ttisfloat(s2v(ra)))
           cond = luai_numeq(fltvalue(s2v(ra)), cast_num(im));
+        else if (ttisrune(s2v(ra))) {
+          TValue aux;
+          setivalue(&aux, im);
+          Protect(luaG_ordererror(L, s2v(ra), &aux));
+          cond = 0;
+        }
         else
           cond = 0;  /* other types cannot be equal to a number */
         docondjump();
@@ -1772,6 +1828,13 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         int nparams1 = GETARG_C(i);
         if (n < 0)  /* not fixed? */
           n = cast_int(L->top.p - ra);  /* get what is available */
+        if (ci_func(ci)->p->ret_is_option) {
+          if (n <= 0) {
+            setnilvalue(s2v(ra));
+            n = 1;
+          }
+          wrap_option_return(L, ra);
+        }
         savepc(ci);
         if (TESTARG_k(i)) {  /* may there be open upvalues? */
           ci->u2.nres = n;  /* save number of returns */
@@ -1820,6 +1883,8 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
             L->top.p = base - 1;  /* asked for no results */
           else {
             StkId ra = RA(i);
+            if (ci_func(ci)->p->ret_is_option)
+              wrap_option_return(L, ra);
             setobjs2s(L, base - 1, ra);  /* at least this result */
             L->top.p = base;
             for (; l_unlikely(nres > 1); nres--)

@@ -27,9 +27,24 @@ expectRuntimeError("Rune() invalid code point (negative)",
 expectRuntimeError("Rune() code point too large",
     "Rune(0x110000)", "invalid Unicode code point")
 
-// -- Section: Rune comparison with incompatible type should not crash --
-expectNoError("Rune == integer comparison",
-    "let r = r'A'; let b = (r == 65)")
+// -- Section: Rune comparison with integer should error --
+expectRuntimeError("Rune == integer comparison",
+    "let r = r'A'; let b = (r == 65)", "compare")
+
+expectRuntimeError("integer == Rune comparison",
+    "let r = r'A'; let b = (65 == r)", "compare")
+
+expectRuntimeError("Rune < integer comparison",
+    "let r = r'A'; let b = (r < 65)", "compare")
+
+expectRuntimeError("Rune >= integer comparison",
+    "let r = r'A'; let b = (r >= 65)", "compare")
+
+expectRuntimeError("Rune != integer comparison",
+    "let r = r'A'; let b = (r != 65)", "compare")
+
+expectRuntimeError("Rune + integer arithmetic",
+    "let r = r'A'; let b = r + 1", "perform arithmetic on")
 
 expectNoError("Rune == string comparison",
     'let r = r\'A\'; let b = (r == "A")')
