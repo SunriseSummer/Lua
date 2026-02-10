@@ -133,7 +133,8 @@ static lua_Integer intarith (lua_State *L, int op, lua_Integer v1,
 }
 
 /* Integer exponentiation; returns 1 on success (non-negative exponent),
-** or 0 to signal fallback to floating-point pow.
+** or 0 to signal fallback to floating-point pow. Overflow follows the
+** usual integer arithmetic wrap behavior of 'intop'.
 */
 static int intpow (lua_Integer base, lua_Integer exp, lua_Integer *res) {
   if (exp < 0)
@@ -185,9 +186,9 @@ int luaO_rawarith (lua_State *L, int op, const TValue *p1, const TValue *p2,
     case LUA_OPDIV: case LUA_OPPOW: {  /* operate only on floats */
       lua_Number n1; lua_Number n2;
       if (op == LUA_OPPOW && ttisinteger(p1) && ttisinteger(p2)) {
-        lua_Integer r;
-        if (intpow(ivalue(p1), ivalue(p2), &r)) {
-          setivalue(res, r);
+        lua_Integer pow_result;
+        if (intpow(ivalue(p1), ivalue(p2), &pow_result)) {
+          setivalue(res, pow_result);
           return 1;
         }
       }
