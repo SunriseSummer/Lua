@@ -125,6 +125,78 @@ static int find_key_index (lua_State *L, int keys_idx, int key_idx,
   return -1;
 }
 
+
+static int hashmap_fetch_value (lua_State *L, int data_idx, int key_idx) {
+  data_idx = lua_absindex(L, data_idx);
+  key_idx = lua_absindex(L, key_idx);
+  lua_pushvalue(L, key_idx);
+  lua_rawget(L, data_idx);
+  if (lua_isnil(L, -1)) {
+    lua_pop(L, 1);
+    return 0;
+  }
+  return 1;
+}
+
+
+static void hashmap_store_value (lua_State *L, int data_idx,
+                                 int key_idx, int value_idx) {
+  data_idx = lua_absindex(L, data_idx);
+  key_idx = lua_absindex(L, key_idx);
+  value_idx = lua_absindex(L, value_idx);
+  lua_pushvalue(L, key_idx);
+  lua_pushvalue(L, value_idx);
+  lua_rawset(L, data_idx);
+}
+
+
+static void hashmap_insert_new (lua_State *L, int self, int data_idx,
+                                int keys_idx, int key_idx, int value_idx) {
+  lua_Integer size = get_int_field(L, self, "size", 0);
+  ensure_capacity(L, self, size + 1);
+  lua_pushvalue(L, key_idx);
+  lua_rawseti(L, keys_idx, size);
+  hashmap_store_value(L, data_idx, key_idx, value_idx);
+  set_size(L, self, size + 1);
+}
+
+
+static int hashmap_remove_key_internal (lua_State *L, int self, int key_idx,
+                                        int push_old) {
+  int data_idx = get_data_table(L, self);
+  int keys_idx = get_keys_table(L, self);
+  lua_Integer size = get_int_field(L, self, "size", 0);
+  int key_index;
+  if (!hashmap_fetch_value(L, data_idx, key_idx)) {
+    lua_pop(L, 2);
+    if (push_old) {
+      push_none(L);
+      return 1;
+    }
+    return 0;
+  }
+  if (push_old)
+    push_some(L, -1);
+  lua_pop(L, 1);
+  lua_pushvalue(L, key_idx);
+  lua_pushnil(L);
+  lua_rawset(L, data_idx);
+  key_index = find_key_index(L, keys_idx, key_idx, size);
+  if (key_index >= 0) {
+    lua_Integer i;
+    for (i = key_index + 1; i < size; i++) {
+      lua_rawgeti(L, keys_idx, i);
+      lua_rawseti(L, keys_idx, i - 1);
+    }
+    lua_pushnil(L);
+    lua_rawseti(L, keys_idx, size - 1);
+    set_size(L, self, size - 1);
+  }
+  lua_pop(L, 2);
+  return push_old ? 1 : 0;
+}
+
+
 static void push_tuple (lua_State *L, int key_idx, int value_idx) {
   key_idx = lua_absindex(L, key_idx);
   value_idx = lua_absindex(L, value_idx);
