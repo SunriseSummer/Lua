@@ -143,16 +143,6 @@ static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
 }
 
 
-static void register_class_global (lua_State *L, const char *name) {
-  int top = lua_gettop(L);
-  lua_insert(L, 1);
-  luaB_setup_class(L);
-  lua_pushvalue(L, 1);
-  lua_setglobal(L, name);
-  lua_remove(L, 1);
-  lua_settop(L, top);
-}
-
 static void arraylist_append_value (lua_State *L, int self, int data_idx,
                                     int value_idx) {
   lua_Integer size = get_int_field(L, self, "size", 0);
@@ -814,6 +804,6 @@ int luaB_arraylist_init (lua_State *L) {
   lua_setfield(L, -2, "of");
   lua_pushboolean(L, 1);
   lua_setfield(L, -2, "__static_of");
-  register_class_global(L, "ArrayList");
+  cangjie_register_class_global(L, "ArrayList");
   return 0;
 }

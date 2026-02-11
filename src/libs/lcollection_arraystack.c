@@ -80,16 +80,6 @@ static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
 }
 
 
-static void register_class_global (lua_State *L, const char *name) {
-  int top = lua_gettop(L);
-  lua_insert(L, 1);
-  luaB_setup_class(L);
-  lua_pushvalue(L, 1);
-  lua_setglobal(L, name);
-  lua_remove(L, 1);
-  lua_settop(L, top);
-}
-
 
 static int arraystack_init (lua_State *L) {
   int self = 1;
@@ -267,6 +257,6 @@ static const luaL_Reg arraystack_methods[] = {
 int luaB_arraystack_init (lua_State *L) {
   lua_newtable(L);
   luaL_setfuncs(L, arraystack_methods, 0);
-  register_class_global(L, "ArrayStack");
+  cangjie_register_class_global(L, "ArrayStack");
   return 0;
 }

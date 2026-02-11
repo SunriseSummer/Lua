@@ -115,16 +115,6 @@ static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
 }
 
 
-static void register_class_global (lua_State *L, const char *name) {
-  int top = lua_gettop(L);
-  lua_insert(L, 1);
-  luaB_setup_class(L);
-  lua_pushvalue(L, 1);
-  lua_setglobal(L, name);
-  lua_remove(L, 1);
-  lua_settop(L, top);
-}
-
 
 static int find_key_index (lua_State *L, int keys_idx, int key_idx,
                            lua_Integer size) {
@@ -431,10 +421,10 @@ static int hashset_clone (lua_State *L) {
     int new_keys = get_keys_table(L, new_self);
     for (i = 0; i < size; i++) {
       lua_rawgeti(L, keys_idx, i);
-      lua_rawseti(L, new_keys, i);
       lua_pushvalue(L, -1);
+      lua_rawseti(L, new_keys, i);
       lua_pushboolean(L, 1);
-      lua_rawset(L, new_data);
+      lua_rawset(L, new_data);  /* store key in data table */
     }
     lua_pushinteger(L, capacity);
     lua_setfield(L, new_self, "capacity");
@@ -729,6 +719,6 @@ static const luaL_Reg hashset_methods[] = {
 int luaB_hashset_init (lua_State *L) {
   lua_newtable(L);
   luaL_setfuncs(L, hashset_methods, 0);
-  register_class_global(L, "HashSet");
+  cangjie_register_class_global(L, "HashSet");
   return 0;
 }

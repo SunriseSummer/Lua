@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "lua.h"
+#include "lbaselib_cj.h"
 
 /*
 ** Upvalue-based bound method: when called, prepend the bound object.
@@ -42,6 +43,22 @@ static inline int cangjie_has_tag (lua_State *L, int idx, const char *tag) {
     lua_pop(L, 1);
   }
   return result;
+}
+
+
+/*
+** Register a class table as a global with __call constructor support.
+** The class table is expected to be on the top of the stack.
+*/
+static inline void cangjie_register_class_global (lua_State *L,
+                                                  const char *name) {
+  int top = lua_gettop(L);
+  lua_insert(L, 1);
+  luaB_setup_class(L);
+  lua_pushvalue(L, 1);
+  lua_setglobal(L, name);
+  lua_remove(L, 1);
+  lua_settop(L, top);
 }
 
 #endif
