@@ -707,6 +707,7 @@ static const luaL_Reg hashset_methods[] = {
   {"subsetOf", hashset_subset_of},
   {"toArray", hashset_to_array},
   {"reserve", hashset_reserve},
+  /* Use bitwise operators for set ops: &: intersect, |: union, -: diff. */
   {"__band", hashset_op_intersect},
   {"__bor", hashset_op_union},
   {"__sub", hashset_op_diff},
