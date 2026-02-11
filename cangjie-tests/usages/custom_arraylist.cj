@@ -4,7 +4,7 @@ dofile("cangjie-tests/_testing.cj")
 // A dynamic array with automatic resizing
 
 struct LArrayList<T> {
-  var data: Array<T>
+  var data = nil
   var length: Int64
 
   init() {
