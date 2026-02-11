@@ -3,7 +3,7 @@ dofile("cangjie-tests/_testing.cj")
 // Test: ArrayList implementation
 // A dynamic array with automatic resizing
 
-struct ArrayList<T> {
+struct LArrayList<T> {
   var data: Array<T>
   var length: Int64
 
@@ -96,7 +96,7 @@ struct ArrayList<T> {
   }
 
   func map(fn) {
-    let result = ArrayList()
+    let result = LArrayList()
     var i = 1
     while (i <= this.length) {
       result.add(fn(this.data[i]))
@@ -106,7 +106,7 @@ struct ArrayList<T> {
   }
 
   func filter(fn) {
-    let result = ArrayList()
+    let result = LArrayList()
     var i = 1
     while (i <= this.length) {
       if (fn(this.data[i])) {
@@ -119,7 +119,7 @@ struct ArrayList<T> {
 }
 
 // -- Section: basic operations --
-let list = ArrayList()
+let list = LArrayList()
 expectTrue(list.isEmpty(), "empty list")
 expectEq(list.size(), 0, "empty size")
 
@@ -174,5 +174,5 @@ expectEq(list.toString(), "[]", "after clear")
 expectEq(list.size(), 0, "size after clear")
 
 if (!__test_failed) {
-    println("PASS: usages/arraylist")
+    println("PASS: usages/custom_arraylist")
 }
