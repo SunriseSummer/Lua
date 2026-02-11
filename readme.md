@@ -840,8 +840,9 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 - **HashMap**：基于泛型实现的哈希表
   - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`
 
-- **HashSet**：基于 HashMap 实现的无序集合
+- **HashSet**：使用 Lua table 键集合实现的无序集合
   - 方法：`add()`、`contains()`、`remove()`、`clear()`、`iterator()`、`subsetOf()`、`retain()`、`toArray()`
+  - 操作符：`&`（交集）、`|`（并集）、`-`（差集）
   - 属性：`size`、`isEmpty()`
 
 - **ArrayStack**：基于数组实现的栈结构

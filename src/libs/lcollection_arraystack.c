@@ -207,6 +207,7 @@ static int arraystack_to_array (lua_State *L) {
   lua_Integer i;
   lua_newtable(L);
   for (i = 0; i < size; i++) {
+    /* Convert LIFO stack order (top-first) into array order. */
     lua_rawgeti(L, data_idx, size - 1 - i);
     lua_rawseti(L, -2, i);
   }

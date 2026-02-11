@@ -53,10 +53,13 @@ static inline int cangjie_has_tag (lua_State *L, int idx, const char *tag) {
 static inline void cangjie_register_class_global (lua_State *L,
                                                   const char *name) {
   int top = lua_gettop(L);
+  /* Move class table to stack index 1 for luaB_setup_class. */
   lua_insert(L, 1);
   luaB_setup_class(L);
+  /* Reuse the class table at index 1 to set the global name. */
   lua_pushvalue(L, 1);
   lua_setglobal(L, name);
+  /* Remove the temporary class table and restore original stack size. */
   lua_remove(L, 1);
   lua_settop(L, top);
 }
