@@ -115,6 +115,17 @@ static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
 }
 
 
+static void register_class_global (lua_State *L, const char *name) {
+  int top = lua_gettop(L);
+  lua_insert(L, 1);
+  luaB_setup_class(L);
+  lua_pushvalue(L, 1);
+  lua_setglobal(L, name);
+  lua_remove(L, 1);
+  lua_settop(L, top);
+}
+
+
 static int find_key_index (lua_State *L, int keys_idx, int key_idx,
                            lua_Integer size) {
   lua_Integer i;
@@ -716,14 +727,8 @@ static const luaL_Reg hashset_methods[] = {
 
 
 int luaB_hashset_init (lua_State *L) {
-  int top = lua_gettop(L);
   lua_newtable(L);
   luaL_setfuncs(L, hashset_methods, 0);
-  lua_insert(L, 1);
-  luaB_setup_class(L);
-  lua_pushvalue(L, 1);
-  lua_setglobal(L, "HashSet");
-  lua_remove(L, 1);
-  lua_settop(L, top);
+  register_class_global(L, "HashSet");
   return 0;
 }
