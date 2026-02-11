@@ -277,7 +277,7 @@ static int hashmap_add (lua_State *L) {
   int keys_idx = get_keys_table(L, self);
   if (hashmap_fetch_value(L, data_idx, 2)) {
     push_some(L, -1);
-    lua_pop(L, 1);
+    lua_remove(L, -2);
     hashmap_store_value(L, data_idx, 2, 3);
     lua_pop(L, 2);
     return 1;
@@ -299,6 +299,7 @@ static int hashmap_add_all (lua_State *L) {
     if (lua_istable(L, -1)) {
       lua_rawgeti(L, -1, 0);
       lua_rawgeti(L, -2, 1);
+      /* Existing key replaces value; otherwise insert new key. */
       if (hashmap_fetch_value(L, data_idx, -2)) {
         lua_pop(L, 1);
         hashmap_store_value(L, data_idx, -2, -1);
@@ -317,7 +318,8 @@ static int hashmap_add_if_absent (lua_State *L) {
   int data_idx = get_data_table(L, 1);
   if (hashmap_fetch_value(L, data_idx, 2)) {
     push_some(L, -1);
-    lua_pop(L, 2);
+    lua_remove(L, -2);
+    lua_remove(L, -2);
     return 1;
   }
   lua_pop(L, 1);
@@ -336,7 +338,8 @@ static int hashmap_replace (lua_State *L) {
     return 1;
   }
   push_some(L, -1);
-  lua_pop(L, 2);
+  lua_remove(L, -2);
+  lua_remove(L, -2);
   hashmap_store_value(L, data_idx, 2, 3);
   return 1;
 }
@@ -349,7 +352,8 @@ static int hashmap_get (lua_State *L) {
     return 1;
   }
   push_some(L, -1);
-  lua_pop(L, 2);
+  lua_remove(L, -2);
+  lua_remove(L, -2);
   return 1;
 }
 

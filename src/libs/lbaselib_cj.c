@@ -96,6 +96,7 @@ static int cangjie_index_handler (lua_State *L) {
   }
   lua_pop(L, 1);
   /* Check __data table for dynamic storage (e.g., collections) */
+  /* Use rawget to avoid __index recursion when checking __data. */
   lua_pushliteral(L, "__data");
   lua_rawget(L, 1);
   if (lua_istable(L, -1)) {

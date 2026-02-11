@@ -48,8 +48,9 @@ static inline int cangjie_has_tag (lua_State *L, int idx, const char *tag) {
 
 /*
 ** Register a class table as a global with __call constructor support.
-** Expects the class table to be on the top of the stack. Any existing
-** stack values below it are preserved and restored.
+** Expects the class table to be on the top of the stack. Existing stack
+** values below it are preserved and restored, but their indices shift
+** while this helper runs.
 */
 static inline void cangjie_register_class_global (lua_State *L,
                                                   const char *name) {
