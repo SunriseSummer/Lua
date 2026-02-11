@@ -113,6 +113,8 @@ CORE_O=	$(BUILDDIR)/lapi.o $(BUILDDIR)/lcode.o $(BUILDDIR)/lctype.o \
 AUX_O=	$(BUILDDIR)/lauxlib.o
 LIB_O=	$(BUILDDIR)/lbaselib.o $(BUILDDIR)/lbaselib_cj.o $(BUILDDIR)/lbaselib_cj_string.o \
 	$(BUILDDIR)/lbaselib_cj_option.o $(BUILDDIR)/lcjutf8.o \
+	$(BUILDDIR)/lcollection_arraylist.o $(BUILDDIR)/lcollection_arraystack.o \
+	$(BUILDDIR)/lcollection_hashmap.o $(BUILDDIR)/lcollection_hashset.o \
 	$(BUILDDIR)/ldblib.o \
 	$(BUILDDIR)/liolib.o $(BUILDDIR)/lmathlib.o $(BUILDDIR)/loslib.o \
 	$(BUILDDIR)/ltablib.o $(BUILDDIR)/lstrlib.o $(BUILDDIR)/lutf8lib.o \
