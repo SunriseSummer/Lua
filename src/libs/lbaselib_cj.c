@@ -96,7 +96,8 @@ static int cangjie_index_handler (lua_State *L) {
   }
   lua_pop(L, 1);
   /* Check __data table for dynamic storage (e.g., collections) */
-  lua_getfield(L, 1, "__data");
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, 1);
   if (lua_istable(L, -1)) {
     lua_pushvalue(L, 2);
     lua_rawget(L, -2);

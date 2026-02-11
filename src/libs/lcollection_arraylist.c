@@ -14,6 +14,7 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
+#include "lbaselib_cj.h"
 #include "lbaselib_cj_helpers.h"
 
 
@@ -796,13 +797,18 @@ static int arraylist_of (lua_State *L) {
 }
 
 int luaB_arraylist_init (lua_State *L) {
+  int top = lua_gettop(L);
   lua_newtable(L);
   luaL_setfuncs(L, arraylist_methods, 0);
   lua_pushcfunction(L, arraylist_of);
   lua_setfield(L, -2, "of");
   lua_pushboolean(L, 1);
   lua_setfield(L, -2, "__static_of");
+  lua_insert(L, 1);
   luaB_setup_class(L);
+  lua_pushvalue(L, 1);
   lua_setglobal(L, "ArrayList");
+  lua_remove(L, 1);
+  lua_settop(L, top);
   return 0;
 }

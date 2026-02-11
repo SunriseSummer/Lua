@@ -840,6 +840,14 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 - **HashMap**：基于泛型实现的哈希表
   - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`
 
+- **HashSet**：基于 HashMap 实现的无序集合
+  - 方法：`add()`、`contains()`、`remove()`、`clear()`、`iterator()`、`subsetOf()`、`retain()`、`toArray()`
+  - 属性：`size`、`isEmpty()`
+
+- **ArrayStack**：基于数组实现的栈结构
+  - 方法：`add()`、`peek()`、`remove()`、`clear()`、`iterator()`、`toArray()`
+  - 属性：`size`、`isEmpty()`
+
 ## 融合 Lua 的扩展能力（动态特性）
 
 本项目的独特之处在于将仓颉的静态类型语法与 Lua 的动态运行时无缝融合，提供以下扩展能力：
