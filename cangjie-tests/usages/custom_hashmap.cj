@@ -1,16 +1,16 @@
 dofile("cangjie-tests/_testing.cj")
 
-// Test: HashMap implementation
+// Test: Custom HashMap implementation
 
-struct HashMap<K, V> {
-  var data: Array<V>
+struct LHashMap<K, V> {
+  var data = nil
+  var keys = nil
   var count: Int64
-  var keys_list: Array<K>
 
   init() {
     this.data = {}
     this.count = 0
-    this.keys_list = {}
+    this.keys = {}
   }
 
   func size(): Int64 {
@@ -24,7 +24,7 @@ struct HashMap<K, V> {
   func put(key: K, value: V) {
     if (this.data[key] == nil) {
       this.count = this.count + 1
-      this.keys_list[this.count] = key
+      this.keys[this.count] = key
     }
     this.data[key] = value
   }
@@ -42,9 +42,9 @@ struct HashMap<K, V> {
       this.data[key] = nil
       this.count = this.count - 1
       var i = 1
-      while (i <= #this.keys_list) {
-        if (this.keys_list[i] == key) {
-          table.remove(this.keys_list, i)
+      while (i <= #this.keys) {
+        if (this.keys[i] == key) {
+          table.remove(this.keys, i)
           break
         }
         i = i + 1
@@ -56,8 +56,8 @@ struct HashMap<K, V> {
 
   func forEach(fn) {
     var i = 1
-    while (i <= #this.keys_list) {
-      let k = this.keys_list[i]
+    while (i <= #this.keys) {
+      let k = this.keys[i]
       if (this.data[k] != nil) {
         fn(k, this.data[k])
       }
@@ -69,8 +69,8 @@ struct HashMap<K, V> {
     var result = "{"
     var first = true
     var i = 1
-    while (i <= #this.keys_list) {
-      let k = this.keys_list[i]
+    while (i <= #this.keys) {
+      let k = this.keys[i]
       if (this.data[k] != nil) {
         if (!first) {
           result = result + ", "
@@ -85,7 +85,7 @@ struct HashMap<K, V> {
 }
 
 // -- Section: basic operations --
-let map = HashMap()
+let map = LHashMap()
 expectTrue(map.isEmpty(), "empty map")
 expectEq(map.size(), 0, "empty map size")
 
@@ -120,7 +120,7 @@ expectTrue(string.find(forEach_keys, "name", 1, true) != nil, "forEach has name"
 expectTrue(string.find(forEach_keys, "version", 1, true) != nil, "forEach has version")
 
 // -- Section: integer keys --
-let intMap = HashMap()
+let intMap = LHashMap()
 intMap.put(1, "one")
 intMap.put(2, "two")
 intMap.put(3, "three")
@@ -128,5 +128,5 @@ expectEq(intMap.get(2), "two", "intMap get(2)")
 expectEq(intMap.size(), 3, "intMap size")
 
 if (!__test_failed) {
-    println("PASS: usages/hashmap")
+    println("PASS: usages/custom_hashmap")
 }
