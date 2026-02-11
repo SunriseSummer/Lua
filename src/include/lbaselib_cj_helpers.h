@@ -63,7 +63,7 @@ static inline void cangjie_register_class_global (lua_State *L,
   lua_setglobal(L, name);
   /* Remove the temporary class table and restore original stack size. */
   lua_remove(L, 1);
-  lua_settop(L, top);
+  lua_settop(L, top - 1);
 }
 
 #endif
