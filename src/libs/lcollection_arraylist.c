@@ -765,7 +765,6 @@ static const luaL_Reg arraylist_methods[] = {
   {"init", arraylist_init},
   {"add", arraylist_add},
   {"get", arraylist_get},
-  {"getRawArray", arraylist_get_raw},
   {"isEmpty", arraylist_is_empty},
   {"remove", arraylist_remove},
   {"removeIf", arraylist_remove_if},

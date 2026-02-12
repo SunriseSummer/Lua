@@ -171,6 +171,73 @@ static void hashmap_insert_new (lua_State *L, int self, int data_idx,
 }
 
 
+static void hashmap_add_entry (lua_State *L, int self, int data_idx,
+                               int keys_idx, int key_idx, int value_idx) {
+  if (hashmap_fetch_value(L, data_idx, key_idx)) {
+    lua_pop(L, 1);
+    hashmap_store_value(L, data_idx, key_idx, value_idx);
+  }
+  else {
+    hashmap_insert_new(L, self, data_idx, keys_idx, key_idx, value_idx);
+  }
+}
+
+
+static int hashmap_get_map_tables (lua_State *L, int idx,
+                                   int *keys_idx, int *data_idx) {
+  idx = lua_absindex(L, idx);
+  lua_pushliteral(L, "__keys");
+  lua_rawget(L, idx);
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 1);
+    return 0;
+  }
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, idx);
+  if (!lua_istable(L, -1)) {
+    lua_pop(L, 2);
+    return 0;
+  }
+  *keys_idx = lua_gettop(L) - 1;
+  *data_idx = lua_gettop(L);
+  return 1;
+}
+
+
+static void hashmap_add_collection (lua_State *L, int self, int data_idx,
+                                    int keys_idx, int collection_idx) {
+  int map_keys;
+  int map_data;
+  collection_idx = lua_absindex(L, collection_idx);
+  if (hashmap_get_map_tables(L, collection_idx, &map_keys, &map_data)) {
+    lua_Integer i;
+    lua_Integer count = get_int_field(L, collection_idx, "size", 0);
+    for (i = 0; i < count; i++) {
+      lua_rawgeti(L, map_keys, i);
+      lua_pushvalue(L, -1);
+      lua_rawget(L, map_data);
+      hashmap_add_entry(L, self, data_idx, keys_idx, -2, -1);
+      lua_pop(L, 2);
+    }
+    lua_pop(L, 2);
+    return;
+  }
+  {
+    lua_Integer i;
+    lua_Integer count = collection_size(L, collection_idx);
+    for (i = 0; i < count; i++) {
+      lua_rawgeti(L, collection_idx, i);
+      if (lua_istable(L, -1)) {
+        lua_rawgeti(L, -1, 0);
+        lua_rawgeti(L, -2, 1);
+        hashmap_add_entry(L, self, data_idx, keys_idx, -2, -1);
+      }
+      lua_pop(L, 1);
+    }
+  }
+}
+
+
 static int hashmap_remove_key_internal (lua_State *L, int self, int key_idx,
                                         int push_old) {
   int data_idx = get_data_table(L, self);
@@ -291,8 +358,17 @@ static int hashmap_init (lua_State *L) {
 
 static int hashmap_add (lua_State *L) {
   int self = 1;
+  int nargs = lua_gettop(L) - 1;
   int data_idx = get_data_table(L, self);
   int keys_idx = get_keys_table(L, self);
+  if (nargs == 1 && lua_istable(L, 2)) {
+    hashmap_add_collection(L, self, data_idx, keys_idx, 2);
+    lua_pop(L, 2);
+    return 0;
+  }
+  if (nargs != 2) {
+    return luaL_error(L, "HashMap.add expects 1 or 2 arguments");
+  }
   if (hashmap_fetch_value(L, data_idx, 2)) {
     push_some(L, -1);
     lua_remove(L, -2);
@@ -303,48 +379,6 @@ static int hashmap_add (lua_State *L) {
   hashmap_insert_new(L, self, data_idx, keys_idx, 2, 3);
   lua_pop(L, 2);
   push_none(L);
-  return 1;
-}
-
-static int hashmap_add_all (lua_State *L) {
-  int self = 1;
-  int data_idx = get_data_table(L, self);
-  int keys_idx = get_keys_table(L, self);
-  lua_Integer i;
-  lua_Integer count = collection_size(L, 2);
-  for (i = 0; i < count; i++) {
-    lua_rawgeti(L, 2, i);
-    if (lua_istable(L, -1)) {
-      lua_rawgeti(L, -1, 0);
-      lua_rawgeti(L, -2, 1);
-      /* Existing key replaces value; otherwise insert new key. */
-      if (hashmap_fetch_value(L, data_idx, -2)) {
-        lua_pop(L, 1);
-        hashmap_store_value(L, data_idx, -2, -1);
-      }
-      else {
-        hashmap_insert_new(L, self, data_idx, keys_idx, -2, -1);
-      }
-    }
-    lua_pop(L, 1);
-  }
-  lua_pop(L, 2);
-  return 0;
-}
-
-static int hashmap_add_if_absent (lua_State *L) {
-  int data_idx = get_data_table(L, 1);
-  if (hashmap_fetch_value(L, data_idx, 2)) {
-    push_some(L, -1);
-    lua_remove(L, -2);
-    lua_remove(L, -2);
-    return 1;
-  }
-  lua_pop(L, 1);
-  lua_pushvalue(L, 1);
-  lua_pushvalue(L, 2);
-  lua_pushvalue(L, 3);
-  lua_call(L, 2, 1);
   return 1;
 }
 
@@ -516,14 +550,15 @@ static int hashmap_keys (lua_State *L) {
   int data_idx = get_keys_table(L, 1);
   lua_Integer size = get_int_field(L, 1, "size", 0);
   lua_Integer i;
-  lua_getglobal(L, "ArrayList");
-  lua_call(L, 0, 1);
+  lua_newtable(L);
   for (i = 0; i < size; i++) {
-    lua_getfield(L, -1, "add");
-    lua_pushvalue(L, -2);
     lua_rawgeti(L, data_idx, i);
-    lua_call(L, 2, 0);
+    lua_rawseti(L, -2, i);
   }
+  lua_pushinteger(L, size);
+  lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, size);
+  lua_setfield(L, -2, "size");
   lua_remove(L, data_idx);
   return 1;
 }
@@ -533,19 +568,20 @@ static int hashmap_values (lua_State *L) {
   int keys_idx = get_keys_table(L, 1);
   lua_Integer size = get_int_field(L, 1, "size", 0);
   lua_Integer i;
-  lua_getglobal(L, "ArrayList");
-  lua_call(L, 0, 1);
+  lua_newtable(L);
   for (i = 0; i < size; i++) {
     lua_rawgeti(L, keys_idx, i);
     lua_pushvalue(L, -1);
     lua_rawget(L, data_idx);
-    lua_getfield(L, -3, "add");
-    lua_pushvalue(L, -4);
-    lua_pushvalue(L, -2);
-    lua_call(L, 2, 0);
-    lua_pop(L, 2);
+    lua_rawseti(L, -4, i);
+    lua_pop(L, 1);
   }
-  lua_pop(L, 2);
+  lua_pushinteger(L, size);
+  lua_setfield(L, -2, "__n");
+  lua_pushinteger(L, size);
+  lua_setfield(L, -2, "size");
+  lua_remove(L, data_idx);
+  lua_remove(L, keys_idx);
   return 1;
 }
 
@@ -691,38 +727,18 @@ static int hashmap_newindex (lua_State *L) {
   int self = 1;
   int data_idx = get_data_table(L, self);
   int keys_idx = get_keys_table(L, self);
-  if (!hashmap_fetch_value(L, data_idx, 2)) {
-    lua_pop(L, 1);
-    if (lua_isnil(L, 3) || is_none(L, 3)) {
-      lua_pop(L, 2);
-      return 0;
-    }
-    if (cangjie_has_tag(L, 3, "Some")) {
-      lua_rawgeti(L, 3, 1);
-      hashmap_insert_new(L, self, data_idx, keys_idx, 2, -1);
-      lua_pop(L, 1);
-    }
-    else {
-      hashmap_insert_new(L, self, data_idx, keys_idx, 2, 3);
-    }
+  if (lua_isnil(L, 3) || is_none(L, 3)) {
     lua_pop(L, 2);
+    hashmap_remove_key_internal(L, self, 2, 0);
     return 0;
-  }
-  else {
-    lua_pop(L, 1);
-    if (lua_isnil(L, 3) || is_none(L, 3)) {
-      lua_pop(L, 2);
-      hashmap_remove_key_internal(L, self, 2, 0);
-      return 0;
-    }
   }
   if (cangjie_has_tag(L, 3, "Some")) {
     lua_rawgeti(L, 3, 1);
-    hashmap_store_value(L, data_idx, 2, -1);
+    hashmap_add_entry(L, self, data_idx, keys_idx, 2, -1);
     lua_pop(L, 1);
   }
   else {
-    hashmap_store_value(L, data_idx, 2, 3);
+    hashmap_add_entry(L, self, data_idx, keys_idx, 2, 3);
   }
   lua_pop(L, 2);
   return 0;
@@ -781,15 +797,20 @@ static int hashmap_tostring (lua_State *L) {
   }
   luaL_addchar(&b, ']');
   luaL_pushresult(&b);
-  lua_pop(L, 2);
+  if (keys_idx > data_idx) {
+    lua_remove(L, keys_idx);
+    lua_remove(L, data_idx);
+  }
+  else {
+    lua_remove(L, data_idx);
+    lua_remove(L, keys_idx);
+  }
   return 1;
 }
 
 static const luaL_Reg hashmap_methods[] = {
   {"init", hashmap_init},
   {"add", hashmap_add},
-  {"addAll", hashmap_add_all},
-  {"addIfAbsent", hashmap_add_if_absent},
   {"replace", hashmap_replace},
   {"get", hashmap_get},
   {"contains", hashmap_contains},
