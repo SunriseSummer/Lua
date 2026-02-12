@@ -68,26 +68,30 @@ static int is_collection (lua_State *L, int idx) {
 
 static int get_data_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__data");
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
 
 static int get_keys_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__keys");
-  lua_getfield(L, self, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
@@ -149,7 +153,8 @@ static int hashset_has_key (lua_State *L, int data_idx, int key_idx) {
 
 static int collection_keys_table (lua_State *L, int idx, lua_Integer *size) {
   idx = lua_absindex(L, idx);
-  lua_getfield(L, idx, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_rawget(L, idx);
   if (lua_istable(L, -1)) {
     *size = get_int_field(L, idx, "size", 0);
     return lua_gettop(L);
@@ -177,8 +182,10 @@ static int hashset_add_value (lua_State *L, int self, int data_idx,
 
 
 static int hashset_remove_key (lua_State *L, int self, int key_idx) {
-  int data_idx = get_data_table(L, self);
-  int keys_idx = get_keys_table(L, self);
+  key_idx = lua_absindex(L, key_idx);
+  {
+    int data_idx = get_data_table(L, self);
+    int keys_idx = get_keys_table(L, self);
   lua_Integer size = get_int_field(L, self, "size", 0);
   int key_index;
   if (!hashset_has_key(L, data_idx, key_idx)) {
@@ -200,6 +207,7 @@ static int hashset_remove_key (lua_State *L, int self, int key_idx) {
     set_size(L, self, size - 1);
   }
   lua_pop(L, 2);
+  }
   return 1;
 }
 
@@ -400,16 +408,20 @@ static int hashset_remove_if (lua_State *L) {
 
 static int hashset_clear (lua_State *L) {
   lua_newtable(L);
-  lua_setfield(L, 1, "__data");
+  lua_pushliteral(L, "__data");
+  lua_insert(L, -2);
+  lua_rawset(L, 1);
   lua_newtable(L);
-  lua_setfield(L, 1, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_insert(L, -2);
+  lua_rawset(L, 1);
   set_size(L, 1, 0);
   return 0;
 }
 
 
 static int hashset_clone (lua_State *L) {
-  int keys_idx = get_keys_table(L, 1);
+  int keys_idx = lua_absindex(L, get_keys_table(L, 1));
   lua_Integer size = get_int_field(L, 1, "size", 0);
   lua_Integer capacity = get_int_field(L, 1, "capacity", 16);
   lua_Integer i;
@@ -417,8 +429,18 @@ static int hashset_clone (lua_State *L) {
   lua_call(L, 0, 1);
   {
     int new_self = lua_gettop(L);
-    int new_data = get_data_table(L, new_self);
-    int new_keys = get_keys_table(L, new_self);
+    int new_data;
+    int new_keys;
+    lua_newtable(L);
+    new_data = lua_gettop(L);
+    lua_pushliteral(L, "__data");
+    lua_pushvalue(L, new_data);
+    lua_rawset(L, new_self);
+    lua_newtable(L);
+    new_keys = lua_gettop(L);
+    lua_pushliteral(L, "__keys");
+    lua_pushvalue(L, new_keys);
+    lua_rawset(L, new_self);
     for (i = 0; i < size; i++) {
       lua_rawgeti(L, keys_idx, i);
       lua_pushvalue(L, -1);
@@ -431,7 +453,8 @@ static int hashset_clone (lua_State *L) {
     set_size(L, new_self, size);
     lua_pop(L, 2);
   }
-  lua_pop(L, 2);
+  lua_remove(L, keys_idx);
+  lua_remove(L, 1);
   return 1;
 }
 
@@ -707,6 +730,7 @@ static const luaL_Reg hashset_methods[] = {
   {"subsetOf", hashset_subset_of},
   {"toArray", hashset_to_array},
   {"reserve", hashset_reserve},
+  {"toString", hashset_tostring},
   /* Metamethods overload bitwise operators for set ops: &/|/-. */
   {"__band", hashset_op_intersect},
   {"__bor", hashset_op_union},

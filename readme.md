@@ -834,20 +834,25 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 ### 集合类型
 
 - **ArrayList**：基于泛型实现的动态数组
-  - 方法：`add()`、`get()`、`set()`、`removeAt()`、`indexOf()`、`contains()`、`clear()`、`forEach()`、`map()`、`filter()`
-  - 属性：`size`、`isEmpty()`
+  - 方法：`add()`、`get()`、`set()`、`removeAt()`、`indexOf()`、`contains()`、`clear()`、`forEach()`、`map()`、`filter()`、`toString()`
+  - 属性：`size`
+  - 方法：`isEmpty()`
 
 - **HashMap**：基于泛型实现的哈希表
-  - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`
+  - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`、`toString()`
+  - 属性：`size`
+  - 方法：`isEmpty()`
 
 - **HashSet**：使用 Lua table 键集合实现的无序集合
-  - 方法：`add()`、`contains()`、`remove()`、`clear()`、`iterator()`、`subsetOf()`、`retain()`、`toArray()`
+  - 方法：`add()`、`contains()`、`remove()`、`clear()`、`iterator()`、`subsetOf()`、`retain()`、`toArray()`、`toString()`
   - 操作符：`&`（交集）、`|`（并集）、`-`（差集）
-  - 属性：`size`、`isEmpty()`
+  - 属性：`size`
+  - 方法：`isEmpty()`
 
 - **ArrayStack**：基于数组实现的栈结构
-  - 方法：`add()`、`peek()`、`remove()`、`clear()`、`iterator()`、`toArray()`
-  - 属性：`size`、`isEmpty()`
+  - 方法：`add()`、`peek()`、`remove()`、`clear()`、`iterator()`、`toArray()`、`toString()`
+  - 属性：`size`
+  - 方法：`isEmpty()`
 
 ## 融合 Lua 的扩展能力（动态特性）
 

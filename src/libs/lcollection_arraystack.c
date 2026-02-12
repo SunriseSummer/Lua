@@ -46,13 +46,15 @@ static lua_Integer get_int_field (lua_State *L, int idx, const char *name,
 
 static int get_data_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__data");
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
@@ -250,6 +252,7 @@ static const luaL_Reg arraystack_methods[] = {
   {"remove", arraystack_remove},
   {"reserve", arraystack_reserve},
   {"toArray", arraystack_to_array},
+  {"toString", arraystack_tostring},
   {"__tostring", arraystack_tostring},
   {NULL, NULL}
 };

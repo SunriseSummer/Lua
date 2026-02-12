@@ -64,13 +64,15 @@ static int is_collection (lua_State *L, int idx) {
 
 static int get_data_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__data");
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
@@ -404,7 +406,7 @@ static int arraylist_remove_if (lua_State *L) {
       set_size(L, self, data_idx, size);
     }
     else {
-      lua_pop(L, 2);
+      lua_pop(L, 1);
       i++;
     }
   }
@@ -776,6 +778,7 @@ static const luaL_Reg arraylist_methods[] = {
   {"toArray", arraylist_to_array},
   {"iterator", arraylist_iterator},
   {"sortBy", arraylist_sortby},
+  {"toString", arraylist_tostring},
   {"__newindex", arraylist_newindex},
   {"__index", arraylist_index_operator},
   {"__eq", arraylist_eq},

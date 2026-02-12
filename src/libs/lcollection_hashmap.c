@@ -67,32 +67,38 @@ static int is_collection (lua_State *L, int idx) {
 
 static int get_data_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__data");
-  lua_getfield(L, self, "__data");
+  lua_pushliteral(L, "__data");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
 static int get_keys_table (lua_State *L, int self) {
   self = lua_absindex(L, self);
-  lua_getfield(L, self, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_rawget(L, self);
   if (lua_istable(L, -1))
     return lua_gettop(L);
   lua_pop(L, 1);
   lua_newtable(L);
-  lua_setfield(L, self, "__keys");
-  lua_getfield(L, self, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_pushvalue(L, -2);
+  lua_rawset(L, self);
   return lua_gettop(L);
 }
 
 static void set_size (lua_State *L, int self, lua_Integer size) {
   self = lua_absindex(L, self);
   lua_pushinteger(L, size);
-  lua_setfield(L, self, "size");
+  lua_pushliteral(L, "size");
+  lua_insert(L, -2);
+  lua_rawset(L, self);
 }
 
 static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
@@ -106,7 +112,9 @@ static void ensure_capacity (lua_State *L, int self, lua_Integer needed) {
     if (grow < 1)
       grow = 1;
     lua_pushinteger(L, grow);
-    lua_setfield(L, self, "capacity");
+    lua_pushliteral(L, "capacity");
+    lua_insert(L, -2);
+    lua_rawset(L, self);
   }
 }
 
@@ -167,6 +175,9 @@ static int hashmap_remove_key_internal (lua_State *L, int self, int key_idx,
                                         int push_old) {
   int data_idx = get_data_table(L, self);
   int keys_idx = get_keys_table(L, self);
+  key_idx = lua_absindex(L, key_idx);
+  data_idx = lua_absindex(L, data_idx);
+  keys_idx = lua_absindex(L, keys_idx);
   lua_Integer size = get_int_field(L, self, "size", 0);
   int key_index;
   if (!hashmap_fetch_value(L, data_idx, key_idx)) {
@@ -177,9 +188,13 @@ static int hashmap_remove_key_internal (lua_State *L, int self, int key_idx,
     }
     return 0;
   }
-  if (push_old)
+  if (push_old) {
     push_some(L, -1);
-  lua_pop(L, 1);
+    lua_remove(L, -2);  /* drop raw value, keep Some */
+  }
+  else {
+    lua_pop(L, 1);
+  }
   lua_pushvalue(L, key_idx);
   lua_pushnil(L);
   lua_rawset(L, data_idx);
@@ -194,7 +209,8 @@ static int hashmap_remove_key_internal (lua_State *L, int self, int key_idx,
     lua_rawseti(L, keys_idx, size - 1);
     set_size(L, self, size - 1);
   }
-  lua_pop(L, 2);
+  lua_remove(L, keys_idx);
+  lua_remove(L, data_idx);
   return push_old ? 1 : 0;
 }
 
@@ -265,7 +281,9 @@ static int hashmap_init (lua_State *L) {
     }
   }
   lua_pushinteger(L, capacity);
-  lua_setfield(L, self, "capacity");
+  lua_pushliteral(L, "capacity");
+  lua_insert(L, -2);
+  lua_rawset(L, self);
   set_size(L, self, size);
   lua_pop(L, 2);
   return 0;
@@ -339,8 +357,8 @@ static int hashmap_replace (lua_State *L) {
   }
   push_some(L, -1);
   lua_remove(L, -2);
-  lua_remove(L, -2);
   hashmap_store_value(L, data_idx, 2, 3);
+  lua_remove(L, data_idx);
   return 1;
 }
 
@@ -409,22 +427,26 @@ static int hashmap_remove_if (lua_State *L) {
   lua_Integer i = 0;
   luaL_checktype(L, 2, LUA_TFUNCTION);
   while (i < size) {
+    int base = lua_gettop(L);
     lua_rawgeti(L, keys_idx, i);
-    lua_pushvalue(L, -1);
-    lua_rawget(L, data_idx);
-    lua_pushvalue(L, 2);
-    lua_pushvalue(L, -3);
-    lua_pushvalue(L, -3);
-    lua_call(L, 2, 1);
-    if (lua_toboolean(L, -1)) {
-      lua_pop(L, 1);
-      hashmap_remove_key_internal(L, self, -2, 0);
-      size = get_int_field(L, self, "size", size);
-      lua_pop(L, 2);
-    }
-    else {
-      lua_pop(L, 3);
-      i++;
+    {
+      int key_idx = lua_gettop(L);
+      lua_pushvalue(L, -1);
+      lua_rawget(L, data_idx);
+      lua_pushvalue(L, 2);
+      lua_pushvalue(L, key_idx);
+      lua_pushvalue(L, -3);
+      lua_call(L, 2, 1);
+      if (lua_toboolean(L, -1)) {
+        lua_pop(L, 1);
+        hashmap_remove_key_internal(L, self, key_idx, 0);
+        size = get_int_field(L, self, "size", size);
+        lua_settop(L, base);
+      }
+      else {
+        lua_settop(L, base);
+        i++;
+      }
     }
   }
   lua_pop(L, 2);
@@ -439,9 +461,13 @@ static int hashmap_remove (lua_State *L) {
 
 static int hashmap_clear (lua_State *L) {
   lua_newtable(L);
-  lua_setfield(L, 1, "__data");
+  lua_pushliteral(L, "__data");
+  lua_insert(L, -2);
+  lua_rawset(L, 1);
   lua_newtable(L);
-  lua_setfield(L, 1, "__keys");
+  lua_pushliteral(L, "__keys");
+  lua_insert(L, -2);
+  lua_rawset(L, 1);
   set_size(L, 1, 0);
   return 0;
 }
@@ -565,7 +591,9 @@ static int hashmap_clone (lua_State *L) {
       lua_rawset(L, new_data);
     }
     lua_pushinteger(L, capacity);
-    lua_setfield(L, new_self, "capacity");
+    lua_pushliteral(L, "capacity");
+    lua_insert(L, -2);
+    lua_rawset(L, new_self);
     set_size(L, new_self, size);
     lua_pop(L, 2);
   }
@@ -776,6 +804,7 @@ static const luaL_Reg hashmap_methods[] = {
   {"entryView", hashmap_entry_view},
   {"reserve", hashmap_reserve},
   {"toArray", hashmap_to_array},
+  {"toString", hashmap_tostring},
   {"__newindex", hashmap_newindex},
   {"__index", hashmap_index_operator},
   {"__eq", hashmap_eq},
