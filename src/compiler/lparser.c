@@ -2829,7 +2829,7 @@ static void expr (LexState *ls, expdesc *v) {
     luaK_exp2nextreg(fs, &fn_e);
     base2 = fs->freereg - 5;
     {
-      /* Reorder registers to call __cangjie_range(fn, start, end, step, incl). */
+      /* Reorder registers so OP_CALL sees [fn, start, end, step, incl]. */
       int fn_r = fs->freereg - 1;
       int incl_r = fs->freereg - 2;
       int step_r = fs->freereg - 3;
@@ -2837,12 +2837,12 @@ static void expr (LexState *ls, expdesc *v) {
       int start_r = fs->freereg - 5;
       int tmp = fs->freereg;
       luaK_reserveregs(fs, 1);
-      luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);
-      luaK_codeABC(fs, OP_MOVE, fn_r, incl_r, 0);
-      luaK_codeABC(fs, OP_MOVE, incl_r, step_r, 0);
-      luaK_codeABC(fs, OP_MOVE, step_r, end_r, 0);
-      luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0);
-      luaK_codeABC(fs, OP_MOVE, start_r, tmp, 0);
+      luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);      /* save fn */
+      luaK_codeABC(fs, OP_MOVE, fn_r, incl_r, 0);   /* shift incl */
+      luaK_codeABC(fs, OP_MOVE, incl_r, step_r, 0); /* shift step */
+      luaK_codeABC(fs, OP_MOVE, step_r, end_r, 0);  /* shift end */
+      luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0); /* shift start */
+      luaK_codeABC(fs, OP_MOVE, start_r, tmp, 0);   /* restore fn */
     }
     /* Drop the temporary register used for reordering. */
     fs->freereg = cast_byte(base2 + 5);

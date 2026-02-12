@@ -392,7 +392,7 @@ static int arraylist_remove_range (lua_State *L) {
     lua_rawset(L, self);
     set_size(L, self, new_data, new_size);
     lua_replace(L, data_idx);
-    lua_remove(L, data_idx);
+    lua_pop(L, 1);
   }
   return 0;
 }
