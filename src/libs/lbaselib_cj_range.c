@@ -168,13 +168,23 @@ int luaB_range_init (lua_State *L) {
 ** Build a Range instance for range literals.
 */
 int luaB_range (lua_State *L) {
-  luaL_checkinteger(L, 1);
-  luaL_checkinteger(L, 2);
-  luaL_checkinteger(L, 3);
+  lua_Integer start;
+  lua_Integer end;
+  lua_Integer step;
+  int ok;
+  start = lua_tointegerx(L, 1, &ok);
+  if (!ok)
+    return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
+  end = lua_tointegerx(L, 2, &ok);
+  if (!ok)
+    return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
+  step = lua_tointegerx(L, 3, &ok);
+  if (!ok)
+    return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
   lua_getglobal(L, "Range");
-  lua_pushvalue(L, 1);
-  lua_pushvalue(L, 2);
-  lua_pushvalue(L, 3);
+  lua_pushinteger(L, start);
+  lua_pushinteger(L, end);
+  lua_pushinteger(L, step);
   lua_pushvalue(L, 4);
   lua_pushinteger(L, 1);
   lua_call(L, 5, 1);
