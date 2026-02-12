@@ -328,18 +328,18 @@ static int arraylist_remove_at (lua_State *L) {
 }
 
 static int parse_range (lua_State *L, int idx, lua_Integer size,
-                        lua_Integer *start, lua_Integer *end) {
-  lua_Integer step;
+                        lua_Integer *start, lua_Integer *end,
+                        lua_Integer *step) {
   int has_end;
   int is_closed;
   idx = lua_absindex(L, idx);
   *start = get_int_field(L, idx, "start", 0);
   *end = get_int_field(L, idx, "end", size - 1);
-  step = get_int_field(L, idx, "step", 1);
+  *step = get_int_field(L, idx, "step", 1);
   has_end = get_int_field(L, idx, "hasEnd", 1) != 0;
   is_closed = get_int_field(L, idx, "isClosed", 0) != 0;
-  if (step != 1)
-    return luaL_error(L, "range step must be 1");
+  if (*step <= 0)
+    return luaL_error(L, "range step must be positive");
   if (!has_end)
     *end = size - 1;
   else if (!is_closed)
@@ -355,23 +355,43 @@ static int arraylist_remove_range (lua_State *L) {
   int self = 1;
   lua_Integer size = get_int_field(L, self, "size", 0);
   int data_idx = get_data_table(L, self);
-  lua_Integer start, end, i, count;
-  parse_range(L, 2, size, &start, &end);
+  lua_Integer start, end, step, i, count;
+  parse_range(L, 2, size, &start, &end, &step);
   if (end < start) {
     lua_pop(L, 1);
     return 0;
   }
-  count = end - start + 1;
-  for (i = end + 1; i < size; i++) {
-    lua_rawgeti(L, data_idx, i);
-    lua_rawseti(L, data_idx, i - count);
+  if (step == 1) {
+    count = end - start + 1;
+    for (i = end + 1; i < size; i++) {
+      lua_rawgeti(L, data_idx, i);
+      lua_rawseti(L, data_idx, i - count);
+    }
+    for (i = size - count; i < size; i++) {
+      lua_pushnil(L);
+      lua_rawseti(L, data_idx, i);
+    }
+    set_size(L, self, data_idx, size - count);
+    lua_pop(L, 1);
+    return 0;
   }
-  for (i = size - count; i < size; i++) {
-    lua_pushnil(L);
-    lua_rawseti(L, data_idx, i);
+  {
+    lua_Integer new_size = 0;
+    lua_Integer j;
+    lua_newtable(L);
+    for (j = 0; j < size; j++) {
+      if (j < start || j > end || ((j - start) % step) != 0) {
+        lua_rawgeti(L, data_idx, j);
+        lua_rawseti(L, -2, new_size++);
+      }
+    }
+    lua_pushliteral(L, "__data");
+    lua_pushvalue(L, -2);
+    lua_rawset(L, self);
+    set_size(L, self, lua_gettop(L), new_size);
+    lua_pop(L, 1);
+    lua_remove(L, data_idx);
   }
-  set_size(L, self, data_idx, size - count);
-  lua_pop(L, 1);
   return 0;
 }
 
@@ -499,20 +519,22 @@ static int arraylist_slice (lua_State *L) {
   int self = 1;
   lua_Integer size = get_int_field(L, self, "size", 0);
   int data_idx = get_data_table(L, self);
-  lua_Integer start, end, i, count;
-  parse_range(L, 2, size, &start, &end);
+  lua_Integer start, end, step, i, count;
+  parse_range(L, 2, size, &start, &end, &step);
   if (end < start)
     count = 0;
   else
-    count = end - start + 1;
+    count = ((end - start) / step) + 1;
   lua_getglobal(L, "ArrayList");
   lua_call(L, 0, 1);
   {
     int new_self = lua_gettop(L);
     int new_data = get_data_table(L, new_self);
+    lua_Integer idx = start;
     for (i = 0; i < count; i++) {
-      lua_rawgeti(L, data_idx, start + i);
+      lua_rawgeti(L, data_idx, idx);
       lua_rawseti(L, new_data, i);
+      idx += step;
     }
     lua_pushinteger(L, count > 16 ? count : 16);
     lua_setfield(L, new_self, "capacity");

@@ -1502,5 +1502,28 @@ int luaB_array_slice_set (lua_State *L) {
 
 
 /*
+** __cangjie_range(start, end, step, inclusive)
+** Build a range table used by collection slicing/removal.
+*/
+int luaB_range (lua_State *L) {
+  luaL_checkany(L, 1);
+  luaL_checkany(L, 2);
+  luaL_checkany(L, 3);
+  lua_newtable(L);
+  lua_pushvalue(L, 1);
+  lua_setfield(L, -2, "start");
+  lua_pushvalue(L, 2);
+  lua_setfield(L, -2, "end");
+  lua_pushvalue(L, 3);
+  lua_setfield(L, -2, "step");
+  lua_pushinteger(L, 1);
+  lua_setfield(L, -2, "hasEnd");
+  lua_pushinteger(L, lua_toboolean(L, 4) ? 1 : 0);
+  lua_setfield(L, -2, "isClosed");
+  return 1;
+}
+
+
+/*
 ** String support moved to lbaselib_cj_string.c
 */
