@@ -25,11 +25,16 @@ expectEq(map["c"], 4, "hashmap index set")
 expectRuntimeError("hashmap index missing", "let m = HashMap(); let _ = m[\"missing\"]", "key not found")
 
 let view = map.entryView("d")
-expectTrue(map.get("d").isNone(), "entryView empty")
+expectTrue(view.value.isNone(), "entryView empty")
+view.value = Some(8)
+expectEq(map.get("d").getOrDefault({=> 0}), 8, "entryView set")
+view.value = None
+expectTrue(map.get("d").isNone(), "entryView remove")
 
 let removed_entry = map.remove("a")
 expectEq(removed_entry.getOrDefault({=> 0}), 1, "hashmap remove")
 map.remove(["b"])
+expectTrue(map.get("b").isNone(), "hashmap remove all")
 
 map.add("x", 1)
 map.add("y", 2)
@@ -54,6 +59,29 @@ map.reserve(2)
 expectTrue(map.capacity >= map_cap, "hashmap reserve")
 map.clear()
 expectTrue(map.isEmpty(), "hashmap clear")
+
+let small = HashMap()
+small.add("k", 7)
+small.add("v", 9)
+let keys = small.keys()
+let values = small.values()
+expectEq(keys.size, small.size, "hashmap keys size")
+expectEq(values.size, small.size, "hashmap values size")
+
+let map_iter = small.iterator()
+var pair_count = 0
+while (let Some(pair) <- map_iter()) {
+    pair_count = pair_count + 1
+}
+expectEq(pair_count, small.size, "hashmap iterator count")
+
+let map_arr = small.toArray()
+expectEq(map_arr.size, small.size, "hashmap toArray size")
+
+let map_clone = small.clone()
+expectTrue(map_clone == small, "hashmap clone eq")
+map_clone.add("z", 10)
+expectTrue(map_clone != small, "hashmap clone ne")
 
 if (!__test_failed) {
     println("PASS: hashmap")
