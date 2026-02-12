@@ -599,6 +599,7 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   /* Initialize built-in Option type (Some, None) */
   luaB_option_init(L);
+  luaB_range_init(L);
   luaB_arraylist_init(L);
   luaB_hashmap_init(L);
   luaB_hashset_init(L);
