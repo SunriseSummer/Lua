@@ -169,13 +169,13 @@ int luaB_range_init (lua_State *L) {
 */
 int luaB_range (lua_State *L) {
   lua_Integer start;
-  lua_Integer end_val;
+  lua_Integer range_end;
   lua_Integer step;
   int ok;
   start = lua_tointegerx(L, 1, &ok);
   if (!ok)
     return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
-  end_val = lua_tointegerx(L, 2, &ok);
+  range_end = lua_tointegerx(L, 2, &ok);
   if (!ok)
     return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
   step = lua_tointegerx(L, 3, &ok);
@@ -183,7 +183,7 @@ int luaB_range (lua_State *L) {
     return luaL_error(L, "'..' only supports range literals; use '+' for string concatenation");
   lua_getglobal(L, "Range");
   lua_pushinteger(L, start);
-  lua_pushinteger(L, end_val);
+  lua_pushinteger(L, range_end);
   lua_pushinteger(L, step);
   lua_pushvalue(L, 4);
   lua_pushinteger(L, 1);
