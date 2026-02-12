@@ -88,10 +88,6 @@ static int range_iterator_next (lua_State *L) {
   int has_end = get_int_field(L, range_idx, "hasEnd", 1) != 0;
   int is_closed = get_int_field(L, range_idx, "isClosed", 0) != 0;
   lua_Integer next = current + step;
-  if (step == 0) {
-    push_none(L);
-    return 1;
-  }
   if (has_end) {
     if (step > 0) {
       if (is_closed ? (next > end) : (next >= end)) {
