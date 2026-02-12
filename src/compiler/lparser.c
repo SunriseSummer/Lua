@@ -2713,7 +2713,7 @@ static BinOpr getbinopr (int op) {
     case '^': return OPR_BXOR;
     case TK_SHL: return OPR_SHL;
     case TK_SHR: return OPR_SHR;
-    case TK_CONCAT: return OPR_CONCAT;
+    case TK_CONCAT: return OPR_NOBINOPR;  /* '..' reserved for ranges */
     case TK_NE: return OPR_NE;
     case TK_EQ: return OPR_EQ;
     case '<': return OPR_LT;
@@ -2767,12 +2767,6 @@ static BinOpr subexpr (LexState *ls, expdesc *v, int limit) {
   else simpleexp(ls, v);
   /* expand while operators have priorities higher than 'limit' */
   op = getbinopr(ls->t.token);
-  /* Treat numeric literals with '..' as range starts, not concat, so that
-  ** expressions like 0..10:2 can be parsed into range objects. */
-  if (ls->t.token == TK_CONCAT &&
-      (v->k == VKINT || v->k == VKFLT)) {
-    op = OPR_NOBINOPR;
-  }
   while (op != OPR_NOBINOPR && priority[op].left > limit) {
     expdesc v2;
     BinOpr nextop;

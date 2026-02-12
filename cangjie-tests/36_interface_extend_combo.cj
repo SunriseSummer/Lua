@@ -56,7 +56,7 @@ interface Repeatable {
         var result = ""
         var i = 0
         while (i < n) {
-            result = result .. this.format()
+            result = result + this.format()
             i += 1
         }
         return result

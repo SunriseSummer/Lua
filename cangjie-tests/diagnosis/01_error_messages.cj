@@ -67,6 +67,10 @@ expectLoadError("let without initializer",
   "let x: Int64",
   "requires an initializer")
 
+expectRuntimeError("string concat with ..",
+  "let s = \"a\" .. \"b\"",
+  "bad argument #1 to '__cangjie_range'")
+
 if (!__test_failed) {
     println("PASS: diagnosis/01_error_messages")
 }

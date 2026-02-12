@@ -101,7 +101,7 @@ let l = String(bytes)       // Array<Byte>（UTF-8 字节数组）转为字符�
 
 - **原生 UTF-8 支持**：字符串默认采用 UTF-8 编解码，索引、切片、长度等操作均基于 Unicode 字符（而非字节）
 - **插值字符串**：`"Hello, ${name}!"` 支持在 `${}` 中嵌入任意表达式
-- **字符串拼接**：可以使用 `+` 拼接两个字符串（也支持 `String + Rune`、`Rune + String`），也支持 Lua 风格的 `..`
+- **字符串拼接**：可以使用 `+` 拼接两个字符串（也支持 `String + Rune`、`Rune + String`）
 - **索引取值**：`s[0]` 返回第 0 个 Unicode 字符（**Rune 类型**，0-based）
 - **切片取值**：`s[1..4]`（排他）、`s[0..=2]`（包含）返回**子字符串**（String 类型），基于字符位置
 - **for-in 遍历**：`for (ch in s)` 遍历字符串中的每个字符，迭代变量 `ch` 为 **Rune 类型**
@@ -466,7 +466,7 @@ println(3.double())      // 6
 println(4.even())        // true
 
 extend String {
-  func shout(): String { this .. "!!!" }
+  func shout(): String { this + "!!!" }
 }
 println("hello".shout()) // hello!!!
 
