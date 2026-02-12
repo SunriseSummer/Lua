@@ -2678,6 +2678,8 @@ static void simpleexp (LexState *ls, expdesc *v) {
   /* After parsing a literal (INT, FLT, STRING, TRUE, FALSE), check for
   ** suffix operations like .method() or [index]. This enables syntax like
   ** 2.pow(10), "hello".length(), true.toString(), etc. via extend methods. */
+  if (ls->t.token == ':' && luaX_lookahead(ls) != TK_NAME)
+    return;
   if (ls->t.token == '.' || ls->t.token == '[' ||
       ls->t.token == ':' ||
       (ls->t.token == '(' && ls->linenumber == ls->lastline)) {
@@ -2711,7 +2713,7 @@ static BinOpr getbinopr (int op) {
     case '^': return OPR_BXOR;
     case TK_SHL: return OPR_SHL;
     case TK_SHR: return OPR_SHR;
-    case TK_CONCAT: return OPR_CONCAT;
+    case TK_CONCAT: return OPR_NOBINOPR;  /* '..' reserved for ranges */
     case TK_NE: return OPR_NE;
     case TK_EQ: return OPR_EQ;
     case '<': return OPR_LT;
@@ -2783,6 +2785,64 @@ static BinOpr subexpr (LexState *ls, expdesc *v, int limit) {
 
 static void expr (LexState *ls, expdesc *v) {
   subexpr(ls, v, 0);
+  if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ
+      || ls->t.token == ':') {
+    FuncState *fs = ls->fs;
+    int inclusive = (ls->t.token == TK_DOTDOTEQ);
+    int has_step = 0;
+    expdesc end_e, step_e, fn_e, incl_e;
+    int base2;
+    if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ) {
+      luaX_next(ls);  /* skip '..' or '..=' */
+      /* Stop before concatenation precedence so range limits parse correctly. */
+      ls->in_range_limit = 1;
+      subexpr(ls, &end_e, 9);
+      ls->in_range_limit = 0;
+    }
+    else {
+      inclusive = 1;
+      luaX_next(ls);  /* skip ':' */
+      ls->in_range_limit = 1;
+      subexpr(ls, &end_e, 9);
+      ls->in_range_limit = 0;
+    }
+    if (testnext(ls, ':')) {
+      expr(ls, &step_e);
+      has_step = 1;
+    }
+    if (!has_step) {
+      init_exp(&step_e, VKINT, 0);
+      step_e.u.ival = 1;
+    }
+    luaK_exp2nextreg(fs, v);
+    luaK_exp2nextreg(fs, &end_e);
+    luaK_exp2nextreg(fs, &step_e);
+    init_exp(&incl_e, inclusive ? VTRUE : VFALSE, 0);
+    luaK_exp2nextreg(fs, &incl_e);
+    buildvar(ls, luaS_new(ls->L, "__cangjie_range"), &fn_e);
+    luaK_exp2nextreg(fs, &fn_e);
+    base2 = fs->freereg - 5;
+    {
+      /* Reorder registers so OP_CALL sees [fn, start, end, step, incl]. */
+      int fn_r = fs->freereg - 1;
+      int incl_r = fs->freereg - 2;
+      int step_r = fs->freereg - 3;
+      int end_r = fs->freereg - 4;
+      int start_r = fs->freereg - 5;
+      int tmp = fs->freereg;
+      luaK_reserveregs(fs, 1);
+      luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);      /* save fn */
+      luaK_codeABC(fs, OP_MOVE, fn_r, incl_r, 0);   /* shift incl */
+      luaK_codeABC(fs, OP_MOVE, incl_r, step_r, 0); /* shift step */
+      luaK_codeABC(fs, OP_MOVE, step_r, end_r, 0);  /* shift end */
+      luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0); /* shift start */
+      luaK_codeABC(fs, OP_MOVE, start_r, tmp, 0);   /* restore fn */
+    }
+    /* Drop the temporary register used for reordering. */
+    fs->freereg = cast_byte(base2 + 5);
+    init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base2, 5, 2));
+    fs->freereg = cast_byte(base2 + 1);
+  }
   /* Handle ?? coalescing operator: a ?? b → __cangjie_coalesce(a, b)
   ** For chained expressions (a ?? b ?? c), each step calls coalesce
   ** with the previous result as the first argument.

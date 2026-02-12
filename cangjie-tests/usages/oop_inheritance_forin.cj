@@ -87,7 +87,7 @@ expectTrue(string.find(r.describe(), "rectangle") != nil, "rectangle describe co
 // -- for-in with mixed polymorphic array --
 var descriptions = ""
 for (s in shapes) {
-    descriptions = descriptions .. s.name .. ","
+    descriptions = descriptions + s.name + ","
 }
 expectEq(descriptions, "circle,rectangle,triangle,", "shape names via for-in")
 

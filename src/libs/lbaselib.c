@@ -567,6 +567,7 @@ static const luaL_Reg base_funcs[] = {
   {"__cangjie_coalesce", luaB_coalesce},
   {"__cangjie_array_slice", luaB_array_slice},
   {"__cangjie_array_slice_set", luaB_array_slice_set},
+  {"__cangjie_range", luaB_range},
   {"__cangjie_str_slice", luaB_str_slice},
   {"__cangjie_iter", luaB_iter},
   {"Array", luaB_array_init},
@@ -598,5 +599,10 @@ LUAMOD_API int luaopen_base (lua_State *L) {
   lua_setfield(L, -2, "_VERSION");
   /* Initialize built-in Option type (Some, None) */
   luaB_option_init(L);
+  luaB_range_init(L);
+  luaB_arraylist_init(L);
+  luaB_hashmap_init(L);
+  luaB_hashset_init(L);
+  luaB_arraystack_init(L);
   return 1;
 }
