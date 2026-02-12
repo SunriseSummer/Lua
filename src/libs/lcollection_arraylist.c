@@ -378,17 +378,19 @@ static int arraylist_remove_range (lua_State *L) {
   {
     lua_Integer new_size = 0;
     lua_Integer j;
+    int new_data;
     lua_newtable(L);
+    new_data = lua_gettop(L);
     for (j = 0; j < size; j++) {
       if (j < start || j > end || ((j - start) % step) != 0) {
         lua_rawgeti(L, data_idx, j);
-        lua_rawseti(L, -2, new_size++);
+        lua_rawseti(L, new_data, new_size++);
       }
     }
     lua_pushliteral(L, "__data");
-    lua_pushvalue(L, -2);
+    lua_pushvalue(L, new_data);
     lua_rawset(L, self);
-    set_size(L, self, lua_gettop(L), new_size);
+    set_size(L, self, new_data, new_size);
     lua_pop(L, 1);
     lua_remove(L, data_idx);
   }

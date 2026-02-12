@@ -1506,9 +1506,9 @@ int luaB_array_slice_set (lua_State *L) {
 ** Build a range table used by collection slicing/removal.
 */
 int luaB_range (lua_State *L) {
-  luaL_checkany(L, 1);
-  luaL_checkany(L, 2);
-  luaL_checkany(L, 3);
+  luaL_checkinteger(L, 1);
+  luaL_checkinteger(L, 2);
+  luaL_checkinteger(L, 3);
   lua_newtable(L);
   lua_pushvalue(L, 1);
   lua_setfield(L, -2, "start");
