@@ -354,7 +354,7 @@ static int parse_range (lua_State *L, int idx, lua_Integer size,
 static int arraylist_remove_range (lua_State *L) {
   int self = 1;
   lua_Integer size = get_int_field(L, self, "size", 0);
-  int data_idx = get_data_table(L, self);
+  int data_idx = lua_absindex(L, get_data_table(L, self));
   lua_Integer start, end, step, i, count;
   parse_range(L, 2, size, &start, &end, &step);
   if (end < start) {
@@ -391,7 +391,7 @@ static int arraylist_remove_range (lua_State *L) {
     lua_pushvalue(L, new_data);
     lua_rawset(L, self);
     set_size(L, self, new_data, new_size);
-    lua_pop(L, 1);
+    lua_replace(L, data_idx);
     lua_remove(L, data_idx);
   }
   return 0;

@@ -2800,6 +2800,7 @@ static void expr (LexState *ls, expdesc *v) {
     int base2;
     if (ls->t.token == TK_CONCAT || ls->t.token == TK_DOTDOTEQ) {
       luaX_next(ls);  /* skip '..' or '..=' */
+      /* Stop before concatenation precedence so range limits parse correctly. */
       ls->in_range_limit = 1;
       subexpr(ls, &end_e, 9);
       ls->in_range_limit = 0;
@@ -2835,6 +2836,7 @@ static void expr (LexState *ls, expdesc *v) {
       int end_r = fs->freereg - 4;
       int start_r = fs->freereg - 5;
       int tmp = fs->freereg;
+      luaK_reserveregs(fs, 1);
       luaK_codeABC(fs, OP_MOVE, tmp, fn_r, 0);
       luaK_codeABC(fs, OP_MOVE, fn_r, incl_r, 0);
       luaK_codeABC(fs, OP_MOVE, incl_r, step_r, 0);
@@ -2842,6 +2844,7 @@ static void expr (LexState *ls, expdesc *v) {
       luaK_codeABC(fs, OP_MOVE, end_r, start_r, 0);
       luaK_codeABC(fs, OP_MOVE, start_r, tmp, 0);
     }
+    /* Drop the temporary register used for reordering. */
     fs->freereg = cast_byte(base2 + 5);
     init_exp(v, VCALL, luaK_codeABC(fs, OP_CALL, base2, 5, 2));
     fs->freereg = cast_byte(base2 + 1);
