@@ -61,7 +61,7 @@ static int range_init (lua_State *L) {
     is_closed = lua_toboolean(L, 5);
   if (nargs >= 5 && !lua_isnil(L, 6))
     has_end = lua_toboolean(L, 6);
-  luaL_argcheck(L, step != 0, 4, "range step must not be 0");
+  luaL_argcheck(L, step != 0, 4, "step argument must not be 0");
   lua_pushinteger(L, start);
   lua_setfield(L, 1, "start");
   lua_pushinteger(L, end);
@@ -87,7 +87,7 @@ static int range_iterator_next (lua_State *L) {
   lua_Integer step = get_int_field(L, range_idx, "step", 1);
   int has_end = get_int_field(L, range_idx, "hasEnd", 1) != 0;
   int is_closed = get_int_field(L, range_idx, "isClosed", 0) != 0;
-  /* Defensive check in case a Range object is corrupted after init. */
+  /* Defensive check in case a Range object is corrupted or missing step. */
   if (step == 0) {
     push_none(L);
     return 1;
