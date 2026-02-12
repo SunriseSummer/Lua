@@ -11,6 +11,12 @@ for (i in 0..5000) {
         found = found + 1
     }
 }
+set.removeIf({ v => v % 2 == 0 })
+let iter = set.iterator()
+var count = 0
+while (let Some(_) <- iter()) {
+    count = count + 1
+}
 let elapsed = os.time() - start
-println("HashSet performance: ${elapsed}s, found=${found}")
+println("HashSet performance: ${elapsed}s, found=${found}, count=${count}")
 println("PASS: std/tests/hashset_performance")

@@ -24,6 +24,9 @@ expectEq(total, 3, "arraystack iterator sum")
 let clone = stack.clone()
 clone.add(4)
 expectEq(stack.size, 2, "arraystack clone independent")
+let emptyClone = ArrayStack()
+let emptyCloneCopy = emptyClone.clone()
+expectTrue(emptyCloneCopy.isEmpty(), "arraystack clone empty")
 
 let beforeCap = stack.capacity
 stack.reserve(5)
@@ -36,6 +39,10 @@ expectTrue(stackString.contains("2"), "arraystack toString contains top")
 stack.clear()
 expectTrue(stack.isEmpty(), "arraystack clear")
 expectTrue(stack.remove() == None, "arraystack remove empty")
+let emptyIter = stack.iterator()
+expectTrue(emptyIter() == None, "arraystack iterator empty")
+let emptyArray = stack.toArray()
+expectEq(emptyArray.size, 0, "arraystack toArray empty")
 
 if (!__test_failed) {
     println("PASS: std/tests/arraystack_functional")

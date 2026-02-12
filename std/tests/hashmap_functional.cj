@@ -8,6 +8,7 @@ map.add("b", 2)
 expectEq(map.size, 2, "hashmap size after add")
 expectEq(map.get("a") ?? -1, 1, "hashmap get a")
 expectTrue(map.contains("b"), "hashmap contains b")
+expectTrue(map.get("missing") == None, "hashmap get missing")
 
 expectEq(map.replace("b", 3) ?? -1, 2, "hashmap replace b")
 expectTrue(map.replace("c", 4) == None, "hashmap replace missing")
@@ -18,6 +19,7 @@ expectFalse(map.contains("a"), "hashmap removed a")
 
 map.add("c", 4)
 map.add("d", 5)
+expectEq(map.add("c", 7) ?? -1, 4, "hashmap add returns old")
 map.removeIf({ k, v => v % 2 == 1 })
 expectFalse(map.contains("b"), "hashmap removeIf removed b")
 expectFalse(map.contains("d"), "hashmap removeIf removed d")
@@ -40,6 +42,7 @@ expectEq(count, map.size, "hashmap iterator count")
 let cloned = map.clone()
 cloned.add("e", 9)
 expectFalse(map.contains("e"), "hashmap clone independent")
+expectTrue(map.remove("missing") == None, "hashmap remove missing")
 
 let beforeCap = map.capacity
 map.reserve(6)
@@ -51,6 +54,8 @@ expectTrue(mapString.contains("c"), "hashmap toString contains key")
 
 map.clear()
 expectTrue(map.isEmpty(), "hashmap clear")
+let emptyIter = map.iterator()
+expectTrue(emptyIter() == None, "hashmap iterator empty")
 
 if (!__test_failed) {
     println("PASS: std/tests/hashmap_functional")

@@ -11,6 +11,7 @@ expectEq(set.size, 3, "hashset size")
 expectTrue(set.contains(2), "hashset contains 2")
 expectTrue(set.remove(1), "hashset remove 1")
 expectFalse(set.contains(1), "hashset removed 1")
+expectFalse(set.remove(99), "hashset remove missing")
 
 set.add(4)
 set.removeIf({ v => v % 2 == 0 })
@@ -38,6 +39,8 @@ expectEq(total, 3, "hashset iterator sum")
 let cloned = set.clone()
 cloned.add(5)
 expectFalse(set.contains(5), "hashset clone independent")
+let emptySet = HashSet()
+expectTrue(emptySet.subsetOf(set), "hashset empty subsetOf")
 
 let beforeCap = set.capacity
 set.reserve(4)
@@ -49,6 +52,9 @@ expectTrue(setString.contains("3"), "hashset toString contains 3")
 
 set.clear()
 expectTrue(set.isEmpty(), "hashset clear")
+expectFalse(set.contains(3), "hashset contains after clear")
+let emptyIter = set.iterator()
+expectTrue(emptyIter() == None, "hashset iterator empty")
 
 if (!__test_failed) {
     println("PASS: std/tests/hashset_functional")
