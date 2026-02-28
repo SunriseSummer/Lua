@@ -1,1 +1,0 @@
-/tmp/codeql-scratch-a4e32bf228cb3839/dbs/cpp/working/autobuild/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/lua_exe.dir/link.d CMakeFiles/lua_exe.dir/lua.c.o -o lua  liblua.a -lm -ldl

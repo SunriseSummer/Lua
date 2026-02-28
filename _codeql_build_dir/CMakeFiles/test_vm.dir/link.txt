@@ -1,1 +1,0 @@
-/tmp/codeql-scratch-a4e32bf228cb3839/dbs/cpp/working/autobuild/bin/cc -O3 -DNDEBUG -Wl,--dependency-file=CMakeFiles/test_vm.dir/link.d CMakeFiles/test_vm.dir/tests/test_vm.c.o -o test_vm  -Wl,-rpath,/home/runner/work/Lua/Lua/_codeql_build_dir libluavm.so.5.5 -lm -ldl

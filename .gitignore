@@ -16,3 +16,4 @@ temp
 lua
 test_vm
 _codeql_detected_source_root
+_codeql_build_dir/
