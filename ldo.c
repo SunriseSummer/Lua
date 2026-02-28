@@ -24,7 +24,9 @@
 #include "lmem.h"
 #include "lobject.h"
 #include "lopcodes.h"
+#ifndef LUA_VM_ONLY
 #include "lparser.h"
+#endif
 #include "lstate.h"
 #include "lstring.h"
 #include "ltable.h"
@@ -1112,8 +1114,10 @@ TStatus luaD_pcall (lua_State *L, Pfunc func, void *u, ptrdiff_t old_top,
 */
 struct SParser {  /* data to 'f_parser' */
   ZIO *z;
+#ifndef LUA_VM_ONLY
   Mbuffer buff;  /* dynamic structure used by the scanner */
   Dyndata dyd;  /* dynamic structures used by the parser */
+#endif
   const char *mode;
   const char *name;
 };
@@ -1141,10 +1145,18 @@ static void f_parser (lua_State *L, void *ud) {
       checkmode(L, mode, "binary");
     cl = luaU_undump(L, p->z, p->name, fixed);
   }
+#ifndef LUA_VM_ONLY
   else {
     checkmode(L, mode, "text");
     cl = luaY_parser(L, p->z, &p->buff, &p->dyd, p->name, c);
   }
+#else
+  else {
+    cl = NULL;
+    luaO_pushfstring(L, "attempt to load a text chunk (no parser available)");
+    luaD_throw(L, LUA_ERRSYNTAX);
+  }
+#endif
   lua_assert(cl->nupvalues == cl->p->sizeupvalues);
   luaF_initupvals(L, cl);
 }
@@ -1156,15 +1168,19 @@ TStatus luaD_protectedparser (lua_State *L, ZIO *z, const char *name,
   TStatus status;
   incnny(L);  /* cannot yield during parsing */
   p.z = z; p.name = name; p.mode = mode;
+#ifndef LUA_VM_ONLY
   p.dyd.actvar.arr = NULL; p.dyd.actvar.size = 0;
   p.dyd.gt.arr = NULL; p.dyd.gt.size = 0;
   p.dyd.label.arr = NULL; p.dyd.label.size = 0;
   luaZ_initbuffer(L, &p.buff);
+#endif
   status = luaD_pcall(L, f_parser, &p, savestack(L, L->top.p), L->errfunc);
+#ifndef LUA_VM_ONLY
   luaZ_freebuffer(L, &p.buff);
   luaM_freearray(L, p.dyd.actvar.arr, cast_sizet(p.dyd.actvar.size));
   luaM_freearray(L, p.dyd.gt.arr, cast_sizet(p.dyd.gt.size));
   luaM_freearray(L, p.dyd.label.arr, cast_sizet(p.dyd.label.size));
+#endif
   decnny(L);
   return status;
 }

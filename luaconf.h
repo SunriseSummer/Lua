@@ -380,6 +380,13 @@
 #define lua_equal(L,idx1,idx2)		lua_compare(L,(idx1),(idx2),LUA_OPEQ)
 #define lua_lessthan(L,idx1,idx2)	lua_compare(L,(idx1),(idx2),LUA_OPLT)
 
+/*
+@@ LUA_ENV is the name of the environment upvalue.
+*/
+#if !defined(LUA_ENV)
+#define LUA_ENV		"_ENV"
+#endif
+
 /* }================================================================== */
 
 
