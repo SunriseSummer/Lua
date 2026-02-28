@@ -1,0 +1,10 @@
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/luavm.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/liblua.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/lua_exe.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/test_vm.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/edit_cache.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/rebuild_cache.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/list_install_components.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/install.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/install/local.dir
+/home/runner/work/Lua/Lua/_codeql_build_dir/CMakeFiles/install/strip.dir
