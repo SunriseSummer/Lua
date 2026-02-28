@@ -11,7 +11,7 @@
 **   6. Handle errors properly
 **
 ** Build:
-**   gcc -o test_vm tests/test_vm.c -I. -L. -lluavm -lm -ldl
+**   gcc -o test_vm tests/test_vm.c -Isrc -L. -lluavm -lm -ldl
 **
 ** Run:
 **   LD_LIBRARY_PATH=. ./test_vm
