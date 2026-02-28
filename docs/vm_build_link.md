@@ -14,9 +14,9 @@
 
 | 分类 | 源文件 |
 |------|--------|
-| **VM 核心** | `lapi.c` `lctype.c` `ldebug.c` `ldo.c` `ldump.c` `lfunc.c` `lgc.c` `lmem.c` `lobject.c` `lopcodes.c` `lstate.c` `lstring.c` `ltable.c` `ltm.c` `lundump.c` `lvm.c` `lzio.c` |
-| **标准库** | `lauxlib.c` `lbaselib.c` `ldblib.c` `liolib.c` `lmathlib.c` `loslib.c` `ltablib.c` `lstrlib.c` `lutf8lib.c` `loadlib.c` `lcorolib.c` `linit.c` |
-| **排除（前端）** | `llex.c` `lparser.c` `lcode.c` |
+| **VM 核心** | `src/lapi.c` `src/lctype.c` `src/ldebug.c` `src/ldo.c` `src/ldump.c` `src/lfunc.c` `src/lgc.c` `src/lmem.c` `src/lobject.c` `src/lopcodes.c` `src/lstate.c` `src/lstring.c` `src/ltable.c` `src/ltm.c` `src/lundump.c` `src/lvm.c` `src/lzio.c` |
+| **标准库** | `src/lauxlib.c` `src/lbaselib.c` `src/ldblib.c` `src/liolib.c` `src/lmathlib.c` `src/loslib.c` `src/ltablib.c` `src/lstrlib.c` `src/lutf8lib.c` `src/loadlib.c` `src/lcorolib.c` `src/linit.c` |
+| **排除（前端）** | `src/llex.c` `src/lparser.c` `src/lcode.c` |
 
 需要的头文件（公开 API）：`lua.h`、`luaconf.h`、`lauxlib.h`、`lualib.h`、`luavm.h`。
 
@@ -73,11 +73,11 @@ set_target_properties(luavm_static PROPERTIES OUTPUT_NAME luavm)
 gcc -std=c99 -O2 -fPIC -shared \
     -DLUA_VM_ONLY -DLUA_USE_LINUX \
     -o libluavm.so \
-    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
-    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c \
-    ltm.c lundump.c lvm.c lzio.c \
-    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c \
-    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c \
+    src/lapi.c src/lctype.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c src/lgc.c \
+    src/lmem.c src/lobject.c src/lopcodes.c src/lstate.c src/lstring.c src/ltable.c \
+    src/ltm.c src/lundump.c src/lvm.c src/lzio.c \
+    src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c src/lmathlib.c src/loslib.c \
+    src/ltablib.c src/lstrlib.c src/lutf8lib.c src/loadlib.c src/lcorolib.c src/linit.c \
     -lm -ldl
 ```
 
@@ -86,11 +86,11 @@ gcc -std=c99 -O2 -fPIC -shared \
 ```bash
 # 1. 编译所有 VM 对象文件
 gcc -std=c99 -O2 -DLUA_VM_ONLY -DLUA_USE_LINUX -c \
-    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
-    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c \
-    ltm.c lundump.c lvm.c lzio.c \
-    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c \
-    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c
+    src/lapi.c src/lctype.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c src/lgc.c \
+    src/lmem.c src/lobject.c src/lopcodes.c src/lstate.c src/lstring.c src/ltable.c \
+    src/ltm.c src/lundump.c src/lvm.c src/lzio.c \
+    src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c src/lmathlib.c src/loslib.c \
+    src/ltablib.c src/lstrlib.c src/lutf8lib.c src/loadlib.c src/lcorolib.c src/linit.c
 
 # 2. 打包为静态库
 ar rcs libluavm.a *.o
@@ -117,11 +117,11 @@ rm -f *.o
 gcc -std=c99 -O2 -fPIC -dynamiclib \
     -DLUA_VM_ONLY -DLUA_USE_MACOSX \
     -o libluavm.dylib \
-    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
-    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c \
-    ltm.c lundump.c lvm.c lzio.c \
-    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c \
-    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c \
+    src/lapi.c src/lctype.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c src/lgc.c \
+    src/lmem.c src/lobject.c src/lopcodes.c src/lstate.c src/lstring.c src/ltable.c \
+    src/ltm.c src/lundump.c src/lvm.c src/lzio.c \
+    src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c src/lmathlib.c src/loslib.c \
+    src/ltablib.c src/lstrlib.c src/lutf8lib.c src/loadlib.c src/lcorolib.c src/linit.c \
     -lm
 ```
 
@@ -186,7 +186,7 @@ gcc -std=c99 -o myapp myapp.c -I/path/to/lua/headers /path/to/libluavm.a -lm -ld
 ** 示例：使用独立 Lua VM 加载并执行 .luac 字节码文件
 **
 ** 编译（动态库）：
-**   gcc -std=c99 -o run_bytecode run_bytecode.c -I. -L. -lluavm -lm -ldl
+**   gcc -std=c99 -o run_bytecode run_bytecode.c -Isrc -L. -lluavm -lm -ldl
 **
 ** 运行：
 **   LD_LIBRARY_PATH=. ./run_bytecode samples/hello.luac
@@ -301,7 +301,7 @@ int main(int argc, char *argv[]) {
 # 假设 Lua 源码根目录为当前目录，已编译 libluavm.so
 
 # 编译示例程序
-gcc -std=c99 -o run_bytecode run_bytecode.c -I. -L. -lluavm -lm -ldl
+gcc -std=c99 -o run_bytecode run_bytecode.c -Isrc -L. -lluavm -lm -ldl
 
 # 先生成字节码（使用完整版 Lua 编译源码）
 ./lua -e "string.dump(assert(loadfile('samples/hello.lua')))" > /dev/null
@@ -331,7 +331,7 @@ LD_LIBRARY_PATH=. ./run_bytecode samples/arithmetic.luac
 # 假设已编译 libluavm.a
 
 # 编译示例程序（静态链接，不依赖外部 .so）
-gcc -std=c99 -o run_bytecode run_bytecode.c -I. libluavm.a -lm -ldl
+gcc -std=c99 -o run_bytecode run_bytecode.c -Isrc libluavm.a -lm -ldl
 
 # 直接运行，无需 LD_LIBRARY_PATH
 ./run_bytecode samples/hello.luac

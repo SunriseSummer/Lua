@@ -35,11 +35,11 @@ target_compile_definitions(luavm PRIVATE LUA_VM_ONLY)
 ```bash
 # 编译 VM 核心源文件
 gcc -shared -fPIC -DLUA_VM_ONLY -DLUA_USE_LINUX -o libluavm.so \
-    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
-    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c \
-    ltm.c lundump.c lvm.c lzio.c \
-    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c \
-    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c \
+    src/lapi.c src/lctype.c src/ldebug.c src/ldo.c src/ldump.c src/lfunc.c src/lgc.c \
+    src/lmem.c src/lobject.c src/lopcodes.c src/lstate.c src/lstring.c src/ltable.c \
+    src/ltm.c src/lundump.c src/lvm.c src/lzio.c \
+    src/lauxlib.c src/lbaselib.c src/ldblib.c src/liolib.c src/lmathlib.c src/loslib.c \
+    src/ltablib.c src/lstrlib.c src/lutf8lib.c src/loadlib.c src/lcorolib.c src/linit.c \
     -lm -ldl
 ```
 
@@ -381,7 +381,7 @@ int main(void) {
 编译运行：
 
 ```bash
-gcc -o myapp myapp.c -I. -L. -lluavm -lm -ldl
+gcc -o myapp myapp.c -Isrc -L. -lluavm -lm -ldl
 LD_LIBRARY_PATH=. ./myapp
 ```
 

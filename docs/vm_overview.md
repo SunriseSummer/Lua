@@ -79,7 +79,7 @@ ci->func   ci->func+1   ci->func+2   ci->func+3   ...
 
 ## 关键子系统
 
-### 内存管理（lmem.c/lmem.h）
+### 内存管理（src/lmem.c/src/lmem.h）
 
 Lua 的所有内存分配通过统一的分配器接口进行：
 
@@ -97,7 +97,7 @@ typedef void *(*lua_Alloc)(void *ud, void *ptr, size_t osize, size_t nsize);
 
 内存分配失败时触发 GC 紧急回收。若 GC 后仍无法满足，抛出内存错误。
 
-### 垃圾回收器（lgc.c/lgc.h）
+### 垃圾回收器（src/lgc.c/src/lgc.h）
 
 Lua 5.5 支持两种 GC 模式：
 
@@ -122,7 +122,7 @@ Lua 5.5 支持两种 GC 模式：
 
 GC 使用三色标记（白、灰、黑）算法，通过写屏障（barrier）维护不变量。
 
-### 字符串驻留（lstring.c/lstring.h）
+### 字符串驻留（src/lstring.c/src/lstring.h）
 
 Lua 对短字符串（长度 ≤ `LUAI_MAXSHORTLEN`，通常为 40 字节）实施**驻留**（interning）：
 
@@ -132,7 +132,7 @@ Lua 对短字符串（长度 ≤ `LUAI_MAXSHORTLEN`，通常为 40 字节）实�
 
 长字符串不驻留，各自独立存储，使用惰性计算的哈希值。
 
-### 表实现（ltable.c/ltable.h）
+### 表实现（src/ltable.c/src/ltable.h）
 
 Lua 的表是关联数组与序列数组的混合体，内部分为两部分：
 
@@ -143,7 +143,7 @@ Lua 的表是关联数组与序列数组的混合体，内部分为两部分：
 
 表的 `alimit` 字段记录数组部分的大小，其值可能是实际大小，也可能是 2 的幂近似值（通过标志位区分）。
 
-### 元方法（ltm.c/ltm.h）
+### 元方法（src/ltm.c/src/ltm.h）
 
 Lua 5.5 支持 25 种元方法，通过 `TMS` 枚举定义：
 
@@ -169,7 +169,7 @@ Lua 5.5 支持 25 种元方法，通过 `TMS` 枚举定义：
 
 ### 指令分派：`luaV_execute`
 
-`luaV_execute`（定义在 `lvm.c`）是 VM 的核心执行循环。函数签名为：
+`luaV_execute`（定义在 `src/lvm.c`）是 VM 的核心执行循环。函数签名为：
 
 ```c
 void luaV_execute(lua_State *L, CallInfo *ci);
@@ -189,7 +189,7 @@ luaV_execute(L, ci)
 └── 返回循环起点（或退出）
 ```
 
-Lua 5.5 通过 `LUA_USE_JUMPTABLE` 宏和外部跳转表文件 `ljumptab.h` 支持 computed goto 优化。在 GCC/Clang 编译器下，每条指令的分派只需一次间接跳转，比 `switch` 语句更高效。
+Lua 5.5 通过 `LUA_USE_JUMPTABLE` 宏和外部跳转表文件 `src/ljumptab.h` 支持 computed goto 优化。在 GCC/Clang 编译器下，每条指令的分派只需一次间接跳转，比 `switch` 语句更高效。
 
 关键内部宏：
 
@@ -202,7 +202,7 @@ Lua 5.5 通过 `LUA_USE_JUMPTABLE` 宏和外部跳转表文件 `ljumptab.h` 支�
 
 ### 函数调用：`luaD_call`
 
-函数调用通过 `luaD_call`（`ldo.c`）统一处理：
+函数调用通过 `luaD_call`（`src/ldo.c`）统一处理：
 
 1. **准备阶段**：创建新的 `CallInfo`，设置栈帧。
 2. **分派调用**：
@@ -230,7 +230,7 @@ luaD_pcall
 
 ### `luaU_undump` 加载流程
 
-`luaU_undump`（`lundump.c`）负责将二进制 chunk 反序列化为内存中的函数原型（`Proto`）：
+`luaU_undump`（`src/lundump.c`）负责将二进制 chunk 反序列化为内存中的函数原型（`Proto`）：
 
 ```c
 LClosure *luaU_undump(lua_State *L, ZIO *Z, const char *name, int fixed);
