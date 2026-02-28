@@ -256,10 +256,10 @@ target_link_libraries(test_vm luavm)
 
 | 分类 | 文件 | 说明 |
 |------|------|------|
-| **VM 核心** | `lapi.c`, `ldo.c`, `lvm.c`, `lgc.c`, `lmem.c`, `lobject.c`, `lstate.c`, `lstring.c`, `ltable.c`, `ltm.c`, `lfunc.c`, `ldebug.c`, `ldump.c`, `lundump.c`, `lopcodes.c`, `lctype.c`, `lzio.c` | VM 运行必需 |
-| **标准库** | `lauxlib.c`, `lbaselib.c`, `ldblib.c`, `liolib.c`, `lmathlib.c`, `loslib.c`, `ltablib.c`, `lstrlib.c`, `lutf8lib.c`, `loadlib.c`, `lcorolib.c`, `linit.c` | 标准库实现 |
-| **前端** | `llex.c`, `lparser.c`, `lcode.c` | 仅完整 Lua 需要 |
-| **公共头文件** | `lua.h`, `luaconf.h`, `lualib.h`, `lauxlib.h`, `luavm.h` | 用户可见 API |
+| **VM 核心** | `src/lapi.c`, `src/ldo.c`, `src/lvm.c`, `src/lgc.c`, `src/lmem.c`, `src/lobject.c`, `src/lstate.c`, `src/lstring.c`, `src/ltable.c`, `src/ltm.c`, `src/lfunc.c`, `src/ldebug.c`, `src/ldump.c`, `src/lundump.c`, `src/lopcodes.c`, `src/lctype.c`, `src/lzio.c` | VM 运行必需 |
+| **标准库** | `src/lauxlib.c`, `src/lbaselib.c`, `src/ldblib.c`, `src/liolib.c`, `src/lmathlib.c`, `src/loslib.c`, `src/ltablib.c`, `src/lstrlib.c`, `src/lutf8lib.c`, `src/loadlib.c`, `src/lcorolib.c`, `src/linit.c` | 标准库实现 |
+| **前端** | `src/llex.c`, `src/lparser.c`, `src/lcode.c` | 仅完整 Lua 需要 |
+| **公共头文件** | `src/lua.h`, `src/luaconf.h`, `src/lualib.h`, `src/lauxlib.h`, `src/luavm.h` | 用户可见 API |
 
 ## 公共 API 设计：`luavm.h`
 
@@ -335,7 +335,7 @@ cmake .. && make test_vm
 ./test_vm
 
 # 直接编译
-gcc -o test_vm tests/test_vm.c -I. -L. -lluavm -lm -ldl
+gcc -o test_vm tests/test_vm.c -Isrc -L. -lluavm -lm -ldl
 LD_LIBRARY_PATH=. ./test_vm
 ```
 

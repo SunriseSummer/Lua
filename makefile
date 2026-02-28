@@ -71,7 +71,7 @@ LOCAL = $(TESTS) $(CWARNS)
 # To enable Linux goodies, -DLUA_USE_LINUX
 # For C89, "-std=c89 -DLUA_USE_C89"
 # Note that Linux/Posix options are not compatible with C89
-MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX
+MYCFLAGS= $(LOCAL) -std=c99 -DLUA_USE_LINUX -Isrc
 MYLDFLAGS= -Wl,-E
 MYLIBS= -ldl
 
@@ -89,16 +89,23 @@ RM= rm -f
 
 LIBS = -lm
 
+SRCDIR= src
+
 CORE_T=	liblua.a
-CORE_O=	lapi.o lcode.o lctype.o ldebug.o ldo.o ldump.o lfunc.o lgc.o llex.o \
-	lmem.o lobject.o lopcodes.o lparser.o lstate.o lstring.o ltable.o \
-	ltm.o lundump.o lvm.o lzio.o ltests.o
-AUX_O=	lauxlib.o
-LIB_O=	lbaselib.o ldblib.o liolib.o lmathlib.o loslib.o ltablib.o lstrlib.o \
-	lutf8lib.o loadlib.o lcorolib.o linit.o
+CORE_O=	$(SRCDIR)/lapi.o $(SRCDIR)/lcode.o $(SRCDIR)/lctype.o $(SRCDIR)/ldebug.o \
+	$(SRCDIR)/ldo.o $(SRCDIR)/ldump.o $(SRCDIR)/lfunc.o $(SRCDIR)/lgc.o \
+	$(SRCDIR)/llex.o $(SRCDIR)/lmem.o $(SRCDIR)/lobject.o $(SRCDIR)/lopcodes.o \
+	$(SRCDIR)/lparser.o $(SRCDIR)/lstate.o $(SRCDIR)/lstring.o $(SRCDIR)/ltable.o \
+	$(SRCDIR)/ltm.o $(SRCDIR)/lundump.o $(SRCDIR)/lvm.o $(SRCDIR)/lzio.o \
+	$(SRCDIR)/ltests.o
+AUX_O=	$(SRCDIR)/lauxlib.o
+LIB_O=	$(SRCDIR)/lbaselib.o $(SRCDIR)/ldblib.o $(SRCDIR)/liolib.o \
+	$(SRCDIR)/lmathlib.o $(SRCDIR)/loslib.o $(SRCDIR)/ltablib.o \
+	$(SRCDIR)/lstrlib.o $(SRCDIR)/lutf8lib.o $(SRCDIR)/loadlib.o \
+	$(SRCDIR)/lcorolib.o $(SRCDIR)/linit.o
 
 LUA_T=	lua
-LUA_O=	lua.o
+LUA_O=	$(SRCDIR)/lua.o
 
 
 ALL_T= $(CORE_T) $(LUA_T)
@@ -119,12 +126,15 @@ $(CORE_T): $(CORE_O) $(AUX_O) $(LIB_O)
 $(LUA_T): $(LUA_O) $(CORE_T)
 	$(CC) -o $@ $(MYLDFLAGS) $(LUA_O) $(CORE_T) $(LIBS) $(MYLIBS) $(DL)
 
+$(SRCDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -I$(SRCDIR) -c -o $@ $<
+
 
 clean:
 	$(RM) $(ALL_T) $(ALL_O)
 
 depend:
-	@$(CC) $(CFLAGS) -MM *.c
+	@$(CC) $(CFLAGS) -I$(SRCDIR) -MM $(SRCDIR)/l*.c
 
 echo:
 	@echo "CC = $(CC)"
@@ -137,83 +147,83 @@ echo:
 	@echo "MYLIBS = $(MYLIBS)"
 	@echo "DL = $(DL)"
 
-$(ALL_O): makefile ltests.h
+$(ALL_O): makefile $(SRCDIR)/ltests.h
 
 # DO NOT EDIT
 # automatically made with 'gcc -MM l*.c'
 
-lapi.o: lapi.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lstring.h \
- ltable.h lundump.h lvm.h
-lauxlib.o: lauxlib.c lprefix.h lua.h luaconf.h lauxlib.h llimits.h
-lbaselib.o: lbaselib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lcode.o: lcode.c lprefix.h lua.h luaconf.h lcode.h llex.h lobject.h \
- llimits.h lzio.h lmem.h lopcodes.h lparser.h ldebug.h lstate.h ltm.h \
- ldo.h lgc.h lstring.h ltable.h lvm.h lopnames.h
-lcorolib.o: lcorolib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lctype.o: lctype.c lprefix.h lctype.h lua.h luaconf.h llimits.h
-ldblib.o: ldblib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-ldebug.o: ldebug.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lcode.h llex.h lopcodes.h lparser.h \
- ldebug.h ldo.h lfunc.h lstring.h lgc.h ltable.h lvm.h
-ldo.o: ldo.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lopcodes.h \
- lparser.h lstring.h ltable.h lundump.h lvm.h
-ldump.o: ldump.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lgc.h ltable.h lundump.h
-lfunc.o: lfunc.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lgc.h
-lgc.o: lgc.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lgc.h lstring.h ltable.h
-linit.o: linit.c lprefix.h lua.h luaconf.h lualib.h lauxlib.h llimits.h
-liolib.o: liolib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-llex.o: llex.c lprefix.h lua.h luaconf.h lctype.h llimits.h ldebug.h \
- lstate.h lobject.h ltm.h lzio.h lmem.h ldo.h lgc.h llex.h lparser.h \
- lstring.h ltable.h
-lmathlib.o: lmathlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lmem.o: lmem.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h
-loadlib.o: loadlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lobject.o: lobject.c lprefix.h lua.h luaconf.h lctype.h llimits.h \
- ldebug.h lstate.h lobject.h ltm.h lzio.h lmem.h ldo.h lstring.h lgc.h \
- lvm.h
-lopcodes.o: lopcodes.c lprefix.h lopcodes.h llimits.h lua.h luaconf.h \
- lobject.h
-loslib.o: loslib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-lparser.o: lparser.c lprefix.h lua.h luaconf.h lcode.h llex.h lobject.h \
- llimits.h lzio.h lmem.h lopcodes.h lparser.h ldebug.h lstate.h ltm.h \
- ldo.h lfunc.h lstring.h lgc.h ltable.h
-lstate.o: lstate.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h llex.h \
- lstring.h ltable.h
-lstring.o: lstring.c lprefix.h lua.h luaconf.h ldebug.h lstate.h \
- lobject.h llimits.h ltm.h lzio.h lmem.h ldo.h lstring.h lgc.h
-lstrlib.o: lstrlib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-ltable.o: ltable.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h lstring.h ltable.h lvm.h
-ltablib.o: ltablib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-ltests.o: ltests.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h lauxlib.h lcode.h llex.h lopcodes.h \
- lparser.h lctype.h ldebug.h ldo.h lfunc.h lopnames.h lstring.h lgc.h \
- ltable.h lualib.h
-ltm.o: ltm.c lprefix.h lua.h luaconf.h ldebug.h lstate.h lobject.h \
- llimits.h ltm.h lzio.h lmem.h ldo.h lgc.h lstring.h ltable.h lvm.h
-lua.o: lua.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h llimits.h
-lundump.o: lundump.c lprefix.h lua.h luaconf.h ldebug.h lstate.h \
- lobject.h llimits.h ltm.h lzio.h lmem.h ldo.h lfunc.h lstring.h lgc.h \
- ltable.h lundump.h
-lutf8lib.o: lutf8lib.c lprefix.h lua.h luaconf.h lauxlib.h lualib.h \
- llimits.h
-lvm.o: lvm.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h ldebug.h ldo.h lfunc.h lgc.h lopcodes.h \
- lstring.h ltable.h lvm.h ljumptab.h
-lzio.o: lzio.c lprefix.h lua.h luaconf.h lapi.h llimits.h lstate.h \
- lobject.h ltm.h lzio.h lmem.h
+$(SRCDIR)/lapi.o: $(SRCDIR)/lapi.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h $(SRCDIR)/lstring.h \
+ $(SRCDIR)/ltable.h $(SRCDIR)/lundump.h $(SRCDIR)/lvm.h
+$(SRCDIR)/lauxlib.o: $(SRCDIR)/lauxlib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/lbaselib.o: $(SRCDIR)/lbaselib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/lcode.o: $(SRCDIR)/lcode.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lcode.h $(SRCDIR)/llex.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/lopcodes.h $(SRCDIR)/lparser.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/ltm.h \
+ $(SRCDIR)/ldo.h $(SRCDIR)/lgc.h $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h $(SRCDIR)/lvm.h $(SRCDIR)/lopnames.h
+$(SRCDIR)/lcorolib.o: $(SRCDIR)/lcorolib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/lctype.o: $(SRCDIR)/lctype.c $(SRCDIR)/lprefix.h $(SRCDIR)/lctype.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/llimits.h
+$(SRCDIR)/ldblib.o: $(SRCDIR)/ldblib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/ldebug.o: $(SRCDIR)/ldebug.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/lcode.h $(SRCDIR)/llex.h $(SRCDIR)/lopcodes.h $(SRCDIR)/lparser.h \
+ $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h $(SRCDIR)/ltable.h $(SRCDIR)/lvm.h
+$(SRCDIR)/ldo.o: $(SRCDIR)/ldo.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h $(SRCDIR)/lopcodes.h \
+ $(SRCDIR)/lparser.h $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h $(SRCDIR)/lundump.h $(SRCDIR)/lvm.h
+$(SRCDIR)/ldump.o: $(SRCDIR)/ldump.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/lgc.h $(SRCDIR)/ltable.h $(SRCDIR)/lundump.h
+$(SRCDIR)/lfunc.o: $(SRCDIR)/lfunc.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h
+$(SRCDIR)/lgc.o: $(SRCDIR)/lgc.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h
+$(SRCDIR)/linit.o: $(SRCDIR)/linit.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lualib.h $(SRCDIR)/lauxlib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/liolib.o: $(SRCDIR)/liolib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/llex.o: $(SRCDIR)/llex.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lctype.h $(SRCDIR)/llimits.h $(SRCDIR)/ldebug.h \
+ $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lgc.h $(SRCDIR)/llex.h $(SRCDIR)/lparser.h \
+ $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h
+$(SRCDIR)/lmathlib.o: $(SRCDIR)/lmathlib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/lmem.o: $(SRCDIR)/lmem.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lgc.h
+$(SRCDIR)/loadlib.o: $(SRCDIR)/loadlib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/lobject.o: $(SRCDIR)/lobject.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lctype.h $(SRCDIR)/llimits.h \
+ $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h \
+ $(SRCDIR)/lvm.h
+$(SRCDIR)/lopcodes.o: $(SRCDIR)/lopcodes.c $(SRCDIR)/lprefix.h $(SRCDIR)/lopcodes.h $(SRCDIR)/llimits.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h \
+ $(SRCDIR)/lobject.h
+$(SRCDIR)/loslib.o: $(SRCDIR)/loslib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/lparser.o: $(SRCDIR)/lparser.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lcode.h $(SRCDIR)/llex.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/lopcodes.h $(SRCDIR)/lparser.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/ltm.h \
+ $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h $(SRCDIR)/ltable.h
+$(SRCDIR)/lstate.o: $(SRCDIR)/lstate.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h $(SRCDIR)/llex.h \
+ $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h
+$(SRCDIR)/lstring.o: $(SRCDIR)/lstring.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h
+$(SRCDIR)/lstrlib.o: $(SRCDIR)/lstrlib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/ltable.o: $(SRCDIR)/ltable.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lgc.h $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h $(SRCDIR)/lvm.h
+$(SRCDIR)/ltablib.o: $(SRCDIR)/ltablib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/ltests.o: $(SRCDIR)/ltests.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lcode.h $(SRCDIR)/llex.h $(SRCDIR)/lopcodes.h \
+ $(SRCDIR)/lparser.h $(SRCDIR)/lctype.h $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lopnames.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h \
+ $(SRCDIR)/ltable.h $(SRCDIR)/lualib.h
+$(SRCDIR)/ltm.o: $(SRCDIR)/ltm.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h $(SRCDIR)/lobject.h \
+ $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lgc.h $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h $(SRCDIR)/lvm.h
+$(SRCDIR)/lua.o: $(SRCDIR)/lua.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h $(SRCDIR)/llimits.h
+$(SRCDIR)/lundump.o: $(SRCDIR)/lundump.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/ldebug.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/llimits.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lstring.h $(SRCDIR)/lgc.h \
+ $(SRCDIR)/ltable.h $(SRCDIR)/lundump.h
+$(SRCDIR)/lutf8lib.o: $(SRCDIR)/lutf8lib.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lauxlib.h $(SRCDIR)/lualib.h \
+ $(SRCDIR)/llimits.h
+$(SRCDIR)/lvm.o: $(SRCDIR)/lvm.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h $(SRCDIR)/ldebug.h $(SRCDIR)/ldo.h $(SRCDIR)/lfunc.h $(SRCDIR)/lgc.h $(SRCDIR)/lopcodes.h \
+ $(SRCDIR)/lstring.h $(SRCDIR)/ltable.h $(SRCDIR)/lvm.h $(SRCDIR)/ljumptab.h
+$(SRCDIR)/lzio.o: $(SRCDIR)/lzio.c $(SRCDIR)/lprefix.h $(SRCDIR)/lua.h $(SRCDIR)/luaconf.h $(SRCDIR)/lapi.h $(SRCDIR)/llimits.h $(SRCDIR)/lstate.h \
+ $(SRCDIR)/lobject.h $(SRCDIR)/ltm.h $(SRCDIR)/lzio.h $(SRCDIR)/lmem.h
 
 # (end of Makefile)
