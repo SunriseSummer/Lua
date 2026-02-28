@@ -22,7 +22,7 @@
 
 ### 1.2 使用 CMake 构建
 
-项目已提供 `CMakeLists.txt`，内含独立 VM 动态库目标 `luavm`：
+项目已提供 `CMakeLists.txt`，内含独立 VM 的动态库目标 `luavm` 和静态库目标 `luavm_static`：
 
 ```bash
 # 创建构建目录
@@ -31,11 +31,27 @@ mkdir build && cd build
 # 配置
 cmake ..
 
-# 编译动态库 libluavm.so
+# 仅编译 VM 动态库
 make luavm
 
-# 编译全部目标（含 VM 动态库、完整静态库、解释器、测试）
+# 仅编译 VM 静态库
+make luavm_static
+
+# 编译全部目标（含 VM 动态库、VM 静态库、完整静态库、解释器、测试）
 make
+```
+
+CMake 中对应的目标定义：
+
+```cmake
+# 动态库目标（-DLUA_VM_ONLY 自动添加）
+add_library(luavm SHARED ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
+target_compile_definitions(luavm PRIVATE LUA_VM_ONLY)
+
+# 静态库目标（-DLUA_VM_ONLY 自动添加，输出文件名为 libluavm.a）
+add_library(luavm_static STATIC ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
+target_compile_definitions(luavm_static PRIVATE LUA_VM_ONLY)
+set_target_properties(luavm_static PROPERTIES OUTPUT_NAME luavm)
 ```
 
 构建成功后，当前目录会生成：
@@ -43,9 +59,11 @@ make
 | 产物 | 说明 |
 |------|------|
 | `libluavm.so` / `libluavm.dylib` | 独立 VM 动态库 |
+| `libluavm.a` | 独立 VM 静态库 |
 | `liblua.a` | 包含前端的完整 Lua 静态库 |
 | `lua` | 完整 Lua 解释器 |
-| `test_vm` | VM 集成测试程序 |
+| `test_vm` | VM 集成测试程序（链接动态库） |
+| `test_vm_static` | VM 集成测试程序（链接静态库） |
 
 ### 1.3 使用 GCC 直接编译
 
@@ -417,9 +435,13 @@ project(MyApp)
 # 添加 Lua VM 子目录
 add_subdirectory(path/to/lua)
 
-# 链接你的程序
+# 链接动态库
 add_executable(myapp main.c)
 target_link_libraries(myapp luavm)
+
+# 或链接静态库（无需运行时部署 .so）
+add_executable(myapp_static main.c)
+target_link_libraries(myapp_static luavm_static)
 ```
 
 ### 5.2 使用 pkg-config（手动安装后）

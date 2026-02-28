@@ -34,7 +34,7 @@ set(FRONTEND_SOURCES
 )
 
 
-# === Target 1: libluavm (standalone VM shared library) ===
+# === Target 1a: libluavm (standalone VM shared library) ===
 add_library(luavm SHARED ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
 target_compile_definitions(luavm PRIVATE LUA_VM_ONLY)
 target_include_directories(luavm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -42,6 +42,16 @@ target_link_libraries(luavm ${PLATFORM_LIBS})
 set_target_properties(luavm PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION 5
+  PUBLIC_HEADER "lua.h;luaconf.h;lualib.h;lauxlib.h;luavm.h"
+)
+
+# === Target 1b: libluavm_static (standalone VM static library) ===
+add_library(luavm_static STATIC ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
+target_compile_definitions(luavm_static PRIVATE LUA_VM_ONLY)
+target_include_directories(luavm_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(luavm_static ${PLATFORM_LIBS})
+set_target_properties(luavm_static PROPERTIES
+  OUTPUT_NAME luavm
   PUBLIC_HEADER "lua.h;luaconf.h;lualib.h;lauxlib.h;luavm.h"
 )
 
@@ -61,16 +71,22 @@ target_link_libraries(lua_exe liblua ${PLATFORM_LIBS})
 set_target_properties(lua_exe PROPERTIES OUTPUT_NAME lua)
 
 
-# === Target 4: VM integration test ===
+# === Target 4: VM integration tests ===
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_vm.c)
+  # Test linking against shared library
   add_executable(test_vm tests/test_vm.c)
   target_link_libraries(test_vm luavm ${PLATFORM_LIBS})
+
+  # Test linking against static library
+  add_executable(test_vm_static tests/test_vm.c)
+  target_link_libraries(test_vm_static luavm_static ${PLATFORM_LIBS})
 endif()
 
 
 # === Install rules ===
-install(TARGETS luavm
+install(TARGETS luavm luavm_static
   LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib
   PUBLIC_HEADER DESTINATION include/luavm
 )
 install(TARGETS lua_exe RUNTIME DESTINATION bin)
