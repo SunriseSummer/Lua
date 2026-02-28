@@ -200,13 +200,19 @@ static void test_table_operations(void) {
 }
 
 
+static int noop_cfunc(lua_State *L) {
+  (void)L;
+  return 0;
+}
+
+
 static void test_c_function_call(void) {
   lua_State *L;
   TEST("C function call from VM");
   L = luaL_newstate();
   if (L == NULL) { FAIL("luaL_newstate returned NULL"); return; }
 
-  lua_pushcfunction(L, NULL);  /* dummy to test pushcfunction */
+  lua_pushcfunction(L, noop_cfunc);
   lua_pop(L, 1);
 
   lua_pushinteger(L, 10);
