@@ -17,7 +17,9 @@
 #include "lua.h"
 
 #include "lapi.h"
+#ifndef LUA_VM_ONLY
 #include "lcode.h"
+#endif
 #include "ldebug.h"
 #include "ldo.h"
 #include "lfunc.h"

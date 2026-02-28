@@ -20,7 +20,9 @@
 #include "ldo.h"
 #include "lfunc.h"
 #include "lgc.h"
+#ifndef LUA_VM_ONLY
 #include "llex.h"
+#endif
 #include "lmem.h"
 #include "lstate.h"
 #include "lstring.h"
@@ -216,7 +218,9 @@ static void f_luaopen (lua_State *L, void *ud) {
   init_registry(L, g);
   luaS_init(L);
   luaT_init(L);
+#ifndef LUA_VM_ONLY
   luaX_init(L);
+#endif
   g->gcstp = 0;  /* allow gc */
   setnilvalue(&g->nilvalue);  /* now state is complete */
   luai_userstateopen(L);
