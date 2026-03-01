@@ -58,12 +58,17 @@ set_target_properties(luavm_static PROPERTIES OUTPUT_NAME luavm)
 
 | 产物 | 说明 |
 |------|------|
-| `libluavm.so` / `libluavm.dylib` | 独立 VM 动态库 |
-| `libluavm.a` | 独立 VM 静态库 |
-| `liblua.a` | 包含前端的完整 Lua 静态库 |
-| `lua` | 完整 Lua 解释器 |
-| `test_vm` | VM 集成测试程序（链接动态库） |
-| `test_vm_static` | VM 集成测试程序（链接静态库） |
+| `libluavm.so` / `libluavm.dylib` / `luavm.dll` | 独立 VM 动态库 |
+| `libluavm.a` / `luavm.lib`（静态） | 独立 VM 静态库 |
+| `luavm.lib`（导入库，仅 Windows） | 链接 DLL 时使用的导入库 |
+| `liblua.a` / `lua.lib` | 包含前端的完整 Lua 静态库 |
+| `lua` / `lua.exe` | 完整 Lua 解释器 |
+| `test_vm` / `test_vm.exe` | VM 集成测试程序（链接动态库） |
+| `test_vm_static` / `test_vm_static.exe` | VM 集成测试程序（链接静态库） |
+
+> **Windows 说明**：CMake 在 Windows 上构建动态库时，会自动定义 `LUA_BUILD_AS_DLL`，
+> 使所有 API 函数通过 `__declspec(dllexport)` 导出。链接 DLL 的程序会自动获得
+> `__declspec(dllimport)` 声明，无需手动配置。
 
 ### 1.3 使用 GCC 直接编译
 
@@ -104,8 +109,9 @@ rm -f *.o
 | 标志 | 说明 |
 |------|------|
 | `-DLUA_VM_ONLY` | **必需**。启用 VM-only 模式，排除解析器/编译器依赖 |
+| `-DLUA_BUILD_AS_DLL` | **Windows 动态库必需**。启用 `__declspec(dllexport/dllimport)` 符号导出 |
 | `-DLUA_USE_LINUX` | Linux 平台推荐，启用 `dlopen`、`readline` 等 POSIX 特性 |
-| `-fPIC` | 编译动态库时必需，生成位置无关代码 |
+| `-fPIC` | 编译动态库时必需（Linux/macOS），生成位置无关代码 |
 | `-shared` | 生成共享库（动态库） |
 | `-lm` | 链接数学库（`math.h`） |
 | `-ldl` | 链接动态加载库（`dlopen` 等，Linux 需要） |
@@ -125,6 +131,48 @@ gcc -std=c99 -O2 -fPIC -dynamiclib \
     -lm
 ```
 
+#### Windows 注意事项
+
+在 Windows 上构建动态库（DLL）时，**必须**定义 `LUA_BUILD_AS_DLL`，以确保 API 函数通过 `__declspec(dllexport)` 正确导出。不加此标志将导致生成的 DLL 没有导出符号，链接时会失败。
+
+**使用 MinGW：**
+
+```bash
+# 编译动态库（.dll）
+gcc -std=c99 -O2 -shared \
+    -DLUA_VM_ONLY -DLUA_BUILD_AS_DLL \
+    -o luavm.dll \
+    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c \
+    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c \
+    ltm.c lundump.c lvm.c lzio.c \
+    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c \
+    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c \
+    -Wl,--out-implib,libluavm.dll.a
+
+# 编译用户程序，链接 DLL
+gcc -std=c99 -o myapp.exe myapp.c -I. -L. -DLUA_BUILD_AS_DLL -lluavm
+```
+
+**使用 MSVC（Developer Command Prompt）：**
+
+```bat
+REM 编译动态库（.dll + .lib 导入库）
+cl /O2 /DLUA_VM_ONLY /DLUA_BUILD_AS_DLL /DLUA_CORE /LD ^
+    lapi.c lctype.c ldebug.c ldo.c ldump.c lfunc.c lgc.c ^
+    lmem.c lobject.c lopcodes.c lstate.c lstring.c ltable.c ^
+    ltm.c lundump.c lvm.c lzio.c ^
+    lauxlib.c lbaselib.c ldblib.c liolib.c lmathlib.c loslib.c ^
+    ltablib.c lstrlib.c lutf8lib.c loadlib.c lcorolib.c linit.c ^
+    /Feluavm.dll /link /IMPLIB:luavm.lib
+
+REM 编译用户程序，链接 DLL
+cl /O2 /DLUA_BUILD_AS_DLL myapp.c /I. luavm.lib /Femyapp.exe
+```
+
+> **重要**：编译链接 DLL 的用户程序时也需要定义 `-DLUA_BUILD_AS_DLL`（不要定义 `LUA_CORE`
+> 或 `LUA_LIB`），以使头文件中的 API 声明为 `__declspec(dllimport)`。
+> 使用 CMake 构建时此标志会自动传播，无需手动设置。
+
 ---
 
 ## 2. 链接 VM 库
@@ -132,11 +180,31 @@ gcc -std=c99 -O2 -fPIC -dynamiclib \
 ### 2.1 链接动态库
 
 ```bash
-# 编译用户程序，链接 libluavm.so
+# Linux/macOS：编译用户程序，链接 libluavm.so
 gcc -std=c99 -o myapp myapp.c -I/path/to/lua/headers -L/path/to/lib -lluavm -lm -ldl
 
 # 运行时需要设置库搜索路径（或将 .so 安装到系统路径）
 LD_LIBRARY_PATH=/path/to/lib ./myapp
+```
+
+**Windows（MinGW）：**
+
+```bash
+# 编译用户程序，链接 luavm.dll（需要 -DLUA_BUILD_AS_DLL）
+gcc -std=c99 -o myapp.exe myapp.c -I/path/to/lua/headers -L/path/to/lib -DLUA_BUILD_AS_DLL -lluavm
+
+# 运行时确保 luavm.dll 在 PATH 或可执行文件同目录下
+set PATH=/path/to/lib;%PATH%
+myapp.exe
+```
+
+**Windows（MSVC）：**
+
+```bat
+cl /O2 /DLUA_BUILD_AS_DLL myapp.c /I path\to\lua\headers luavm.lib /Femyapp.exe
+
+REM 运行时确保 luavm.dll 在 PATH 或可执行文件同目录下
+myapp.exe
 ```
 
 **安装到系统路径（可选）：**
@@ -474,6 +542,14 @@ my_project/
 
 设置 `LD_LIBRARY_PATH` 指向库所在目录，或将库安装到系统路径后执行 `sudo ldconfig`。
 
+**Q：Windows 上链接 DLL 时报 `unresolved external symbol`？**
+
+编译 DLL 时必须定义 `-DLUA_BUILD_AS_DLL`，否则 API 函数不会通过 `__declspec(dllexport)` 导出。编译使用 DLL 的程序时也需定义 `-DLUA_BUILD_AS_DLL`（此时 API 声明为 `__declspec(dllimport)`）。使用 CMake 构建时这些标志会自动设置。
+
+**Q：Windows 上运行时找不到 `luavm.dll`？**
+
+确保 `luavm.dll` 在以下位置之一：可执行文件所在目录、`PATH` 环境变量包含的目录、或系统目录（`System32`）。
+
 **Q：加载 `.lua` 文本文件报错 `attempt to load a text chunk`？**
 
 独立 VM 不支持加载源码文本，必须先将 `.lua` 编译为 `.luac` 字节码再加载。
@@ -484,5 +560,5 @@ my_project/
 
 **Q：静态库和动态库如何选择？**
 
-- **动态库**（`.so`）：适合多个程序共用 VM、方便升级、减少可执行文件体积。
-- **静态库**（`.a`）：适合嵌入式部署、独立分发、无需运行时配置。
+- **动态库**（`.so` / `.dll`）：适合多个程序共用 VM、方便升级、减少可执行文件体积。
+- **静态库**（`.a` / `.lib`）：适合嵌入式部署、独立分发、无需运行时配置。

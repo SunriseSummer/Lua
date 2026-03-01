@@ -36,9 +36,14 @@ set(FRONTEND_SOURCES
 
 # === Target 1a: libluavm (standalone VM shared library) ===
 add_library(luavm SHARED ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
-target_compile_definitions(luavm PRIVATE LUA_VM_ONLY)
+target_compile_definitions(luavm PUBLIC LUA_VM_ONLY)
 target_include_directories(luavm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(luavm ${PLATFORM_LIBS})
+if(WIN32)
+  # Export/import DLL symbols on Windows via LUA_BUILD_AS_DLL.
+  # PUBLIC so that consumers (e.g. test_vm) automatically get __declspec(dllimport).
+  target_compile_definitions(luavm PUBLIC LUA_BUILD_AS_DLL)
+endif()
 set_target_properties(luavm PROPERTIES
   VERSION ${PROJECT_VERSION}
   SOVERSION 5
@@ -47,7 +52,7 @@ set_target_properties(luavm PROPERTIES
 
 # === Target 1b: libluavm_static (standalone VM static library) ===
 add_library(luavm_static STATIC ${VM_CORE_SOURCES} ${VM_STDLIB_SOURCES})
-target_compile_definitions(luavm_static PRIVATE LUA_VM_ONLY)
+target_compile_definitions(luavm_static PUBLIC LUA_VM_ONLY)
 target_include_directories(luavm_static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(luavm_static ${PLATFORM_LIBS})
 set_target_properties(luavm_static PROPERTIES
@@ -85,6 +90,7 @@ endif()
 
 # === Install rules ===
 install(TARGETS luavm luavm_static
+  RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib
   PUBLIC_HEADER DESTINATION include/luavm
