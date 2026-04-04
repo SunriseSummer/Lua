@@ -42,6 +42,14 @@ expectEq(powVal, 8, "Int64 ** Int64 yields Int64 value")
 expectType(div, "Int64", "division yields Int64")
 expectType(powVal, "Int64", "pow yields Int64")
 
+let x = 12
+let divExact = x / 2
+let powSquare = x ** 2
+expectEq(divExact, 6, "Int64 / Int64 exact division yields Int64 value")
+expectEq(powSquare, 144, "Int64 ** Int64 square yields Int64 value")
+expectType(divExact, "Int64", "exact division keeps Int64")
+expectType(powSquare, "Int64", "square pow keeps Int64")
+
 let powNeg = 2 ** (-1)
 expectEq(powNeg, 0.5, "Int64 ** negative Int64 yields Float64 value")
 expectType(powNeg, "Float64", "negative exponent yields Float64")

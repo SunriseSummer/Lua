@@ -991,6 +991,25 @@ void luaV_finishOp (lua_State *L) {
   TValue *v2 = KC(i); lua_assert(ttisnumber(v2));  \
   op_arithf_aux(L, v1, v2, fop); }
 
+/*
+** Arithmetic operations using raw arithmetic (supports integer results).
+*/
+#define op_arithraw(L,op) {  \
+  TValue *v1 = vRB(i);  \
+  TValue *v2 = vRC(i);  \
+  StkId ra = RA(i);  \
+  if (luaO_rawarith(L, op, v1, v2, s2v(ra))) pc++; }
+
+/*
+** Arithmetic operations with K operands using raw arithmetic.
+*/
+#define op_arithrawK(L,op) {  \
+  TValue *v1 = vRB(i);  \
+  TValue *v2 = KC(i);  \
+  StkId ra = RA(i);  \
+  lua_assert(ttisnumber(v2));  \
+  if (luaO_rawarith(L, op, v1, v2, s2v(ra))) pc++; }
+
 
 /*
 ** Arithmetic operations over integers and floats.
@@ -1465,11 +1484,12 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POWK) {
-        op_arithfK(L, luai_numpow);
+        op_arithrawK(L, LUA_OPPOW);
         vmbreak;
       }
       vmcase(OP_DIVK) {
-        op_arithfK(L, luai_numdiv);
+        savestate(L, ci);  /* in case of division by 0 */
+        op_arithrawK(L, LUA_OPDIV);
         vmbreak;
       }
       vmcase(OP_IDIVK) {
@@ -1527,11 +1547,12 @@ void luaV_execute (lua_State *L, CallInfo *ci) {
         vmbreak;
       }
       vmcase(OP_POW) {
-        op_arithf(L, luai_numpow);
+        op_arithraw(L, LUA_OPPOW);
         vmbreak;
       }
-      vmcase(OP_DIV) {  /* float division (always with floats) */
-        op_arithf(L, luai_numdiv);
+      vmcase(OP_DIV) {  /* division with integer support */
+        savestate(L, ci);  /* in case of division by 0 */
+        op_arithraw(L, LUA_OPDIV);
         vmbreak;
       }
       vmcase(OP_IDIV) {  /* floor division */
