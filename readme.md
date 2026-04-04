@@ -831,14 +831,25 @@ var arr2 = [0, 0, 0, 0, 0, 0]
 arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 ```
 
-### 集合类型
+### 集合类型（std）
 
-- **ArrayList**：基于泛型实现的动态数组
-  - 方法：`add()`、`get()`、`set()`、`removeAt()`、`indexOf()`、`contains()`、`clear()`、`forEach()`、`map()`、`filter()`
-  - 属性：`size`、`isEmpty()`
+根目录新增 `std` 目录，提供独立的仓颉集合实现与测试。
 
-- **HashMap**：基于泛型实现的哈希表
-  - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`
+- **ArrayList**（`std/ArrayList.cj`）：变长数组
+  - 方法：`add()`、`get()`、`isEmpty()`、`remove()`、`removeIf()`、`clear()`、`clone()`、`contains()`、`reserve()`、`reverse()`、`slice()`、`toArray()`、`iterator()`、`sortBy()`、`toString()`
+  - 属性：`size`、`capacity`
+
+- **ArrayStack**（`std/ArrayStack.cj`）：基于数组的栈
+  - 方法：`add()`、`isEmpty()`、`remove()`、`clear()`、`clone()`、`reserve()`、`toArray()`、`iterator()`、`toString()`
+  - 属性：`size`、`capacity`
+
+- **HashMap**（`std/HashMap.cj`）：基于 Lua 表的哈希表
+  - 方法：`add()`、`get()`、`isEmpty()`、`replace()`、`remove()`、`removeIf()`、`clear()`、`clone()`、`contains()`、`reserve()`、`keys()`、`values()`、`toArray()`、`iterator()`、`toString()`
+  - 属性：`size`、`capacity`
+
+- **HashSet**（`std/HashSet.cj`）：基于 HashMap 的集合
+  - 方法：`add()`、`isEmpty()`、`remove()`、`removeIf()`、`clear()`、`clone()`、`contains()`、`reserve()`、`retain()`、`subsetOf()`、`toArray()`、`iterator()`、`toString()`
+  - 属性：`size`、`capacity`
 
 ## 融合 Lua 的扩展能力（动态特性）
 
