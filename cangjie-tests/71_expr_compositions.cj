@@ -86,7 +86,7 @@ expectEq(r7, 11, "func of if-expr")
 let r8 = {
     var s = ""
     for (i in 0..3) {
-        s = s .. tostring(i)
+        s = s + tostring(i)
     }
     s
 }

@@ -16,7 +16,7 @@ expectEq(sum, 60, "for-in array sum")
 let names = ["Alice", "Bob", "Charlie"]
 var concat = ""
 for (name in names) {
-    concat = concat .. name .. ","
+    concat = concat + name + ","
 }
 expectEq(concat, "Alice,Bob,Charlie,", "for-in string array")
 

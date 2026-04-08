@@ -77,7 +77,7 @@ class Base {
 
 class Child <: Base {
   init(data: String) {
-    this.data = "[" .. data .. "]"
+    this.data = "[" + data + "]"
   }
 }
 
@@ -120,7 +120,7 @@ expectEq(match_result1, "10", "match Some(10)")
 var match_result2 = ""
 match (r2) {
   case Some(v) =>
-    match_result2 = "value: " .. tostring(v)
+    match_result2 = "value: " + tostring(v)
   case None =>
     match_result2 = "division by zero"
 }

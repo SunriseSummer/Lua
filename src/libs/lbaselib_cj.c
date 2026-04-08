@@ -95,6 +95,19 @@ static int cangjie_index_handler (lua_State *L) {
     return 1;  /* found in instance */
   }
   lua_pop(L, 1);
+  /* Check __data table for dynamic storage (e.g., collections) */
+  /* Use rawget to avoid __index recursion when checking __data. */
+  lua_pushliteral(L, "__data");
+  lua_rawget(L, 1);
+  if (lua_istable(L, -1)) {
+    lua_pushvalue(L, 2);
+    lua_rawget(L, -2);
+    if (!lua_isnil(L, -1)) {
+      return 1;  /* found in __data */
+    }
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
   /* Look up in the class table, walking up parent chain */
   {
     int cls_idx;
@@ -133,6 +146,26 @@ static int cangjie_index_handler (lua_State *L) {
       cls_idx = lua_gettop(L);
     }
     lua_pop(L, 1);  /* pop nil (end of chain) */
+  }
+  /* If class defines operator[] (__index), call it as fallback */
+  {
+    int cls_idx;
+    lua_pushvalue(L, lua_upvalueindex(1));
+    cls_idx = lua_gettop(L);
+    while (!lua_isnil(L, cls_idx)) {
+      lua_getfield(L, cls_idx, "__index");
+      if (lua_isfunction(L, -1)) {
+        lua_pushvalue(L, 1);
+        lua_pushvalue(L, 2);
+        lua_call(L, 2, 1);
+        return 1;
+      }
+      lua_pop(L, 1);
+      lua_getfield(L, cls_idx, "__parent");
+      lua_remove(L, cls_idx);
+      cls_idx = lua_gettop(L);
+    }
+    lua_pop(L, 1);
   }
   lua_pushnil(L);
   return 1;  /* not found */
@@ -1466,6 +1499,7 @@ int luaB_array_slice_set (lua_State *L) {
   }
   return 0;
 }
+
 
 
 /*

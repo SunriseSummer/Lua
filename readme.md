@@ -101,7 +101,7 @@ let l = String(bytes)       // Array<Byte>（UTF-8 字节数组）转为字符�
 
 - **原生 UTF-8 支持**：字符串默认采用 UTF-8 编解码，索引、切片、长度等操作均基于 Unicode 字符（而非字节）
 - **插值字符串**：`"Hello, ${name}!"` 支持在 `${}` 中嵌入任意表达式
-- **字符串拼接**：可以使用 `+` 拼接两个字符串（也支持 `String + Rune`、`Rune + String`），也支持 Lua 风格的 `..`
+- **字符串拼接**：可以使用 `+` 拼接两个字符串（也支持 `String + Rune`、`Rune + String`）
 - **索引取值**：`s[0]` 返回第 0 个 Unicode 字符（**Rune 类型**，0-based）
 - **切片取值**：`s[1..4]`（排他）、`s[0..=2]`（包含）返回**子字符串**（String 类型），基于字符位置
 - **for-in 遍历**：`for (ch in s)` 遍历字符串中的每个字符，迭代变量 `ch` 为 **Rune 类型**
@@ -466,7 +466,7 @@ println(3.double())      // 6
 println(4.even())        // true
 
 extend String {
-  func shout(): String { this .. "!!!" }
+  func shout(): String { this + "!!!" }
 }
 println("hello".shout()) // hello!!!
 
@@ -834,11 +834,21 @@ arr2[1..=3] = [100, 200, 300]  // arr2 变为 [0, 100, 200, 300, 0, 0]
 ### 集合类型
 
 - **ArrayList**：基于泛型实现的动态数组
-  - 方法：`add()`、`get()`、`set()`、`removeAt()`、`indexOf()`、`contains()`、`clear()`、`forEach()`、`map()`、`filter()`
-  - 属性：`size`、`isEmpty()`
+  - 方法：`add()`、`get()`、`set()`、`remove()`、`removeIf()`、`clear()`、`contains()`、`reverse()`、`slice()`、`toArray()`、`toString()`、`isEmpty()`
+  - 属性：`size`、`capacity`、`first`、`last`
 
 - **HashMap**：基于泛型实现的哈希表
-  - 方法：`put()`、`get()`、`containsKey()`、`remove()`、`forEach()`
+  - 方法：`add()`、`get()`、`contains()`、`remove()`、`removeIf()`、`clear()`、`keys()`、`values()`、`iterator()`、`entryView()`、`toArray()`、`toString()`、`reserve()`、`clone()`、`isEmpty()`
+  - 属性：`size`、`capacity`
+
+- **HashSet**：使用 Lua table 键集合实现的无序集合
+  - 方法：`add()`、`contains()`、`remove()`、`removeIf()`、`clear()`、`iterator()`、`subsetOf()`、`retain()`、`toArray()`、`toString()`、`clone()`、`reserve()`、`isEmpty()`
+  - 操作符：`&`（交集）、`|`（并集）、`-`（差集）
+  - 属性：`size`、`capacity`
+
+- **ArrayStack**：基于数组实现的栈结构
+  - 方法：`add()`、`peek()`、`remove()`、`clear()`、`iterator()`、`toArray()`、`toString()`、`reserve()`、`isEmpty()`
+  - 属性：`size`、`capacity`
 
 ## 融合 Lua 的扩展能力（动态特性）
 

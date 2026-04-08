@@ -88,7 +88,7 @@ for (i in 1..=5) {
 }
 var reversed = ""
 while (!revStack.isEmpty()) {
-    reversed = reversed .. tostring(revStack.pop())
+    reversed = reversed + tostring(revStack.pop())
 }
 expectEq(reversed, "54321", "stack reversal")
 
