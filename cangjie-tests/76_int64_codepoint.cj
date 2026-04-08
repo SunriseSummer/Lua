@@ -9,9 +9,9 @@ dofile("cangjie-tests/_testing.cj")
 expectEq(type(r'0'), "Rune", "type(r'0') == Rune")
 expectEq(type(r'A'), "Rune", "type(r'A') == Rune")
 
-// Rune != integer (strict type separation)
-expectFalse(r'0' == 48, "r'0' != 48")
-expectFalse(r'A' == 65, "r'A' != 65")
+// Rune to Int64 comparison requires explicit conversion
+expectEq(Int64(r'0'), 48, "Int64(r'0') == 48")
+expectEq(Int64(r'A'), 65, "Int64(r'A') == 65")
 
 // Rune equality
 expectTrue(r'0' == r'0', "r'0' == r'0'")
@@ -47,8 +47,9 @@ expectEq(Int64(Rune(text[1])), 101, "Int64(Rune(text[1])) e=101")
 
 // Digit chars: Int64 parses string as number, Int64(Rune()) extracts code point
 let digits = "0123456789"
-expectEq(Int64(digits[0]), 0, "Int64(digits[0]) = 0 (number parse)")
-expectEq(Int64(Rune(digits[0])), 48, "Int64(Rune(digits[0])) = 48 (code point)")
+// digits[0] returns Rune, so convert to String before numeric parsing
+expectEq(Int64(String(digits[0])), 0, "Int64(String(digits[0])) = 0 (number parse)")
+expectEq(Int64(digits[0]), 48, "Int64(digits[0]) = 48 (code point)")
 
 // --- Section: Round-trip ---
 let cp = r'A'

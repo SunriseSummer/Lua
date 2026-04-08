@@ -520,6 +520,39 @@ int luaB_cangjie_bool (lua_State *L) {
   }
 }
 
+int luaB_check_return (lua_State *L) {
+  const char *expected = luaL_checkstring(L, 2);
+  int ok = 0;
+  if (strcmp(expected, "Int64") == 0) {
+    ok = (lua_type(L, 1) == LUA_TINT64);
+  }
+  else if (strcmp(expected, "Float64") == 0) {
+    ok = (lua_type(L, 1) == LUA_TFLOAT64);
+  }
+  else if (strcmp(expected, "Bool") == 0) {
+    ok = (lua_type(L, 1) == LUA_TBOOLEAN);
+  }
+  else if (strcmp(expected, "String") == 0) {
+    ok = (lua_type(L, 1) == LUA_TSTRING);
+  }
+  else if (strcmp(expected, "Rune") == 0) {
+    ok = (lua_type(L, 1) == LUA_TRUNE);
+  }
+  else if (strcmp(expected, "Option") == 0) {
+    ok = (cangjie_has_tag(L, 1, "Some") || cangjie_has_tag(L, 1, "None"));
+  }
+  else {
+    lua_pushvalue(L, 1);
+    return 1;
+  }
+  if (!ok) {
+    return luaL_error(L, "return type mismatch: expected %s, got %s",
+                      expected, luaL_typename(L, 1));
+  }
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
 
 /* Rune(value) - construct Rune type instance.
 ** Rune is now a native tagged value (LUA_TRUNE) storing the code point.
