@@ -31,6 +31,10 @@ LUAI_FUNC int luaB_array_slice (lua_State *L);
 LUAI_FUNC int luaB_array_slice_set (lua_State *L);
 LUAI_FUNC int luaB_iter (lua_State *L);
 LUAI_FUNC int luaB_apply_interface (lua_State *L);
+LUAI_FUNC int luaB_arraylist_init (lua_State *L);
+LUAI_FUNC int luaB_arraystack_init (lua_State *L);
+LUAI_FUNC int luaB_hashmap_init (lua_State *L);
+LUAI_FUNC int luaB_hashset_init (lua_State *L);
 
 /* Cangjie string support */
 LUAI_FUNC int luaB_str_index (lua_State *L);

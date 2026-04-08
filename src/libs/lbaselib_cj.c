@@ -842,6 +842,25 @@ static int cangjie_array_iter_next (lua_State *L) {
 }
 
 /*
+** Iterator object adapter: calls iter.next() and unwraps Option.
+** upvalue 1 = iterator object
+*/
+static int cangjie_object_iter_next (lua_State *L) {
+  lua_getfield(L, lua_upvalueindex(1), "next");
+  if (!lua_isfunction(L, -1)) {
+    lua_pushnil(L);
+    return 1;
+  }
+  lua_call(L, 0, 1);
+  if (cangjie_has_tag(L, -1, "Some")) {
+    lua_rawgeti(L, -1, 1);
+    return 1;
+  }
+  lua_pushnil(L);
+  return 1;
+}
+
+/*
 ** String iterator: yields each Unicode character as a Rune value.
 ** Upvalue 1 = string, upvalue 2 = byte offset (integer).
 */
@@ -879,6 +898,31 @@ static int cangjie_string_iter_next (lua_State *L) {
 /* luaB_iter — entry point for __cangjie_iter */
 int luaB_iter (lua_State *L) {
   if (lua_istable(L, 1)) {
+    /* If table wraps __data with __n, iterate over that data */
+    lua_getfield(L, 1, "__data");
+    if (lua_istable(L, -1)) {
+      lua_getfield(L, -1, "__n");
+      if (lua_isinteger(L, -1)) {
+        lua_pop(L, 1);
+        lua_pushinteger(L, -1);
+        lua_pushcclosure(L, cangjie_array_iter_next, 2);
+        lua_pushnil(L);
+        lua_pushnil(L);
+        return 3;
+      }
+      lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    /* If table provides iterator() method, adapt it */
+    lua_getfield(L, 1, "iterator");
+    if (lua_isfunction(L, -1)) {
+      lua_call(L, 0, 1);  /* iterator object */
+      lua_pushcclosure(L, cangjie_object_iter_next, 1);
+      lua_pushnil(L);
+      lua_pushnil(L);
+      return 3;
+    }
+    lua_pop(L, 1);
     /* For tables: create a closure iterator that yields values (0-based) */
     lua_pushvalue(L, 1);       /* push table as upvalue 1 */
     lua_pushinteger(L, -1);    /* push initial index as upvalue 2 (will be incremented to 0) */
@@ -1424,7 +1468,47 @@ int luaB_array_slice (lua_State *L) {
   }
   {
   lua_Integer i;
+  int src_idx = 1;
+  int use_data = 0;
   luaL_checktype(L, 1, LUA_TTABLE);
+  lua_getfield(L, 1, "__class");
+  lua_getglobal(L, "ArrayList");
+  if (lua_rawequal(L, -1, -2)) {
+    lua_pop(L, 2);
+    start = luaL_checkinteger(L, 2);
+    end = luaL_checkinteger(L, 3);
+    inclusive = lua_toboolean(L, 4);
+    lua_getfield(L, 1, "slice");
+    lua_newtable(L);
+    lua_pushinteger(L, start);
+    lua_setfield(L, -2, "start");
+    lua_pushinteger(L, end);
+    lua_setfield(L, -2, "end");
+    lua_pushboolean(L, 1);
+    lua_setfield(L, -2, "hasEnd");
+    lua_pushboolean(L, inclusive);
+    lua_setfield(L, -2, "isClosed");
+    lua_pushinteger(L, 1);
+    lua_setfield(L, -2, "step");
+    lua_call(L, 1, 1);
+    return 1;
+  }
+  lua_pop(L, 2);
+  lua_getfield(L, 1, "__data");
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "__n");
+    if (lua_isinteger(L, -1)) {
+      lua_pop(L, 1);
+      src_idx = lua_gettop(L);
+      use_data = 1;
+    }
+    else {
+      lua_pop(L, 1);
+    }
+  }
+  if (!use_data) {
+    lua_pop(L, 1);
+  }
   start = luaL_checkinteger(L, 2);
   end = luaL_checkinteger(L, 3);
   inclusive = lua_toboolean(L, 4);
@@ -1433,13 +1517,15 @@ int luaB_array_slice (lua_State *L) {
   if (count < 0) count = 0;
   lua_newtable(L);
   for (i = 0; i < count; i++) {
-    lua_geti(L, 1, start + i);
+    lua_geti(L, src_idx, start + i);
     lua_seti(L, -2, i);
   }
   lua_pushinteger(L, count);
   lua_setfield(L, -2, "__n");
   lua_pushinteger(L, count);
   lua_setfield(L, -2, "size");
+  if (use_data)
+    lua_pop(L, 1);
   return 1;
   }
 }
@@ -1452,7 +1538,24 @@ int luaB_array_slice (lua_State *L) {
 int luaB_array_slice_set (lua_State *L) {
   lua_Integer start, end, i, count;
   int inclusive;
+  int dst_idx = 1;
+  int use_data = 0;
   luaL_checktype(L, 1, LUA_TTABLE);
+  lua_getfield(L, 1, "__data");
+  if (lua_istable(L, -1)) {
+    lua_getfield(L, -1, "__n");
+    if (lua_isinteger(L, -1)) {
+      lua_pop(L, 1);
+      dst_idx = lua_gettop(L);
+      use_data = 1;
+    }
+    else {
+      lua_pop(L, 1);
+    }
+  }
+  if (!use_data) {
+    lua_pop(L, 1);
+  }
   start = luaL_checkinteger(L, 2);
   end = luaL_checkinteger(L, 3);
   inclusive = lua_toboolean(L, 4);
@@ -1462,8 +1565,10 @@ int luaB_array_slice_set (lua_State *L) {
   if (count < 0) count = 0;
   for (i = 0; i < count; i++) {
     lua_geti(L, 5, i);
-    lua_seti(L, 1, start + i);
+    lua_seti(L, dst_idx, start + i);
   }
+  if (use_data)
+    lua_pop(L, 1);
   return 0;
 }
 
