@@ -151,6 +151,19 @@ int luaB_coalesce (lua_State *L) {
   return 1;
 }
 
+/* __cangjie_option_wrap(value) — wrap non-Option values into Some(value). */
+int luaB_option_wrap (lua_State *L) {
+  if (lua_isnil(L, 1)) {
+    lua_getglobal(L, "None");
+    return 1;
+  }
+  if (cangjie_has_tag(L, 1, "Some") || cangjie_has_tag(L, 1, "None")) {
+    lua_pushvalue(L, 1);
+    return 1;
+  }
+  return cangjie_some(L);
+}
+
 /*
 ** ============================================================
 ** Option initialization

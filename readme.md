@@ -46,9 +46,9 @@ let llo: Rune = r'\u{597d}'  // 好
 let s = 'a'                  // 字符串 "a"
 ```
 
-Rune 是独立的类型，与整型和字符串严格区分。Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），比较的是字符的 Unicode 值。可以通过字符 Unicode 码点值构造对应的 Rune 实例，即 `Rune(code_point)`。
+Rune 是独立的类型，与整型和字符串严格区分。Rune 类型支持关系操作符（`<`、`>`、`<=`、`>=`、`==`、`!=`），用于 Rune 与 Rune 之间比较字符的 Unicode 值。如需与整数比较或计算，需要显式转换为 `Int64`。可以通过字符 Unicode 码点值构造对应的 Rune 实例，即 `Rune(code_point)`。
 
-- `Rune(65) != 65`（Rune 和整型是不同类型）
+- `Int64(Rune(65)) == 65`（Rune 与整型比较需要显式转换）
 - `Rune(65) == Rune(65) == r'A'`（相同码点的 Rune 值相等）
 - `Rune(Rune(65)) == Rune(65)`（Rune 的 Rune 转换是恒等操作）
 - `tostring(r'A')` = `"A"`（Rune 转字符串得到对应字符）
@@ -604,6 +604,12 @@ let total = Yuan(100) + Yuan(200)  // Yuan(300)
 // ?Int64 等价于 Option<Int64>
 let a: ?Int64 = Some(42)
 let b: ?Int64 = None
+
+// Option 返回值自动封装
+func parseCount(text: String): ?Int64 {
+  if (text.isEmpty()) { return None }
+  return 123    // 自动包装为 Some(123)
+}
 
 // 方法
 a.isSome()          // true

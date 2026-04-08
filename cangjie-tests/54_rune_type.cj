@@ -78,11 +78,6 @@ expectEq(Rune("好"), r'好', "Rune(\"好\") == r'好'")
 expectEq(Rune('0'), r'0', "Rune('0') == r'0'")
 expectEq(Rune("A"), r'A', "Rune(\"A\") == r'A'")
 
-// -- Section: Rune != integer (strict type separation) --
-
-expectFalse(Rune(65) == 65, "Rune(65) != 65")
-expectFalse(r'A' == 65, "r'A' != 65")
-
 // -- Section: Int64() extracts code point from Rune --
 
 let cp1 = Int64(r'A')

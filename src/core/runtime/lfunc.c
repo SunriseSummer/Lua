@@ -258,6 +258,7 @@ Proto *luaF_newproto (lua_State *L) {
   f->numparams = 0;
   f->flag = 0;
   f->maxstacksize = 0;
+  f->ret_is_option = 0;
   f->locvars = NULL;
   f->sizelocvars = 0;
   f->linedefined = 0;
@@ -311,4 +312,3 @@ const char *luaF_getlocalname (const Proto *f, int local_number, int pc) {
   }
   return NULL;  /* not found */
 }
-
